@@ -1,0 +1,167 @@
+/* Brand Design System - Pro Max Unified (3 Colors) */
+:root {
+  /* Color 1: Doctolib-inspired Blue (Primary) */
+  --brand-blue: #0e75c4;
+  --brand-blue-dark: #0a5a9c;
+  --brand-blue-light: #f1f7fe;
+
+  /* Deep navy for headings / text */
+  --brand-navy: #00264c;
+
+  /* Color 2: Cyan (Accent, used sparingly) */
+  --brand-accent: #0596de;
+  --brand-accent-soft: #ecfeff;
+
+  /* Color 3: Slate/Gray (Neutrals) */
+  --brand-neutral: #64748b;
+  --brand-bg: #ffffff;
+
+  /* Glassmorphism & Depth */
+  --glass-white: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.2);
+  --shadow-soft: 0 10px 25px -3px rgba(0, 0, 0, 0.05);
+  --shadow-pro: 0 18px 45px -12px rgba(14, 117, 196, 0.18);
+}
+
+@import "tailwindcss";
+
+/* ── Typography: Roboto (YouTube-style) ── */
+@theme {
+  --font-sans: "Roboto", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* ── Global Fluidity ── */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Roboto", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--brand-bg);
+  color: #1e293b;
+}
+
+/* ── Unified Overrides ── */
+.bg-blue-600 { background-color: var(--brand-blue) !important; }
+.bg-blue-700 { background-color: var(--brand-blue-dark) !important; }
+.text-blue-600 { color: var(--brand-blue) !important; }
+.text-blue-700 { color: var(--brand-blue-dark) !important; }
+.border-blue-600 { border-color: var(--brand-blue) !important; }
+
+/* Neutralize other colors */
+.bg-amber-50, .bg-green-50, .bg-purple-50, .bg-orange-50 { background-color: var(--brand-blue-light) !important; }
+.text-amber-700, .text-green-700, .text-purple-700, .text-orange-700 { color: var(--brand-blue) !important; }
+.border-amber-100, .border-green-100, .border-purple-100, .border-orange-100 { border-color: var(--brand-blue-light) !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   Design polish — custom utilities used across components
+   (previously referenced but never defined)
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Hide scrollbar (day strip) ── */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── Radius & shadow extensions ── */
+.rounded-4xl { border-radius: 2rem; }
+.shadow-3xl  { box-shadow: 0 35px 60px -15px rgba(0, 68, 133, 0.28); }
+
+/* ── Glassmorphism surfaces ── */
+.glass-card-pro {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: var(--shadow-pro), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.glass-panel {
+  background: var(--glass-white);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-soft);
+}
+
+/* ── Pro button: lift + light sweep on hover ── */
+.btn-pro {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+.btn-pro::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -75%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  transform: skewX(-20deg);
+  transition: left 0.6s ease;
+  pointer-events: none;
+}
+.btn-pro:hover:not(:disabled) { transform: translateY(-2px); }
+.btn-pro:hover:not(:disabled)::after { left: 130%; }
+.btn-pro:active:not(:disabled) { transform: translateY(0); }
+.btn-pro:disabled::after { display: none; }
+
+/* ── Keyframes ── */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-16px); }
+}
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-22px) rotate(3deg); }
+}
+
+/* ── Animation utilities ── */
+.animate-fadeIn   { animation: fadeIn 0.6s ease-out both; }
+.animate-fadeInUp { animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-float     { animation: float 6s ease-in-out infinite; }
+.animate-floatSlow { animation: floatSlow 9s ease-in-out infinite; }
+.animate-in        { animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Hero entrance reveals */
+.hero-reveal { animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.hero-reveal-delay-1 { animation-delay: 0.15s; }
+.hero-reveal-delay-2 { animation-delay: 0.3s; }
+
+/* Animation delay helpers */
+.delay-1   { animation-delay: 0.15s; }
+.delay-2   { animation-delay: 0.3s; }
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+
+/* ── Respect reduced-motion preferences ── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .animate-fadeInUp,
+  .animate-float,
+  .animate-floatSlow,
+  .animate-in,
+  .hero-reveal {
+    animation: none !important;
+  }
+  .btn-pro { transition: none; }
+}
+
