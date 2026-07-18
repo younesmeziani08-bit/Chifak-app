@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import HomePage from './components/HomePage';
 import SearchResults from './components/SearchResults';
+import PatientAccount from './components/PatientAccount';
 import BookingPage from './components/BookingPage';
 import ConfirmationPage from './components/ConfirmationPage';
 import LoginModal from './components/LoginModal';
@@ -51,7 +52,7 @@ function isOAuthCallbackPath() {
 export default function App() {
   const { isAuthenticated } = useAdminAuth();
   const [oauthDone, setOauthDone] = useState(!isOAuthCallbackPath());
-  const [currentPage, setCurrentPage] = useState<'home' | 'search' | 'booking' | 'confirmation' | 'admin' | 'doctor'>('home');
+  const [currentPage, setCurrentPage] = useState<'home' | 'search' | 'booking' | 'confirmation' | 'admin' | 'doctor' | 'account'>('home');
   const [searchQuery, setSearchQuery] = useState({ specialty: '', location: '', date: '' });
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
@@ -124,6 +125,18 @@ export default function App() {
     localStorage.removeItem('chifak_patient_user');
     setPatientUser(null);
     setCurrentPage('home');
+  };
+
+  const handleOpenAccount = () => {
+    if (patientUser) {
+      setCurrentPage('account');
+    } else {
+      setAuthModal('login');
+    }
+  };
+
+  const handleProfileUpdated = (user: { id: number; name: string; email: string }) => {
+    setPatientUser(user);
   };
 
   const handlePatientLoginSuccess = () => {
@@ -212,13 +225,14 @@ export default function App() {
 
       {currentPage === 'home' && (
         <PageTransition pageKey="home">
-          <HomePage 
-            onSearch={handleSearch} 
+          <HomePage
+            onSearch={handleSearch}
             onAdminClick={() => setCurrentPage('admin')}
             onDoctorClick={() => setCurrentPage('doctor')}
             onOpenLogin={() => setAuthModal('login')}
             onOpenSignup={() => setAuthModal('signup')}
             onOpenProfessional={() => setIsProModalOpen(true)}
+            onOpenAccount={handleOpenAccount}
             patientUser={patientUser}
             onLogout={handlePatientLogout}
           />
@@ -234,8 +248,21 @@ export default function App() {
             onOpenLogin={() => setAuthModal('login')}
             onOpenSignup={() => setAuthModal('signup')}
             onOpenProfessional={() => setIsProModalOpen(true)}
+            onOpenAccount={handleOpenAccount}
             patientUser={patientUser}
             onLogout={handlePatientLogout}
+          />
+        </PageTransition>
+      )}
+      {currentPage === 'account' && patientUser && (
+        <PageTransition pageKey="account">
+          <PatientAccount
+            patientUser={patientUser}
+            onBackToHome={handleBackToHome}
+            onOpenProfessional={() => setIsProModalOpen(true)}
+            onDoctorClick={() => setCurrentPage('doctor')}
+            onLogout={handlePatientLogout}
+            onProfileUpdated={handleProfileUpdated}
           />
         </PageTransition>
       )}

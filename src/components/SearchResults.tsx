@@ -40,6 +40,7 @@ interface SearchResultsProps {
   onOpenLogin: () => void;
   onOpenSignup: () => void;
   onOpenProfessional: () => void;
+  onOpenAccount?: () => void;
   patientUser?: { id: number; name: string; email: string } | null;
   onLogout?: () => void;
 }
@@ -116,7 +117,7 @@ function initials(name: string): string {
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || 'DR';
 }
 
-export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHome, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, patientUser, onLogout }: SearchResultsProps) {
+export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHome, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, onOpenAccount, patientUser, onLogout }: SearchResultsProps) {
   const { language } = useLanguage();
   const { getDoctorsBySpecialtyAndLocation } = useDoctors();
   const isArabic = language === 'ar';
@@ -157,6 +158,7 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
         onOpenLogin={onOpenLogin}
         onOpenSignup={onOpenSignup}
         onOpenProfessional={onOpenProfessional}
+        onOpenAccount={onOpenAccount}
         patientUser={patientUser}
         onLogout={onLogout}
       />

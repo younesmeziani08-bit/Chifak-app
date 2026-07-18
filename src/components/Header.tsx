@@ -13,8 +13,14 @@ interface HeaderProps {
   onOpenProfessional?: () => void;
   onOpenLogin?: () => void;
   onOpenSignup?: () => void;
+  onOpenAccount?: () => void;
   patientUser?: { id: number; name: string; email: string } | null;
   onLogout?: () => void;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || 'M';
 }
 
 function Logo() {
@@ -39,6 +45,7 @@ export default function Header({
   onOpenProfessional,
   onOpenLogin,
   onOpenSignup,
+  onOpenAccount,
   patientUser,
   onLogout,
 }: HeaderProps) {
@@ -97,8 +104,17 @@ export default function Header({
             )}
 
             {patientUser ? (
-              <div className="flex items-center gap-3">
-                <span className="hidden lg:inline text-sm font-medium text-gray-700">{patientUser.name}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onOpenAccount}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors px-2 py-1 rounded-lg"
+                  title={isArabic ? 'حسابي' : 'Mon compte'}
+                >
+                  <span className="w-7 h-7 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-xs font-semibold">
+                    {initialsOf(patientUser.name)}
+                  </span>
+                  <span className="hidden lg:inline">{patientUser.name}</span>
+                </button>
                 <button
                   onClick={onLogout}
                   className="hidden sm:inline-flex text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600 transition-colors"
@@ -158,9 +174,12 @@ export default function Header({
             <div className="pt-4 flex flex-col gap-2">
               {patientUser ? (
                 <>
-                  <div className="px-4 py-3 text-center font-medium text-blue-700 bg-blue-50 rounded-lg">
-                    {patientUser.name}
-                  </div>
+                  <button
+                    onClick={() => handleLinkClick(onOpenAccount)}
+                    className="w-full py-3 bg-blue-50 text-blue-700 font-medium text-sm rounded-lg border border-blue-100 transition-colors"
+                  >
+                    {isArabic ? 'حسابي' : 'Mon compte'}
+                  </button>
                   <button
                     onClick={() => handleLinkClick(onLogout)}
                     className="w-full py-3 bg-white text-red-600 font-medium text-sm rounded-lg border border-red-200 transition-colors"

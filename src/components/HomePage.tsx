@@ -51,11 +51,12 @@ interface HomePageProps {
   onOpenLogin: () => void;
   onOpenSignup: () => void;
   onOpenProfessional: () => void;
+  onOpenAccount?: () => void;
   patientUser?: { id: number; name: string; email: string } | null;
   onLogout?: () => void;
 }
 
-export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, patientUser, onLogout }: HomePageProps) {
+export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, onOpenAccount, patientUser, onLogout }: HomePageProps) {
   const { t, language } = useLanguage();
   const [specialty, setSpecialty] = useState('');
   const [location, setLocation] = useState('');
@@ -119,6 +120,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
         onOpenProfessional={onOpenProfessional}
         onOpenLogin={onOpenLogin}
         onOpenSignup={onOpenSignup}
+        onOpenAccount={onOpenAccount}
         patientUser={patientUser}
         onLogout={onLogout}
       />

@@ -392,16 +392,37 @@ app.post('/api/auth/resend-code', async (req, res) => {
   }
 });
 
-// GET /api/patient/profile - Profil patient connecté (solde)
+// GET /api/patient/profile - Profil patient connecté
 app.get('/api/patient/profile', authenticatePatientToken, (req, res) => {
   try {
-    const patient = db.prepare('SELECT id, email, name, balance FROM patients WHERE email = ?').get(req.user.email);
+    const patient = db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
     if (!patient) {
       return res.status(404).json({ error: 'Patient non trouvé' });
     }
-    res.json({ ...patient, balance: patient.balance || 0 });
+    res.json({ ...patient, phone: patient.phone || '', balance: patient.balance || 0 });
   } catch (error) {
     console.error('Erreur récupération profil patient:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/patient/profile - Modifier ses informations (nom, téléphone)
+app.put('/api/patient/profile', authenticatePatientToken, (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    const current = db.prepare('SELECT * FROM patients WHERE email = ?').get(req.user.email);
+    if (!current) {
+      return res.status(404).json({ error: 'Patient non trouvé' });
+    }
+    const newName = typeof name === 'string' && name.trim() ? name.trim() : current.name;
+    const newPhone = typeof phone === 'string' ? phone.trim() : (current.phone || '');
+    db.prepare('UPDATE patients SET name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')
+      .run(newName, newPhone, req.user.email);
+
+    const patient = db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
+    res.json({ ...patient, phone: patient.phone || '', balance: patient.balance || 0 });
+  } catch (error) {
+    console.error('Erreur mise à jour profil patient:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
