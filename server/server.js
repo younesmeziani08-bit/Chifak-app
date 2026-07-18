@@ -450,16 +450,23 @@ app.get('/api/auth/google', (req, res, next) => {
   if (!isGoogleOAuthReady()) {
     return res.redirect(`${frontendUrl()}/?oauth=unconfigured&provider=google`);
   }
-  next();
-}, passport.authenticate('google', { scope: ['profile', 'email'] }));
+  // 'app' quand la demande vient de l'app mobile -> retour par lien profond
+  const state = req.query.redirect === 'app' ? 'app' : 'web';
+  passport.authenticate('google', { scope: ['profile', 'email'], state })(req, res, next);
+});
 
-const buildOAuthRedirect = (user, token) => {
-  const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
+const buildOAuthRedirect = (user, token, isApp) => {
   const params = new URLSearchParams({
     token,
     email: user.email,
     name: user.name || '',
   });
+  if (isApp) {
+    // Retour dans l'app native via un lien profond (custom URL scheme)
+    const scheme = process.env.MOBILE_REDIRECT_URL || 'chifak://auth/callback';
+    return `${scheme}?${params.toString()}`;
+  }
+  const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
   return `${frontend}/auth/callback?${params.toString()}`;
 };
 
@@ -475,7 +482,7 @@ app.get('/api/auth/google/callback',
       { expiresIn: '24h' }
     );
 
-    res.redirect(buildOAuthRedirect(req.user, token));
+    res.redirect(buildOAuthRedirect(req.user, token, req.query.state === 'app'));
   }
 );
 
@@ -484,8 +491,9 @@ app.get('/api/auth/facebook', (req, res, next) => {
   if (!isFacebookOAuthReady()) {
     return res.redirect(`${frontendUrl()}/?oauth=unconfigured&provider=facebook`);
   }
-  next();
-}, passport.authenticate('facebook', { scope: ['email'] }));
+  const state = req.query.redirect === 'app' ? 'app' : 'web';
+  passport.authenticate('facebook', { scope: ['email'], state })(req, res, next);
+});
 
 app.get('/api/auth/facebook/callback',
   passport.authenticate('facebook', { failureRedirect: oauthFailureRedirect() }),
@@ -496,7 +504,7 @@ app.get('/api/auth/facebook/callback',
       { expiresIn: '24h' }
     );
 
-    res.redirect(buildOAuthRedirect(req.user, token));
+    res.redirect(buildOAuthRedirect(req.user, token, req.query.state === 'app'));
   }
 );
 

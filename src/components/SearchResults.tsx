@@ -75,9 +75,27 @@ function workingDaysOf(doctor: Doctor): number[] {
   return doctor.workingDays && doctor.workingDays.length ? doctor.workingDays : [1, 2, 3, 4, 5];
 }
 
+// Génère les créneaux selon la DURÉE de consultation du médecin.
+// Ex. plage 08:00 avec durée 30 min -> 08:00, 08:30 ; durée 20 min -> 08:00, 08:20, 08:40.
+function expandSlots(slots: string[], duration?: number): string[] {
+  const step = duration && duration > 0 ? duration : 30;
+  const out = new Set<string>();
+  for (const s of slots) {
+    const [h, m] = s.split(':').map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) {
+      out.add(s);
+      continue;
+    }
+    for (let min = m; min < 60; min += step) {
+      out.add(`${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
+    }
+  }
+  return [...out].sort();
+}
+
 function slotsForDay(doctor: Doctor, iso: string): string[] {
   if (!workingDaysOf(doctor).includes(weekdayOf(iso))) return [];
-  return doctor.availableSlots || [];
+  return expandSlots(doctor.availableSlots || [], doctor.slotDuration);
 }
 
 /* Next day (within the strip window) where the doctor has availability */
@@ -342,7 +360,7 @@ function DoctorCard({
           <div className="border-t border-gray-100 mt-4 pt-4">
             {slots.length > 0 ? (
               <div className="flex flex-wrap items-center gap-2">
-                {slots.slice(0, 8).map((slot) => (
+                {slots.slice(0, 10).map((slot) => (
                   <button
                     key={slot}
                     onClick={onSelect}
@@ -351,6 +369,14 @@ function DoctorCard({
                     {slot}
                   </button>
                 ))}
+                {slots.length > 10 && (
+                  <button
+                    onClick={onSelect}
+                    className="px-3 py-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  >
+                    +{slots.length - 10}
+                  </button>
+                )}
                 <button
                   onClick={onSelect}
                   className="btn-pro ltr:ml-auto rtl:mr-auto px-5 py-2 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors"

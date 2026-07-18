@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { API_URL, AUTH_FACEBOOK_URL, AUTH_GOOGLE_URL } from '../../config';
+import { startOAuth } from '../../utils/nativeAuth';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 interface SignupModalProps {
@@ -168,14 +169,14 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
                 </p>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <a href={AUTH_GOOGLE_URL} className="flex items-center justify-center gap-3 px-4 py-4 border-2 border-gray-50 rounded-2xl hover:bg-gray-50 transition-all group">
+                  <button type="button" onClick={() => startOAuth(AUTH_GOOGLE_URL)} className="flex items-center justify-center gap-3 px-4 py-4 border-2 border-gray-50 rounded-2xl hover:bg-gray-50 transition-all group">
                     <span className="text-lg">G</span>
                     <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-900">Google</span>
-                  </a>
-                  <a href={AUTH_FACEBOOK_URL} className="flex items-center justify-center gap-3 px-4 py-4 border-2 border-gray-50 rounded-2xl hover:bg-gray-50 transition-all group">
+                  </button>
+                  <button type="button" onClick={() => startOAuth(AUTH_FACEBOOK_URL)} className="flex items-center justify-center gap-3 px-4 py-4 border-2 border-gray-50 rounded-2xl hover:bg-gray-50 transition-all group">
                     <span className="text-lg text-blue-600">f</span>
                     <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 group-hover:text-gray-900">Facebook</span>
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>

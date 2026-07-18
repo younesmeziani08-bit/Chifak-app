@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import HomePage from './components/HomePage';
 import SearchResults from './components/SearchResults';
 import BookingPage from './components/BookingPage';
@@ -82,6 +83,19 @@ export default function App() {
       );
       window.history.replaceState({}, '', window.location.pathname);
     }
+  }, []);
+
+  // App native : écoute le retour OAuth via lien profond (chifak://auth/callback?token=...)
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let cleanup: (() => void) | undefined;
+    import('./utils/nativeAuth').then((m) => {
+      cleanup = m.registerOAuthDeepLink((user) => {
+        setPatientUser(user);
+        setAuthModal(null);
+      });
+    });
+    return () => cleanup?.();
   }, []);
 
   if (isOAuthCallbackPath() && !oauthDone) {
