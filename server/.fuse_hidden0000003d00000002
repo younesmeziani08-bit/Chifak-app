@@ -13,8 +13,8 @@ passport.serializeUser((user, done) => {
 });
 
 // Désérialisation de l'utilisateur
-passport.deserializeUser(async (id, done) => {
-  const user = await db.prepare('SELECT * FROM patients WHERE id = ?').get(id);
+passport.deserializeUser((id, done) => {
+  const user = db.prepare('SELECT * FROM patients WHERE id = ?').get(id);
   done(null, user);
 });
 
@@ -28,21 +28,21 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== 'your_googl
   async (accessToken, refreshToken, profile, done) => {
     try {
       // Chercher si l'utilisateur existe déjà
-      let user = await db.prepare('SELECT * FROM patients WHERE google_id = ?').get(profile.id);
+      let user = db.prepare('SELECT * FROM patients WHERE google_id = ?').get(profile.id);
 
       if (!user) {
         // Vérifier si l'email existe déjà
-        user = await db.prepare('SELECT * FROM patients WHERE email = ?').get(profile.emails[0].value);
+        user = db.prepare('SELECT * FROM patients WHERE email = ?').get(profile.emails[0].value);
 
         if (user) {
           // Mettre à jour avec le google_id
-          await db.prepare('UPDATE patients SET google_id = ?, is_verified = 1 WHERE id = ?')
+          db.prepare('UPDATE patients SET google_id = ?, is_verified = 1 WHERE id = ?')
             .run(profile.id, user.id);
           user.google_id = profile.id;
           user.is_verified = 1;
         } else {
           // Créer un nouvel utilisateur
-          const result = await db.prepare(`
+          const result = db.prepare(`
             INSERT INTO patients (email, name, google_id, is_verified)
             VALUES (?, ?, ?, 1)
           `).run(
@@ -51,7 +51,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== 'your_googl
             profile.id
           );
 
-          user = await db.prepare('SELECT * FROM patients WHERE id = ?').get(result.lastInsertRowid);
+          user = db.prepare('SELECT * FROM patients WHERE id = ?').get(result.lastInsertRowid);
         }
       }
 
@@ -76,28 +76,28 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_ID !== 'your_faceboo
   async (accessToken, refreshToken, profile, done) => {
     try {
       // Chercher si l'utilisateur existe déjà
-      let user = await db.prepare('SELECT * FROM patients WHERE facebook_id = ?').get(profile.id);
+      let user = db.prepare('SELECT * FROM patients WHERE facebook_id = ?').get(profile.id);
 
       if (!user) {
         // Vérifier si l'email existe déjà
         const email = profile.emails && profile.emails[0] ? profile.emails[0].value : `${profile.id}@facebook.com`;
-        user = await db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
+        user = db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
 
         if (user) {
           // Mettre à jour avec le facebook_id
-          await db.prepare('UPDATE patients SET facebook_id = ?, is_verified = 1 WHERE id = ?')
+          db.prepare('UPDATE patients SET facebook_id = ?, is_verified = 1 WHERE id = ?')
             .run(profile.id, user.id);
           user.facebook_id = profile.id;
           user.is_verified = 1;
         } else {
           // Créer un nouvel utilisateur
           const name = profile.name ? `${profile.name.givenName} ${profile.name.familyName}` : 'Utilisateur Facebook';
-          const result = await db.prepare(`
+          const result = db.prepare(`
             INSERT INTO patients (email, name, facebook_id, is_verified)
             VALUES (?, ?, ?, 1)
           `).run(email, name, profile.id);
 
-          user = await db.prepare('SELECT * FROM patients WHERE id = ?').get(result.lastInsertRowid);
+          user = db.prepare('SELECT * FROM patients WHERE id = ?').get(result.lastInsertRowid);
         }
       }
 

@@ -38,7 +38,8 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// La base est initialisée au démarrage (voir en bas du fichier).
+// Initialiser la base de données
+initDatabase();
 
 // Middleware d'authentification
 const authenticateToken = (req, res, next) => {
@@ -539,12 +540,12 @@ app.get('/api/doctors', async (req, res) => {
     const params = [];
 
     if (specialty) {
-      query += ' AND specialty ILIKE ?';
+      query += ' AND specialty LIKE ?';
       params.push(`%${specialty}%`);
     }
 
     if (location) {
-      query += ' AND city ILIKE ?';
+      query += ' AND city LIKE ?';
       params.push(`%${location}%`);
     }
 
@@ -842,9 +843,9 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
 // GET /api/stats - Statistiques (authentification requise)
 app.get('/api/stats', authenticateToken, async (req, res) => {
   try {
-    const doctorCount = await db.prepare('SELECT COUNT(*)::int as count FROM doctors').get();
-    const appointmentCount = await db.prepare('SELECT COUNT(*)::int as count FROM appointments').get();
-    const specialties = await db.prepare('SELECT COUNT(DISTINCT specialty)::int as count FROM doctors').get();
+    const doctorCount = await db.prepare('SELECT COUNT(*) as count FROM doctors').get();
+    const appointmentCount = await db.prepare('SELECT COUNT(*) as count FROM appointments').get();
+    const specialties = await db.prepare('SELECT COUNT(DISTINCT specialty) as count FROM doctors').get();
 
     res.json({
       totalDoctors: doctorCount.count,
@@ -863,15 +864,15 @@ app.get('/', async (req, res) => {
 });
 
 // Démarrer le serveur
-initDatabase()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`\n🚀 Serveur chifak démarré sur http://localhost:${PORT}`);
-      console.log(`📊 Base de données: PostgreSQL`);
-      console.log(`\n✅ Prêt à recevoir des requêtes!\n`);
-    });
-  })
-  .catch((err) => {
-    console.error('❌ Échec de l\'initialisation de la base de données:', err);
-    process.exit(1);
-  });
+app.listen(PORT, () => {
+  console.log(`\n🚀 Serveur chifak démarré sur http://localhost:${PORT}`);
+  console.log(`📊 Base de données: chifak.db`);
+  console.log(`\n📍 Endpoints disponibles:`);
+  console.log(`   POST   /api/auth/login`);
+  console.log(`   GET    /api/doctors`);
+  console.log(`   POST   /api/doctors`);
+  console.log(`   DELETE /api/doctors/:id`);
+  console.log(`   POST   /api/appointments`);
+  console.log(`   GET    /api/appointments`);
+  console.log(`\n✅ Prêt à recevoir des requêtes!\n`);
+});

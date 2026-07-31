@@ -38,7 +38,8 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
-// La base est initialisée au démarrage (voir en bas du fichier).
+// Initialiser la base de données
+initDatabase();
 
 // Middleware d'authentification
 const authenticateToken = (req, res, next) => {
@@ -109,7 +110,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Username et password requis' });
     }
 
-    const user = await db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
 
     if (!user) {
       return res.status(401).json({ error: 'Identifiants incorrects' });
@@ -150,7 +151,7 @@ app.post('/api/auth/login-doctor', async (req, res) => {
       return res.status(400).json({ error: 'Code médecin requis' });
     }
 
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE doctor_code = ?').get(doctorCode);
+    const doctor = db.prepare('SELECT * FROM doctors WHERE doctor_code = ?').get(doctorCode);
 
     if (!doctor) {
       return res.status(401).json({ error: 'Code médecin invalide' });
@@ -193,7 +194,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     // Vérifier si l'email existe déjà
-    const existingPatient = await db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
+    const existingPatient = db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
     if (existingPatient) {
       return res.status(400).json({ error: 'Cet email est déjà utilisé' });
     }
@@ -203,7 +204,7 @@ app.post('/api/auth/register', async (req, res) => {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Sauvegarder le code
-    await db.prepare(`
+    db.prepare(`
       INSERT INTO verification_codes (email, code, expires_at)
       VALUES (?, ?, ?)
     `).run(email, code, expiresAt.toISOString());
@@ -213,7 +214,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     // Sauvegarder temporairement l'utilisateur (non vérifié)
     const hashedPassword = bcrypt.hashSync(password, 10);
-    await db.prepare(`
+    db.prepare(`
       INSERT INTO patients (email, name, password, is_verified)
       VALUES (?, ?, ?, 0)
     `).run(email, name, hashedPassword);
@@ -241,7 +242,7 @@ app.post('/api/auth/verify-code', async (req, res) => {
     }
 
     // Récupérer le code
-    const verificationCode = await db.prepare(`
+    const verificationCode = db.prepare(`
       SELECT * FROM verification_codes 
       WHERE email = ? AND code = ? AND is_used = 0
       ORDER BY created_at DESC
@@ -258,14 +259,14 @@ app.post('/api/auth/verify-code', async (req, res) => {
     }
 
     // Marquer le code comme utilisé
-    await db.prepare('UPDATE verification_codes SET is_used = 1 WHERE id = ?')
+    db.prepare('UPDATE verification_codes SET is_used = 1 WHERE id = ?')
       .run(verificationCode.id);
 
     // Activer le compte
-    await db.prepare('UPDATE patients SET is_verified = 1 WHERE email = ?')
+    db.prepare('UPDATE patients SET is_verified = 1 WHERE email = ?')
       .run(email);
 
-    const patient = await db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
+    const patient = db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
 
     // Mettre à jour la sauvegarde dans le dossier
     saveAccountToFile({ ...patient, password: '[ENCRYPTED]', status: 'verified' });
@@ -307,17 +308,17 @@ app.post('/api/auth/login-patient', async (req, res) => {
 
     // Filet de sécurité: recréer automatiquement le compte démo s'il manque
     if (email === demoEmail && password === demoPassword) {
-      const existingDemo = await db.prepare('SELECT * FROM patients WHERE email = ?').get(demoEmail);
+      const existingDemo = db.prepare('SELECT * FROM patients WHERE email = ?').get(demoEmail);
       if (!existingDemo) {
         const hashed = bcrypt.hashSync(demoPassword, 10);
-        await db.prepare(`
+        db.prepare(`
           INSERT INTO patients (email, name, password, is_verified)
           VALUES (?, ?, ?, 1)
         `).run(demoEmail, 'Patient Demo', hashed);
       }
     }
 
-    const patient = await db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
+    const patient = db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
 
     if (!patient || !patient.password) {
       return res.status(401).json({ error: 'Identifiants incorrects' });
@@ -363,7 +364,7 @@ app.post('/api/auth/resend-code', async (req, res) => {
       return res.status(400).json({ error: 'Email requis' });
     }
 
-    const patient = await db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
+    const patient = db.prepare('SELECT * FROM patients WHERE email = ?').get(email);
 
     if (!patient) {
       return res.status(404).json({ error: 'Email non trouvé' });
@@ -377,7 +378,7 @@ app.post('/api/auth/resend-code', async (req, res) => {
     const code = generateVerificationCode();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await db.prepare(`
+    db.prepare(`
       INSERT INTO verification_codes (email, code, expires_at)
       VALUES (?, ?, ?)
     `).run(email, code, expiresAt.toISOString());
@@ -394,7 +395,7 @@ app.post('/api/auth/resend-code', async (req, res) => {
 // GET /api/patient/profile - Profil patient connecté
 app.get('/api/patient/profile', authenticatePatientToken, async (req, res) => {
   try {
-    const patient = await db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
+    const patient = db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
     if (!patient) {
       return res.status(404).json({ error: 'Patient non trouvé' });
     }
@@ -409,16 +410,16 @@ app.get('/api/patient/profile', authenticatePatientToken, async (req, res) => {
 app.put('/api/patient/profile', authenticatePatientToken, async (req, res) => {
   try {
     const { name, phone } = req.body;
-    const current = await db.prepare('SELECT * FROM patients WHERE email = ?').get(req.user.email);
+    const current = db.prepare('SELECT * FROM patients WHERE email = ?').get(req.user.email);
     if (!current) {
       return res.status(404).json({ error: 'Patient non trouvé' });
     }
     const newName = typeof name === 'string' && name.trim() ? name.trim() : current.name;
     const newPhone = typeof phone === 'string' ? phone.trim() : (current.phone || '');
-    await db.prepare('UPDATE patients SET name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')
+    db.prepare('UPDATE patients SET name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')
       .run(newName, newPhone, req.user.email);
 
-    const patient = await db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
+    const patient = db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
     res.json({ ...patient, phone: patient.phone || '', balance: patient.balance || 0 });
   } catch (error) {
     console.error('Erreur mise à jour profil patient:', error);
@@ -434,13 +435,13 @@ app.post('/api/patient/recharge', authenticatePatientToken, async (req, res) => 
       return res.status(400).json({ error: 'Montant invalide' });
     }
 
-    const patient = await db.prepare('SELECT id, email, name, balance FROM patients WHERE email = ?').get(req.user.email);
+    const patient = db.prepare('SELECT id, email, name, balance FROM patients WHERE email = ?').get(req.user.email);
     if (!patient) {
       return res.status(404).json({ error: 'Patient non trouvé' });
     }
 
     const newBalance = (patient.balance || 0) + Math.round(amount);
-    await db.prepare('UPDATE patients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newBalance, patient.id);
+    db.prepare('UPDATE patients SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newBalance, patient.id);
 
     res.json({
       message: 'Recharge effectuée avec succès',
@@ -539,18 +540,18 @@ app.get('/api/doctors', async (req, res) => {
     const params = [];
 
     if (specialty) {
-      query += ' AND specialty ILIKE ?';
+      query += ' AND specialty LIKE ?';
       params.push(`%${specialty}%`);
     }
 
     if (location) {
-      query += ' AND city ILIKE ?';
+      query += ' AND city LIKE ?';
       params.push(`%${location}%`);
     }
 
     query += ' ORDER BY created_at DESC';
 
-    const doctors = await db.prepare(query).all(...params);
+    const doctors = db.prepare(query).all(...params);
 
     // Parser les available_slots (JSON string vers array)
     const doctorsWithParsedSlots = doctors.map(doctor => ({
@@ -571,7 +572,7 @@ app.get('/api/doctors', async (req, res) => {
 // GET /api/doctors/:id - Récupérer un médecin
 app.get('/api/doctors/:id', async (req, res) => {
   try {
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    const doctor = db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
@@ -604,7 +605,7 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
     const slots = JSON.stringify(availableSlots || ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00']);
     const serializedWorkingDays = JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5]);
 
-    const result = await db.prepare(`
+    const result = db.prepare(`
       INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, available_slots, next_available, slot_duration, working_days, latitude, longitude, maps_url)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -625,7 +626,7 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
       mapsUrl || null
     );
 
-    const newDoctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(result.lastInsertRowid);
+    const newDoctor = db.prepare('SELECT * FROM doctors WHERE id = ?').get(result.lastInsertRowid);
 
     res.status(201).json({
       ...newDoctor,
@@ -645,7 +646,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
   try {
     const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl } = req.body;
 
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    const doctor = db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
@@ -657,7 +658,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
         ? JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5])
         : doctor.working_days;
 
-    await db.prepare(`
+    db.prepare(`
       UPDATE doctors 
       SET name = ?, specialty = ?, address = ?, city = ?, phone = ?, email = ?, doctor_code = ?,
           image = ?, available_slots = ?, next_available = ?, slot_duration = ?, working_days = ?, latitude = ?, longitude = ?, maps_url = ?, updated_at = CURRENT_TIMESTAMP
@@ -681,7 +682,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
       req.params.id
     );
 
-    const updatedDoctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    const updatedDoctor = db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 
     res.json({
       ...updatedDoctor,
@@ -699,13 +700,13 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
 // DELETE /api/doctors/:id - Supprimer un médecin (authentification requise)
 app.delete('/api/doctors/:id', authenticateToken, async (req, res) => {
   try {
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    const doctor = db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
     }
 
-    await db.prepare('DELETE FROM doctors WHERE id = ?').run(req.params.id);
+    db.prepare('DELETE FROM doctors WHERE id = ?').run(req.params.id);
 
     res.json({ message: 'Médecin supprimé avec succès' });
   } catch (error) {
@@ -726,7 +727,7 @@ app.post('/api/consultations', authenticateDoctorToken, async (req, res) => {
       return res.status(400).json({ error: 'Nom du patient requis' });
     }
 
-    const result = await db.prepare(`
+    const result = db.prepare(`
       INSERT INTO consultations (doctor_id, patient_name, patient_phone, patient_email, state_description, progress_notes, next_appointment_id)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(doctorId, patientName, patientPhone || null, patientEmail || null, stateDescription || null, progressNotes || null, nextAppointmentId || null);
@@ -741,7 +742,7 @@ app.post('/api/consultations', authenticateDoctorToken, async (req, res) => {
 // GET /api/consultations - Récupérer les consultations du médecin connecté
 app.get('/api/consultations', authenticateDoctorToken, async (req, res) => {
   try {
-    const consultations = await db.prepare(`
+    const consultations = db.prepare(`
       SELECT c.*, a.appointment_date as next_date, a.appointment_time as next_time
       FROM consultations c
       LEFT JOIN appointments a ON c.next_appointment_id = a.id
@@ -767,18 +768,18 @@ app.post('/api/appointments', async (req, res) => {
       return res.status(400).json({ error: 'Champs requis manquants' });
     }
 
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(doctorId);
+    const doctor = db.prepare('SELECT * FROM doctors WHERE id = ?').get(doctorId);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
     }
 
-    const result = await db.prepare(`
+    const result = db.prepare(`
       INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(doctorId, patientName, patientEmail, patientPhone, appointmentDate, appointmentTime, reason || null);
 
-    const appointment = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid);
+    const appointment = db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid);
 
     // Envoyer un email de confirmation
     try {
@@ -805,7 +806,7 @@ app.post('/api/appointments', async (req, res) => {
 // GET /api/patient/appointments - Récupérer les rendez-vous du patient connecté
 app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) => {
   try {
-    const appointments = await db.prepare(`
+    const appointments = db.prepare(`
       SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
@@ -823,7 +824,7 @@ app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) 
 // GET /api/appointments - Récupérer tous les rendez-vous (authentification requise)
 app.get('/api/appointments', authenticateToken, async (req, res) => {
   try {
-    const appointments = await db.prepare(`
+    const appointments = db.prepare(`
       SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
@@ -842,9 +843,9 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
 // GET /api/stats - Statistiques (authentification requise)
 app.get('/api/stats', authenticateToken, async (req, res) => {
   try {
-    const doctorCount = await db.prepare('SELECT COUNT(*)::int as count FROM doctors').get();
-    const appointmentCount = await db.prepare('SELECT COUNT(*)::int as count FROM appointments').get();
-    const specialties = await db.prepare('SELECT COUNT(DISTINCT specialty)::int as count FROM doctors').get();
+    const doctorCount = db.prepare('SELECT COUNT(*) as count FROM doctors').get();
+    const appointmentCount = db.prepare('SELECT COUNT(*) as count FROM appointments').get();
+    const specialties = db.prepare('SELECT COUNT(DISTINCT specialty) as count FROM doctors').get();
 
     res.json({
       totalDoctors: doctorCount.count,
@@ -863,15 +864,15 @@ app.get('/', async (req, res) => {
 });
 
 // Démarrer le serveur
-initDatabase()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`\n🚀 Serveur chifak démarré sur http://localhost:${PORT}`);
-      console.log(`📊 Base de données: PostgreSQL`);
-      console.log(`\n✅ Prêt à recevoir des requêtes!\n`);
-    });
-  })
-  .catch((err) => {
-    console.error('❌ Échec de l\'initialisation de la base de données:', err);
-    process.exit(1);
-  });
+app.listen(PORT, () => {
+  console.log(`\n🚀 Serveur chifak démarré sur http://localhost:${PORT}`);
+  console.log(`📊 Base de données: chifak.db`);
+  console.log(`\n📍 Endpoints disponibles:`);
+  console.log(`   POST   /api/auth/login`);
+  console.log(`   GET    /api/doctors`);
+  console.log(`   POST   /api/doctors`);
+  console.log(`   DELETE /api/doctors/:id`);
+  console.log(`   POST   /api/appointments`);
+  console.log(`   GET    /api/appointments`);
+  console.log(`\n✅ Prêt à recevoir des requêtes!\n`);
+});

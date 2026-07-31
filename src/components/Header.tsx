@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import LanguageToggle from './LanguageToggle';
 import LogoMark from './LogoMark';
@@ -23,23 +23,10 @@ function initialsOf(name: string): string {
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || 'M';
 }
 
-function Logo() {
-  return (
-    <span className="flex items-center gap-2.5">
-      <LogoMark className="h-10 w-10" />
-      <span className="flex flex-col leading-none">
-        <span className="text-xl font-bold tracking-tight" style={{ color: '#00264c' }}>chifak</span>
-        <span className="text-[10px] font-medium tracking-wide text-gray-400">Santé Algérie</span>
-      </span>
-    </span>
-  );
-}
-
 export default function Header({
-  onAdminClick,
+  onAdminClick: _onAdminClick,
   onDoctorClick,
   onHomeClick,
-  transparent = false,
   onScrollToSearch,
   onScrollToTeleconsult,
   onOpenProfessional,
@@ -51,45 +38,71 @@ export default function Header({
 }: HeaderProps) {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
 
-  const handleLinkClick = (action?: () => void) => {
-    action?.();
-    setIsMenuOpen(false);
-  };
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, []);
 
-  const navItems = [
-    { label: isArabic ? 'ابحث عن طبيب' : 'Trouver un médecin', onClick: onScrollToSearch },
-    { label: isArabic ? 'استشارة عن بُعد' : 'Téléconsultation', onClick: onScrollToTeleconsult },
-    { label: isArabic ? 'أنت طبيب؟' : 'Vous êtes praticien ?', onClick: onOpenProfessional },
+  const navLinks = [
+    { label: isArabic ? 'ابحث عن طبيب' : 'Trouver un médecin', action: onScrollToSearch },
+    { label: isArabic ? 'استشارة عن بُعد' : 'Téléconsultation', action: onScrollToTeleconsult },
+    { label: isArabic ? 'أنت طبيب؟' : 'Vous êtes praticien ?', action: onOpenProfessional },
   ];
+
+  const close = (fn?: () => void) => { fn?.(); setMenuOpen(false); };
 
   return (
     <header
-      className={`w-full z-50 ${transparent ? 'absolute top-0 bg-transparent' : 'sticky top-0 bg-white border-b border-gray-100'}`}
       dir={isArabic ? 'rtl' : 'ltr'}
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 50,
+        backgroundColor: scrolled ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.80)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        borderBottom: scrolled ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',
+        transition: 'background-color 0.2s, border-color 0.2s',
+      }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-18">
-          <button type="button" onClick={onHomeClick} title={isArabic ? 'الرئيسية' : "Accueil"} className="focus:outline-none">
-            <Logo />
+      <div className="max-w-7xl mx-auto px-5 sm:px-8">
+        <div className="flex items-center justify-between" style={{ height: '56px' }}>
+
+          {/* Logo */}
+          <button
+            type="button"
+            onClick={onHomeClick}
+            title={isArabic ? 'الرئيسية' : 'Accueil'}
+            className="flex items-center gap-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded-lg"
+          >
+            <LogoMark className="h-8 w-8" />
+            <span style={{
+              fontFamily: '"Plus Jakarta Sans", sans-serif',
+              fontWeight: 700,
+              fontSize: '17px',
+              letterSpacing: '-0.01em',
+              color: 'var(--ink)',
+              lineHeight: 1,
+            }}>
+              chifak
+            </span>
           </button>
 
-          {/* Desktop Nav */}
-          <nav className="hidden lg:flex items-center gap-8">
-            {navItems.map((item, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={item.onClick}
-                className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
-              >
-                {item.label}
+          {/* Desktop nav */}
+          <nav className="hidden lg:flex items-center gap-7">
+            {navLinks.map((link, i) => (
+              <button key={i} type="button" onClick={link.action} className="nav-link">
+                {link.label}
               </button>
             ))}
           </nav>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Right actions */}
+          <div className="flex items-center gap-2">
             <div className="hidden sm:block">
               <LanguageToggle />
             </div>
@@ -97,92 +110,109 @@ export default function Header({
             {onDoctorClick && !patientUser && (
               <button
                 onClick={onDoctorClick}
-                className="hidden md:inline-flex items-center text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors"
+                className="btn-secondary hidden md:inline-flex"
+                style={{ fontSize: '13px', height: '34px', padding: '0 0.875rem' }}
               >
                 {isArabic ? 'مساحة الطبيب' : 'Espace médecin'}
               </button>
             )}
 
             {patientUser ? (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={onOpenAccount}
-                  className="inline-flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors px-2 py-1 rounded-lg"
+                  className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 transition-colors hover:bg-gray-50"
                   title={isArabic ? 'حسابي' : 'Mon compte'}
                 >
-                  <span className="w-7 h-7 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-xs font-semibold">
+                  <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
                     {initialsOf(patientUser.name)}
                   </span>
-                  <span className="hidden lg:inline">{patientUser.name}</span>
+                  <span className="hidden lg:inline text-sm font-medium" style={{ color: 'var(--ink)' }}>
+                    {patientUser.name.split(' ')[0]}
+                  </span>
                 </button>
                 <button
                   onClick={onLogout}
-                  className="hidden sm:inline-flex text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:border-red-300 hover:text-red-600 transition-colors"
+                  className="hidden sm:inline-flex items-center text-sm px-3 rounded-lg transition-colors hover:text-red-600 hover:border-red-300"
+                  style={{ height: '34px', border: '1.5px solid var(--bg-3)', color: 'var(--ink-2)', fontWeight: 500 }}
                 >
                   {isArabic ? 'خروج' : 'Déconnexion'}
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={onOpenLogin}
-                  className="hidden sm:inline-flex text-sm font-medium px-4 py-2 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                  className="hidden sm:inline-flex items-center text-sm font-medium px-4 rounded-xl transition-colors hover:bg-gray-100"
+                  style={{ height: '36px', color: 'var(--ink-2)' }}
                 >
                   {isArabic ? 'تسجيل الدخول' : 'Connexion'}
                 </button>
                 <button
                   onClick={onOpenSignup}
-                  className="hidden sm:inline-flex text-sm font-semibold px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                  className="btn-primary hidden sm:inline-flex"
+                  style={{ height: '36px', padding: '0 1rem', fontSize: '14px' }}
                 >
                   {isArabic ? 'إنشاء حساب' : 'Créer un compte'}
                 </button>
               </div>
             )}
 
-            {/* Mobile Menu Button */}
+            {/* Mobile hamburger */}
             <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              onClick={() => setMenuOpen(!menuOpen)}
               aria-label="Menu"
-              className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+              className="lg:hidden p-2 rounded-lg transition-colors hover:bg-gray-100"
+              style={{ color: 'var(--ink-2)' }}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                {isMenuOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                )}
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                {menuOpen
+                  ? <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  : <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />}
               </svg>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Mobile Menu */}
-      {isMenuOpen && (
-        <div className="lg:hidden bg-white border-b border-gray-100">
-          <div className="px-4 sm:px-6 pt-2 pb-6 space-y-1">
-            {navItems.map((item, i) => (
+      {/* Mobile menu */}
+      {menuOpen && (
+        <div
+          className="lg:hidden animate-slideDown"
+          style={{
+            background: 'rgba(255,255,255,0.96)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderTop: '1px solid rgba(0,0,0,0.06)',
+          }}
+        >
+          <div className="max-w-7xl mx-auto px-5 py-4 space-y-0.5">
+            {navLinks.map((link, i) => (
               <button
                 key={i}
-                onClick={() => handleLinkClick(item.onClick)}
-                className="w-full text-start block px-4 py-3 text-base font-medium text-gray-700 hover:bg-gray-50 hover:text-blue-600 rounded-lg transition-colors"
+                onClick={() => close(link.action)}
+                className="w-full text-start px-3 py-3 rounded-xl text-[15px] font-medium transition-colors hover:bg-gray-50"
+                style={{ color: 'var(--ink)' }}
               >
-                {item.label}
+                {link.label}
               </button>
             ))}
 
-            <div className="pt-4 flex flex-col gap-2">
+            <div className="pt-3 space-y-2" style={{ borderTop: '1px solid rgba(0,0,0,0.06)', marginTop: '8px', paddingTop: '16px' }}>
               {patientUser ? (
                 <>
                   <button
-                    onClick={() => handleLinkClick(onOpenAccount)}
-                    className="w-full py-3 bg-blue-50 text-blue-700 font-medium text-sm rounded-lg border border-blue-100 transition-colors"
+                    onClick={() => close(onOpenAccount)}
+                    className="w-full py-3 rounded-2xl text-[15px] font-semibold text-center transition-colors"
+                    style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}
                   >
                     {isArabic ? 'حسابي' : 'Mon compte'}
                   </button>
                   <button
-                    onClick={() => handleLinkClick(onLogout)}
-                    className="w-full py-3 bg-white text-red-600 font-medium text-sm rounded-lg border border-red-200 transition-colors"
+                    onClick={() => close(onLogout)}
+                    className="w-full py-3 rounded-2xl text-[15px] font-medium text-center border transition-colors hover:bg-red-50"
+                    style={{ borderColor: 'rgba(239,68,68,0.3)', color: '#DC2626' }}
                   >
                     {isArabic ? 'خروج' : 'Déconnexion'}
                   </button>
@@ -190,20 +220,22 @@ export default function Header({
               ) : (
                 <>
                   <button
-                    onClick={() => handleLinkClick(onOpenLogin)}
-                    className="w-full py-3 bg-gray-50 text-gray-800 font-medium text-sm rounded-lg border border-gray-200 transition-colors"
+                    onClick={() => close(onOpenLogin)}
+                    className="w-full py-3 rounded-2xl text-[15px] font-medium text-center transition-colors hover:bg-gray-100"
+                    style={{ background: 'var(--bg-2)', color: 'var(--ink)' }}
                   >
                     {isArabic ? 'تسجيل الدخول' : 'Connexion'}
                   </button>
                   <button
-                    onClick={() => handleLinkClick(onOpenSignup)}
-                    className="w-full py-3 bg-blue-600 text-white font-semibold text-sm rounded-lg transition-colors"
+                    onClick={() => close(onOpenSignup)}
+                    className="btn-primary w-full"
+                    style={{ height: '48px', fontSize: '15px', borderRadius: '16px' }}
                   >
                     {isArabic ? 'إنشاء حساب' : 'Créer un compte'}
                   </button>
                 </>
               )}
-              <div className="flex justify-center pt-3">
+              <div className="flex justify-center pt-2">
                 <LanguageToggle />
               </div>
             </div>
