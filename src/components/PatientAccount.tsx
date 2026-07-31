@@ -94,6 +94,52 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
     return () => { alive = false; };
   }, []);
 
+  const todayISO = new Date().toISOString().split('T')[0];
+  const timeOptions: string[] = [];
+  for (let h = 8; h <= 17; h++) timeOptions.push(`${String(h).padStart(2, '0')}:00`, `${String(h).padStart(2, '0')}:30`);
+
+  const [rescheduleId, setRescheduleId] = useState<number | null>(null);
+  const [rDate, setRDate] = useState('');
+  const [rTime, setRTime] = useState('');
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  const handleCancel = async (id: number) => {
+    if (!window.confirm(isArabic ? 'إلغاء هذا الموعد؟' : 'Annuler ce rendez-vous ?')) return;
+    setBusyId(id);
+    setActionError('');
+    try {
+      const updated = await appointmentsAPI.cancel(id);
+      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated } : a)));
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const openReschedule = (a: Appointment) => {
+    setRescheduleId(a.id);
+    setRDate(a.appointment_date);
+    setRTime(a.appointment_time);
+    setActionError('');
+  };
+
+  const handleReschedule = async (id: number) => {
+    if (!rDate || !rTime) return;
+    setBusyId(id);
+    setActionError('');
+    try {
+      const updated = await appointmentsAPI.reschedule(id, rDate, rTime);
+      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated } : a)));
+      setRescheduleId(null);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -179,29 +225,72 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
             ) : (
               <div className="space-y-3">
                 {appointments.map((a) => (
-                  <div key={a.id} className="bg-white rounded-xl border border-gray-200 p-5 flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold" style={{ color: NAVY }}>{a.doctor_name}</h3>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass(a.status)}`}>{statusLabel(a.status)}</span>
+                  <div key={a.id} className="bg-white rounded-xl border border-gray-200 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold" style={{ color: NAVY }}>{a.doctor_name}</h3>
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusClass(a.status)}`}>{statusLabel(a.status)}</span>
+                        </div>
+                        <p className="text-blue-600 text-sm font-medium">{a.specialty}</p>
+                        {a.city && (
+                          <p className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
+                            <Icon name="pin" className="w-4 h-4 text-gray-400" />{a.city}
+                          </p>
+                        )}
                       </div>
-                      <p className="text-blue-600 text-sm font-medium">{a.specialty}</p>
-                      {a.city && (
-                        <p className="flex items-center gap-1.5 text-sm text-gray-500 mt-1">
-                          <Icon name="pin" className="w-4 h-4 text-gray-400" />{a.city}
-                        </p>
-                      )}
+                      <div className="text-start sm:text-end">
+                        <div className="flex items-center gap-1.5 font-medium" style={{ color: NAVY }}>
+                          <Icon name="calendar" className="w-4 h-4 text-blue-600" />
+                          {formatDate(a.appointment_date, isArabic)}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-gray-500 text-sm mt-1 sm:justify-end">
+                          <Icon name="clock" className="w-4 h-4 text-gray-400" />
+                          {a.appointment_time}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-start sm:text-end">
-                      <div className="flex items-center gap-1.5 font-medium" style={{ color: NAVY }}>
-                        <Icon name="calendar" className="w-4 h-4 text-blue-600" />
-                        {formatDate(a.appointment_date, isArabic)}
+
+                    {a.status !== 'cancelled' && (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        {rescheduleId === a.id ? (
+                          <div className="flex flex-wrap items-end gap-3">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">{isArabic ? 'التاريخ' : 'Nouvelle date'}</label>
+                              <input type="date" value={rDate} min={todayISO} onChange={(e) => setRDate(e.target.value)}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">{isArabic ? 'الساعة' : 'Nouvelle heure'}</label>
+                              <select value={rTime} onChange={(e) => setRTime(e.target.value)}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                {timeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                            </div>
+                            <button onClick={() => handleReschedule(a.id)} disabled={busyId === a.id}
+                              className="btn-pro px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-300 transition-colors">
+                              {busyId === a.id ? '…' : (isArabic ? 'تأكيد' : 'Confirmer')}
+                            </button>
+                            <button onClick={() => { setRescheduleId(null); setActionError(''); }}
+                              className="px-4 py-2 text-gray-500 text-sm hover:text-gray-800">
+                              {isArabic ? 'تراجع' : 'Annuler'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <button onClick={() => openReschedule(a)}
+                              className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors">
+                              {isArabic ? 'تغيير الموعد' : 'Reprogrammer'}
+                            </button>
+                            <button onClick={() => handleCancel(a.id)} disabled={busyId === a.id}
+                              className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-red-300 hover:text-red-600 transition-colors">
+                              {isArabic ? 'إلغاء' : 'Annuler le RDV'}
+                            </button>
+                          </div>
+                        )}
+                        {actionError && rescheduleId === a.id && <p className="text-sm text-red-600 mt-2">{actionError}</p>}
                       </div>
-                      <div className="flex items-center gap-1.5 text-gray-500 text-sm mt-1 sm:justify-end">
-                        <Icon name="clock" className="w-4 h-4 text-gray-400" />
-                        {a.appointment_time}
-                      </div>
-                    </div>
+                    )}
                   </div>
                 ))}
               </div>

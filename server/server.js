@@ -849,6 +849,65 @@ app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) 
   }
 });
 
+// PATCH /api/patient/appointments/:id/cancel - Annuler son rendez-vous
+app.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const appt = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
+    if (!appt) {
+      return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+    }
+    if (appt.patient_email !== req.user.email) {
+      return res.status(403).json({ error: 'Ce rendez-vous ne vous appartient pas' });
+    }
+    await db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?").run(id);
+    const updated = await db.prepare(`
+      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
+      FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
+    `).get(id);
+    res.json(updated);
+  } catch (error) {
+    console.error('Erreur annulation rendez-vous:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// PATCH /api/patient/appointments/:id/reschedule - Reprogrammer son rendez-vous
+app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { appointmentDate, appointmentTime } = req.body;
+    if (!appointmentDate || !appointmentTime) {
+      return res.status(400).json({ error: 'Date et heure requises' });
+    }
+    const appt = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
+    if (!appt) {
+      return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+    }
+    if (appt.patient_email !== req.user.email) {
+      return res.status(403).json({ error: 'Ce rendez-vous ne vous appartient pas' });
+    }
+    // Le nouveau créneau est-il libre chez ce médecin ?
+    const clash = await db.prepare(`
+      SELECT id FROM appointments
+      WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status != 'cancelled' AND id != ?
+    `).get(appt.doctor_id, appointmentDate, appointmentTime, id);
+    if (clash) {
+      return res.status(409).json({ error: 'Ce créneau est déjà pris. Choisissez-en un autre.' });
+    }
+    await db.prepare("UPDATE appointments SET appointment_date = ?, appointment_time = ?, status = 'confirmed' WHERE id = ?")
+      .run(appointmentDate, appointmentTime, id);
+    const updated = await db.prepare(`
+      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
+      FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
+    `).get(id);
+    res.json(updated);
+  } catch (error) {
+    console.error('Erreur reprogrammation rendez-vous:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // GET /api/appointments - Récupérer tous les rendez-vous (authentification requise)
 app.get('/api/appointments', authenticateToken, async (req, res) => {
   try {

@@ -263,6 +263,33 @@ export const appointmentsAPI = {
     } catch {
       return [];
     }
+  },
+
+  cancel: async (id: number) => {
+    const token = localStorage.getItem('chifak_patient_token');
+    const response = await fetch(`${API_URL}/patient/appointments/${id}/cancel`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "Erreur lors de l'annulation");
+    }
+    return await response.json();
+  },
+
+  reschedule: async (id: number, appointmentDate: string, appointmentTime: string) => {
+    const token = localStorage.getItem('chifak_patient_token');
+    const response = await fetch(`${API_URL}/patient/appointments/${id}/reschedule`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
+      body: JSON.stringify({ appointmentDate, appointmentTime }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Erreur lors de la reprogrammation');
+    }
+    return await response.json();
   }
 };
 
