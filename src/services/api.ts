@@ -252,6 +252,17 @@ export const appointmentsAPI = {
     }
 
     return await response.json();
+  },
+
+  // Créneaux déjà pris un jour donné (tous médecins) -> [{ doctor_id, appointment_time }]
+  getBookedSlots: async (date: string): Promise<{ doctor_id: number; appointment_time: string }[]> => {
+    try {
+      const response = await fetch(`${API_URL}/booked-slots?date=${encodeURIComponent(date)}`);
+      if (!response.ok) return [];
+      return await response.json();
+    } catch {
+      return [];
+    }
   }
 };
 

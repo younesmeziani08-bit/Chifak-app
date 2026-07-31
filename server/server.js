@@ -773,6 +773,16 @@ app.post('/api/appointments', async (req, res) => {
       return res.status(404).json({ error: 'Médecin non trouvé' });
     }
 
+    // Anti-double réservation : ce créneau est-il déjà pris (hors annulés) ?
+    const existing = await db.prepare(`
+      SELECT id FROM appointments
+      WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status != 'cancelled'
+    `).get(doctorId, appointmentDate, appointmentTime);
+
+    if (existing) {
+      return res.status(409).json({ error: 'Ce créneau vient d\'être réservé. Choisissez-en un autre.' });
+    }
+
     const result = await db.prepare(`
       INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason)
       VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -798,6 +808,25 @@ app.post('/api/appointments', async (req, res) => {
     res.status(201).json(appointment);
   } catch (error) {
     console.error('Erreur création rendez-vous:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/booked-slots?date=YYYY-MM-DD - Créneaux déjà pris ce jour-là (tous médecins)
+app.get('/api/booked-slots', async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) {
+      return res.status(400).json({ error: 'Paramètre date requis' });
+    }
+    const rows = await db.prepare(`
+      SELECT doctor_id, appointment_time
+      FROM appointments
+      WHERE appointment_date = ? AND status != 'cancelled'
+    `).all(date);
+    res.json(rows);
+  } catch (error) {
+    console.error('Erreur récupération créneaux pris:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

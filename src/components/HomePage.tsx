@@ -5,7 +5,6 @@ import LocationSelector from './LocationSelector';
 import LogoMark from './LogoMark';
 import { useLanguage } from '../contexts/LanguageContext';
 
-/* ── Line icon set (stroke-based, consistent) ── */
 const ICONS: Record<string, ReactNode> = {
   search: <><circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" /></>,
   pin: <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></>,
@@ -42,8 +41,6 @@ function Icon({ name, className = 'w-5 h-5', strokeWidth = 1.75 }: { name: strin
   );
 }
 
-const NAVY = '#00264c';
-
 interface HomePageProps {
   onSearch: (specialty: string, location: string, date: string) => void;
   onAdminClick?: () => void;
@@ -65,18 +62,12 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
   const todayISO = new Date().toISOString().split('T')[0];
 
   const specialties = [
-    { key: 'specialty.generalDoctor' },
-    { key: 'specialty.dentist' },
-    { key: 'specialty.ophthalmologist' },
-    { key: 'specialty.dermatologist' },
-    { key: 'specialty.cardiologist' },
-    { key: 'specialty.pediatrician' },
-    { key: 'specialty.gynecologist' },
-    { key: 'specialty.ent' },
-    { key: 'specialty.physiotherapist' },
-    { key: 'specialty.psychologist' },
-    { key: 'specialty.osteopath' },
-    { key: 'specialty.midwife' },
+    { key: 'specialty.generalDoctor' }, { key: 'specialty.dentist' },
+    { key: 'specialty.ophthalmologist' }, { key: 'specialty.dermatologist' },
+    { key: 'specialty.cardiologist' }, { key: 'specialty.pediatrician' },
+    { key: 'specialty.gynecologist' }, { key: 'specialty.ent' },
+    { key: 'specialty.physiotherapist' }, { key: 'specialty.psychologist' },
+    { key: 'specialty.osteopath' }, { key: 'specialty.midwife' },
   ];
 
   const quickSpecialties = [
@@ -94,27 +85,17 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
     { key: 'specialty.midwife', icon: 'baby' },
   ];
 
-  const trust = [
-    { icon: 'check', label: isArabic ? 'حجز مجاني' : 'Sans frais' },
-    { icon: 'clock', label: isArabic ? 'تأكيد فوري' : 'Confirmation immédiate' },
-    { icon: 'shield', label: isArabic ? 'بيانات آمنة' : 'Données sécurisées' },
-  ];
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (specialty) onSearch(t(specialty), location, date || todayISO);
   };
 
   return (
-    <div className="min-h-screen bg-white" dir={isArabic ? 'rtl' : 'ltr'}>
+    <div className="min-h-screen" style={{ background: 'var(--bg)' }} dir={isArabic ? 'rtl' : 'ltr'}>
       <Header
         onAdminClick={onAdminClick}
         onDoctorClick={onDoctorClick}
-        onHomeClick={() => {
-          setSpecialty('');
-          setLocation('');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
+        onHomeClick={() => { setSpecialty(''); setLocation(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
         onScrollToSearch={() => document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth' })}
         onScrollToTeleconsult={() => document.getElementById('teleconsult-section')?.scrollIntoView({ behavior: 'smooth' })}
         onOpenProfessional={onOpenProfessional}
@@ -126,125 +107,207 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
       />
 
       {/* ── HERO ── */}
-      <section style={{ backgroundColor: '#f1f7fe' }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+      <section className="relative overflow-hidden" style={{ background: '#F8F9FB' }}>
+        {/* Animated gradient orbs */}
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+          <div className="hero-orb hero-orb-1" />
+          <div className="hero-orb hero-orb-2" />
+          <div className="hero-orb hero-orb-3" />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-5 sm:px-8 py-14 sm:py-20 lg:py-24">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+
             {/* Left */}
             <div>
-              <h1 className="hero-reveal text-3xl sm:text-4xl lg:text-5xl font-bold leading-[1.15] tracking-tight mb-4" style={{ color: NAVY }}>
+              {/* Availability pill */}
+              <div
+                className="inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold mb-6"
+                style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid rgba(0,102,204,0.12)' }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--success)' }} />
+                {isArabic ? 'متاح في 48 ولاية' : 'Disponible dans les 48 wilayas'}
+              </div>
+
+              <h1
+                className="hero-reveal font-extrabold tracking-tight mb-5"
+                style={{
+                  fontFamily: '"Plus Jakarta Sans", sans-serif',
+                  fontSize: 'clamp(2.25rem, 5vw, 3.75rem)',
+                  lineHeight: 1.08,
+                  color: 'var(--ink)',
+                }}
+              >
                 {patientUser
-                  ? (isArabic ? `مرحباً ${patientUser.name.split(' ')[0]}، هل تحتاج موعدًا؟` : `Bonjour ${patientUser.name.split(' ')[0]}, besoin d'un rendez-vous ?`)
-                  : (isArabic ? 'احجز موعدك الطبي عبر الإنترنت' : 'Prenez rendez-vous avec un médecin, en ligne.')}
+                  ? (isArabic
+                    ? `مرحباً ${patientUser.name.split(' ')[0]}،\nهل تحتاج موعدًا؟`
+                    : `Bonjour ${patientUser.name.split(' ')[0]},\nbesoin d'un RDV ?`)
+                  : (isArabic
+                    ? 'احجز موعدك الطبي\nفي الجزائر، بسهولة.'
+                    : 'Prenez rendez-vous\navec votre médecin.')}
               </h1>
-              <p className="hero-reveal hero-reveal-delay-1 text-gray-600 text-base sm:text-lg leading-relaxed mb-6 max-w-lg">
+
+              <p
+                className="hero-reveal hero-reveal-delay-1 text-lg leading-relaxed mb-8 max-w-md"
+                style={{ color: 'var(--ink-2)' }}
+              >
                 {isArabic
                   ? 'اعثر على طبيب حسب التخصص والمنطقة، واحجز موعدك مباشرة عبر الإنترنت.'
                   : 'Trouvez un praticien par spécialité et par ville, et réservez directement en ligne.'}
               </p>
 
-              {/* Search bar */}
+              {/* Search card */}
               <form
                 id="hero-search"
                 onSubmit={handleSubmit}
-                className="hero-reveal hero-reveal-delay-1 bg-white rounded-2xl border border-gray-200 shadow-sm p-3 scroll-mt-24"
+                className="hero-reveal hero-reveal-delay-1 rounded-2xl p-3 scroll-mt-24"
+                style={{ background: 'var(--bg)', border: '1px solid rgba(0,0,0,0.08)', boxShadow: 'var(--shadow-md)' }}
               >
-                <div className="flex flex-col lg:flex-row lg:flex-wrap lg:items-start gap-3">
-                  <div className="flex-1 min-w-[150px]">
-                    <label className="block text-xs font-medium text-gray-500 mb-1 ms-1">
-                      {isArabic ? 'التخصص' : 'Spécialité'}
-                    </label>
-                    <div className="relative">
-                      <span className="absolute inset-y-0 ltr:left-3 rtl:right-3 flex items-center text-gray-400 pointer-events-none">
-                        <Icon name="search" className="w-5 h-5" />
-                      </span>
-                      <select
-                        value={specialty}
-                        onChange={(e) => setSpecialty(e.target.value)}
-                        className="w-full ltr:pl-10 rtl:pr-10 ltr:pr-9 rtl:pl-9 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 bg-white transition appearance-none cursor-pointer"
-                      >
-                        <option value="">{isArabic ? 'التخصص' : 'Spécialité'}</option>
-                        {specialties.map((s) => (
-                          <option key={s.key} value={s.key}>{t(s.key)}</option>
-                        ))}
-                      </select>
-                      <span className="absolute inset-y-0 ltr:right-3 rtl:left-3 flex items-center text-gray-400 pointer-events-none">
-                        <Icon name="chevron" className="w-4 h-4" strokeWidth={2} />
-                      </span>
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    {/* Specialty */}
+                    <div className="flex-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 px-1" style={{ color: 'var(--ink-3)' }}>
+                        {isArabic ? 'التخصص' : 'Spécialité'}
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 ltr:left-3 rtl:right-3 flex items-center pointer-events-none" style={{ color: 'var(--ink-3)' }}>
+                          <Icon name="search" className="w-4 h-4" />
+                        </span>
+                        <select
+                          value={specialty}
+                          onChange={(e) => setSpecialty(e.target.value)}
+                          className="field ltr:pl-9 rtl:pr-9 ltr:pr-8 rtl:pl-8 cursor-pointer"
+                          style={{ color: specialty ? 'var(--ink)' : 'var(--ink-3)' }}
+                        >
+                          <option value="">{isArabic ? 'Choisir une spécialité' : 'Choisir une spécialité'}</option>
+                          {specialties.map((s) => (
+                            <option key={s.key} value={s.key}>{t(s.key)}</option>
+                          ))}
+                        </select>
+                        <span className="absolute inset-y-0 ltr:right-3 rtl:left-3 flex items-center pointer-events-none" style={{ color: 'var(--ink-3)' }}>
+                          <Icon name="chevron" className="w-4 h-4" strokeWidth={2} />
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Location */}
+                    <div className="flex-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 px-1" style={{ color: 'var(--ink-3)' }}>
+                        {isArabic ? 'المكان' : 'Où ?'}
+                      </label>
+                      <LocationSelector onLocationChange={setLocation} showWilayaLabel={false} selectVariant="hero" />
                     </div>
                   </div>
 
-                  <div className="flex-1 min-w-[150px]">
-                    <label className="block text-xs font-medium text-gray-500 mb-1 ms-1">
-                      {isArabic ? 'المكان' : 'Où ?'}
-                    </label>
-                    <LocationSelector onLocationChange={setLocation} showWilayaLabel={false} selectVariant="hero" />
-                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    {/* Date */}
+                    <div className="flex-1">
+                      <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 px-1" style={{ color: 'var(--ink-3)' }}>
+                        {isArabic ? 'متى؟' : 'Quand ?'}
+                      </label>
+                      <input
+                        type="date"
+                        value={date}
+                        min={todayISO}
+                        onChange={(e) => setDate(e.target.value)}
+                        className="field"
+                        style={{ color: date ? 'var(--ink)' : 'var(--ink-3)' }}
+                      />
+                    </div>
 
-                  <div className="flex-1 min-w-[150px]">
-                    <label className="block text-xs font-medium text-gray-500 mb-1 ms-1">
-                      {isArabic ? 'متى؟' : 'Quand ?'}
-                    </label>
-                    <input
-                      type="date"
-                      value={date}
-                      min={todayISO}
-                      onChange={(e) => setDate(e.target.value)}
-                      className="w-full px-4 py-3.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 bg-white transition"
-                    />
-                  </div>
-
-                  <div className="lg:pt-[22px]">
-                    <button
-                      type="submit"
-                      disabled={!specialty}
-                      className="btn-pro w-full lg:w-auto h-[46px] px-6 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
-                    >
-                      <Icon name="search" className="w-5 h-5" strokeWidth={2} />
-                      {isArabic ? 'ابحث' : 'Rechercher'}
-                    </button>
+                    {/* Submit */}
+                    <div className="sm:pt-[26px]">
+                      <button
+                        type="submit"
+                        disabled={!specialty}
+                        className="btn-primary w-full sm:w-auto"
+                        style={{ height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
+                      >
+                        <Icon name="search" className="w-4 h-4" strokeWidth={2.5} />
+                        {isArabic ? 'بحث' : 'Rechercher'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </form>
 
-              <ul className="hero-reveal hero-reveal-delay-2 flex flex-wrap gap-x-5 gap-y-2 mt-4">
-                {trust.map((item) => (
-                  <li key={item.label} className="flex items-center gap-1.5 text-gray-500 text-sm">
-                    <span className="text-blue-600"><Icon name={item.icon} className="w-4 h-4" strokeWidth={2} /></span>
+              {/* Trust badges */}
+              <ul className="hero-reveal hero-reveal-delay-2 flex flex-wrap gap-x-5 gap-y-2 mt-5">
+                {[
+                  { icon: 'check', label: isArabic ? 'حجز مجاني' : 'Sans frais' },
+                  { icon: 'clock', label: isArabic ? 'تأكيد فوري' : 'Confirmation immédiate' },
+                  { icon: 'shield', label: isArabic ? 'بيانات آمنة' : 'Données sécurisées' },
+                ].map((item) => (
+                  <li key={item.label} className="flex items-center gap-1.5 text-sm" style={{ color: 'var(--ink-2)' }}>
+                    <span style={{ color: 'var(--accent)' }}><Icon name={item.icon} className="w-3.5 h-3.5" strokeWidth={2.5} /></span>
                     {item.label}
                   </li>
                 ))}
               </ul>
             </div>
 
-            {/* Right: doctor photo + floating availability card */}
+            {/* Right: photo + floating card */}
             <div className="relative mt-4 lg:mt-0">
-              <img
-                src="https://images.pexels.com/photos/5327584/pexels-photo-5327584.jpeg?auto=compress&cs=tinysrgb&w=1000&h=1100&fit=crop"
-                alt={isArabic ? 'طبيبة بمعطف أبيض تفحص مريضًا بسماعة الطبيب' : 'Médecin en blouse blanche examinant un patient avec un stéthoscope'}
-                loading="lazy"
-                className="w-full h-72 sm:h-96 lg:h-[460px] object-cover rounded-2xl shadow-lg bg-blue-100"
+              {/* Glow ring behind photo */}
+              <div
+                className="absolute -inset-3 rounded-3xl pointer-events-none"
+                style={{
+                  background: 'radial-gradient(ellipse at 60% 40%, rgba(0,102,204,0.18) 0%, rgba(35,166,160,0.10) 50%, transparent 75%)',
+                  filter: 'blur(18px)',
+                  zIndex: 0,
+                }}
               />
-
-              {/* RDV confirmé badge */}
-              <div className="absolute top-4 ltr:left-4 rtl:right-4 bg-white shadow-md rounded-full ltr:pl-2 ltr:pr-3 rtl:pr-2 rtl:pl-3 py-1.5 flex items-center gap-1.5 border border-gray-100">
-                <span className="w-5 h-5 rounded-full bg-green-500 text-white flex items-center justify-center">
-                  <Icon name="check" className="w-3 h-3" strokeWidth={3} />
-                </span>
-                <span className="text-xs font-medium text-gray-700">{isArabic ? 'تم تأكيد الموعد' : 'RDV confirmé'}</span>
+              <div className="relative rounded-3xl overflow-hidden" style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)', zIndex: 1 }}>
+                <img
+                  src="https://images.pexels.com/photos/5452201/pexels-photo-5452201.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100&fit=crop"
+                  alt={isArabic ? 'طبيب متخصص في عيادة حديثة' : 'Médecin spécialiste dans une clinique moderne'}
+                  loading="lazy"
+                  className="w-full h-72 sm:h-96 lg:h-[500px] object-cover object-top"
+                  style={{ background: 'var(--bg-2)' }}
+                />
+                <div className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
+                  style={{ background: 'linear-gradient(to top, rgba(0,20,50,0.32), transparent)' }} />
               </div>
 
-              {/* Floating availability card */}
-              <div className="hidden sm:block absolute bottom-4 ltr:left-4 rtl:right-4 bg-white rounded-xl shadow-lg border border-gray-100 p-3.5 w-60">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-sm font-semibold">AB</div>
-                  <div className="leading-tight">
-                    <div className="font-semibold text-sm" style={{ color: NAVY }}>Dr Amina Benali</div>
-                    <div className="text-xs text-gray-500">{isArabic ? 'أخصائية القلب' : 'Cardiologue'}</div>
+              {/* RDV badge */}
+              <div
+                className="absolute top-4 ltr:left-4 rtl:right-4 flex items-center gap-2 rounded-full ltr:pl-2 ltr:pr-4 rtl:pr-2 rtl:pl-4 py-1.5"
+                style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-md)', border: '1px solid rgba(0,0,0,0.06)' }}
+              >
+                <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: 'var(--success)' }}>
+                  <Icon name="check" className="w-3 h-3 text-white" strokeWidth={3} />
+                </span>
+                <span className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>
+                  {isArabic ? 'تم تأكيد الموعد' : 'RDV confirmé'}
+                </span>
+              </div>
+
+              {/* Doctor availability card */}
+              <div
+                className="hidden sm:block absolute bottom-4 ltr:left-4 rtl:right-4 rounded-2xl p-4"
+                style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-lg)', border: '1px solid rgba(0,0,0,0.06)', width: '220px' }}
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+                    style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    AB
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold leading-tight" style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                      Dr Amina Benali
+                    </div>
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--ink-2)' }}>
+                      {isArabic ? 'أخصائية القلب' : 'Cardiologue'}
+                    </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mt-3">
+                <div className="grid grid-cols-2 gap-2">
                   {[isArabic ? 'اليوم 14:30' : 'Auj. 14:30', isArabic ? 'غدًا 09:00' : 'Dem. 09:00'].map((slot) => (
-                    <div key={slot} className="text-center text-xs font-medium text-blue-700 bg-blue-50 border border-blue-100 rounded-lg py-1.5">
+                    <div key={slot}
+                      className="text-center text-xs font-semibold rounded-xl py-1.5"
+                      style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid rgba(0,102,204,0.12)' }}>
                       {slot}
                     </div>
                   ))}
@@ -255,18 +318,45 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
         </div>
       </section>
 
+      {/* ── STATS BAR ── */}
+      <section style={{ background: 'var(--bg)', borderTop: '1px solid rgba(0,0,0,0.06)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-10">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+            {[
+              { num: '12 000+', label: isArabic ? 'طبيب مسجل' : 'Praticiens inscrits' },
+              { num: '48', label: isArabic ? 'ولاية مغطاة' : 'Wilayas couvertes' },
+              { num: '60+', label: isArabic ? 'تخصص طبي' : 'Spécialités' },
+              { num: '4,8 ★', label: isArabic ? 'رضا المرضى' : 'Satisfaction patients' },
+            ].map((s) => (
+              <div key={s.label} className="text-center">
+                <div
+                  className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-1"
+                  style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                >
+                  {s.num}
+                </div>
+                <div className="text-sm" style={{ color: 'var(--ink-2)' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── QUICK SPECIALTIES ── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20">
-        <div className="mb-8">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-2" style={{ color: NAVY }}>
+      <section className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20">
+        <div className="mb-10">
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
+            {isArabic ? 'التخصصات' : 'Spécialités'}
+          </p>
+          <h2
+            className="text-3xl sm:text-4xl font-extrabold tracking-tight"
+            style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+          >
             {isArabic ? 'ابحث حسب التخصص' : 'Rechercher par spécialité'}
           </h2>
-          <p className="text-gray-500">
-            {isArabic ? 'اختر التخصص المناسب لحاجتك' : 'Choisissez la spécialité adaptée à votre besoin'}
-          </p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {quickSpecialties.map((s) => (
             <button
               key={s.key}
@@ -274,135 +364,179 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                 setSpecialty(s.key);
                 document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
-              className="group flex items-center gap-3 p-4 rounded-xl border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50/40 transition-colors text-start"
+              className="specialty-card flex items-center gap-3 p-4 text-start"
             >
-              <span className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:!text-white transition-colors">
+              <span
+                className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}
+              >
                 <Icon name={s.icon} className="w-5 h-5" />
               </span>
-              <span className="text-sm font-medium text-gray-800 leading-tight">{t(s.key)}</span>
+              <span className="text-sm font-semibold leading-tight" style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                {t(s.key)}
+              </span>
             </button>
           ))}
         </div>
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section className="bg-gray-50 border-y border-gray-100 py-16 sm:py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-2xl mb-12">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3" style={{ color: NAVY }}>
-              {isArabic ? 'كيف يعمل شفاك؟' : 'Comment ça marche ?'}
-            </h2>
-            <p className="text-gray-500 text-lg">
-              {isArabic ? 'ثلاث خطوات بسيطة' : 'Trois étapes simples pour prendre rendez-vous'}
+      <section style={{ background: 'var(--bg-2)' }}>
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20">
+          <div className="max-w-xl mb-12">
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
+              {isArabic ? 'كيف يعمل شفاك' : 'Comment ça marche'}
             </p>
+            <h2
+              className="text-3xl sm:text-4xl font-extrabold tracking-tight"
+              style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+            >
+              {isArabic ? 'موعدك في ثلاث خطوات' : 'Votre RDV en trois étapes'}
+            </h2>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
+
+          <div className="grid md:grid-cols-3 gap-5">
             {[
-              { n: '1', icon: 'search', title: isArabic ? 'ابحث عن طبيب' : 'Cherchez un médecin', desc: isArabic ? 'حسب التخصص أو المدينة' : 'Par spécialité ou par ville, trouvez le praticien qui vous convient.' },
-              { n: '2', icon: 'calendar', title: isArabic ? 'اختر موعدًا' : 'Choisissez un créneau', desc: isArabic ? 'شاهد الأوقات المتاحة واحجز' : 'Consultez les disponibilités réelles et réservez en un clic.' },
-              { n: '3', icon: 'checkCircle', title: isArabic ? 'تأكيد فوري' : 'Confirmation immédiate', desc: isArabic ? 'استلم تأكيدًا وتذكيرات' : 'Recevez votre confirmation et vos rappels automatiquement.' },
-            ].map((item) => (
-              <div key={item.n} className="bg-white rounded-xl border border-gray-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center">
-                    <Icon name={item.icon} className="w-5 h-5" strokeWidth={2} />
-                  </span>
-                  <span className="text-sm font-medium text-gray-400">
-                    {isArabic ? `الخطوة ${item.n}` : `Étape ${item.n}`}
-                  </span>
+              {
+                icon: 'search',
+                title: isArabic ? 'ابحث عن طبيب' : 'Cherchez',
+                desc: isArabic ? 'حسب التخصص أو المدينة، اعثر على الطبيب المناسب.' : 'Par spécialité ou par ville, trouvez le praticien qui vous convient.',
+              },
+              {
+                icon: 'calendar',
+                title: isArabic ? 'اختر موعدًا' : 'Choisissez',
+                desc: isArabic ? 'شاهد الأوقات المتاحة الفعلية واحجز في لحظة.' : 'Consultez les disponibilités en temps réel et réservez en un clic.',
+              },
+              {
+                icon: 'checkCircle',
+                title: isArabic ? 'تأكيد فوري' : 'Confirmez',
+                desc: isArabic ? 'استلم تأكيد موعدك وتذكيرات تلقائية.' : 'Recevez votre confirmation et vos rappels automatiques.',
+              },
+            ].map((item, i) => (
+              <div
+                key={i}
+                className="rounded-2xl p-7"
+                style={{ background: 'var(--bg)', border: '1px solid rgba(0,0,0,0.07)', boxShadow: 'var(--shadow-xs)' }}
+              >
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center mb-5"
+                  style={{ background: 'var(--accent)' }}
+                >
+                  <Icon name={item.icon} className="w-6 h-6 text-white" strokeWidth={2} />
                 </div>
-                <h3 className="text-lg font-semibold mb-2" style={{ color: NAVY }}>{item.title}</h3>
-                <p className="text-gray-500 leading-relaxed">{item.desc}</p>
+                <h3
+                  className="text-xl font-bold mb-2"
+                  style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                >
+                  {item.title}
+                </h3>
+                <p style={{ color: 'var(--ink-2)', fontSize: '15px', lineHeight: '1.65' }}>{item.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── STATS ── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-          {[
-            { num: '12 000+', label: isArabic ? 'طبيب مسجل' : 'Praticiens inscrits' },
-            { num: '48', label: isArabic ? 'ولاية مغطاة' : 'Wilayas couvertes' },
-            { num: '60+', label: isArabic ? 'تخصص طبي' : 'Spécialités médicales' },
-            { num: '4,8/5', label: isArabic ? 'رضا المستخدمين' : 'Satisfaction patients' },
-          ].map((s) => (
-            <div key={s.label} className="text-start">
-              <div className="text-3xl sm:text-4xl font-bold tracking-tight mb-1 text-blue-600">{s.num}</div>
-              <div className="text-gray-500 text-sm">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* ── TELECONSULTATION ── */}
-      <section id="teleconsult-section" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 scroll-mt-20">
-        <div className="rounded-2xl bg-blue-600 text-white p-8 md:p-14 grid md:grid-cols-2 gap-10 items-center">
-          <div>
-            <span className="inline-block text-xs font-medium text-blue-50 bg-white/10 px-3 py-1.5 rounded-lg mb-6 border border-white/15">
-              {isArabic ? 'قريبًا 2026' : 'Bientôt · 2026'}
-            </span>
-            <h2 className="text-2xl sm:text-4xl font-bold tracking-tight leading-tight mb-4">
-              {isArabic ? 'استشارة عن بُعد، ببساطة' : 'La téléconsultation, en toute simplicité'}
-            </h2>
-            <p className="text-blue-50/90 text-lg leading-relaxed mb-8">
-              {isArabic
-                ? 'تحدث مع طبيبك عبر الفيديو من منزلك — مثالي للمتابعة والاستشارات السريعة.'
-                : 'Consultez votre médecin en visioconférence depuis chez vous. Idéal pour le suivi et les avis rapides.'}
-            </p>
-            <button
-              type="button"
-              onClick={onOpenProfessional}
-              className="btn-pro inline-flex items-center gap-2 bg-white text-blue-700 font-semibold px-6 py-3 rounded-xl hover:bg-blue-50 transition-colors"
+      <section id="teleconsult-section" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20 scroll-mt-20">
+        <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--ink)' }}>
+          <div className="grid md:grid-cols-2">
+            <div className="p-10 md:p-14">
+              <span
+                className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded-full px-3 py-1.5 mb-6"
+                style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.1)' }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                {isArabic ? 'قريبًا · 2026' : 'Bientôt · 2026'}
+              </span>
+              <h2
+                className="font-extrabold tracking-tight leading-tight mb-5"
+                style={{ fontSize: 'clamp(2rem, 4vw, 3.25rem)', color: '#FFFFFF', fontFamily: '"Plus Jakarta Sans", sans-serif', whiteSpace: 'pre-line' }}
+              >
+                {isArabic ? 'طبيبك\nعلى الشاشة.' : 'Votre médecin,\nà l\'écran.'}
+              </h2>
+              <p className="text-lg leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                {isArabic
+                  ? 'استشارة طبية بالفيديو من منزلك — مثالية للمتابعة والاستشارات السريعة.'
+                  : 'Consultez en visioconférence depuis chez vous. Idéal pour le suivi et les avis rapides.'}
+              </p>
+              <button
+                type="button"
+                onClick={onOpenProfessional}
+                className="btn-primary"
+                style={{ background: '#FFFFFF', color: 'var(--accent)', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
+              >
+                {isArabic ? 'أبلغني عند الإطلاق' : 'Être informé du lancement'}
+                <Icon name="arrow" className="w-4 h-4" strokeWidth={2} />
+              </button>
+            </div>
+            <div
+              className="hidden md:flex items-center justify-center p-10"
+              style={{ background: 'rgba(255,255,255,0.03)' }}
             >
-              {isArabic ? 'أبلغني عند الإطلاق' : 'Être informé du lancement'}
-              <Icon name="arrow" className="w-4 h-4" strokeWidth={2} />
-            </button>
-          </div>
-          <div className="hidden md:flex justify-center">
-            <div className="w-40 h-40 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center">
-              <Icon name="video" className="w-20 h-20 text-white" strokeWidth={1.4} />
+              <div
+                className="w-48 h-48 rounded-3xl flex items-center justify-center"
+                style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                <span style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  <Icon name="video" className="w-24 h-24" strokeWidth={1} />
+                </span>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* ── FOR PROFESSIONALS ── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 sm:pb-20">
-        <div className="rounded-2xl p-8 md:p-14" style={{ backgroundColor: NAVY }}>
-          <div className="grid md:grid-cols-2 gap-10 items-center text-white">
+      <section className="max-w-7xl mx-auto px-5 sm:px-8 pb-16 sm:pb-20">
+        <div
+          className="rounded-3xl p-10 md:p-14"
+          style={{ background: 'var(--accent-bg)', border: '1px solid rgba(0,102,204,0.1)' }}
+        >
+          <div className="grid md:grid-cols-2 gap-10 items-center">
             <div>
-              <span className="inline-block text-xs font-medium text-blue-200 bg-white/10 px-3 py-1.5 rounded-lg mb-6 border border-white/15">
+              <p className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: 'var(--accent)' }}>
                 {isArabic ? 'للأطباء والمراكز الطبية' : 'Pour les praticiens'}
-              </span>
-              <h2 className="text-2xl sm:text-4xl font-bold tracking-tight leading-tight mb-6">
-                {isArabic ? 'طوّر عيادتك مع شفاك' : 'Développez votre cabinet avec chifak'}
+              </p>
+              <h2
+                className="font-extrabold tracking-tight leading-tight mb-6"
+                style={{ fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif', whiteSpace: 'pre-line' }}
+              >
+                {isArabic ? 'طوّر عيادتك\nمع شفاك.' : 'Développez votre cabinet\navec chifak.'}
               </h2>
               <ul className="grid sm:grid-cols-2 gap-3 mb-8">
                 {(isArabic
                   ? ['مرضى جدد كل يوم', 'أجندة رقمية مجانية', 'تقليل حالات الغياب', 'استشارة عن بُعد']
                   : ['De nouveaux patients', 'Agenda numérique gratuit', 'Moins de rendez-vous manqués', 'Outils de téléconsultation']
                 ).map((item) => (
-                  <li key={item} className="flex items-center gap-2.5 text-blue-50/90">
-                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                  <li key={item} className="flex items-center gap-2.5">
+                    <span
+                      className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center"
+                      style={{ background: 'var(--accent)', color: '#fff' }}
+                    >
                       <Icon name="check" className="w-3 h-3" strokeWidth={3} />
                     </span>
-                    <span className="text-sm">{item}</span>
+                    <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{item}</span>
                   </li>
                 ))}
               </ul>
               <button
                 onClick={onOpenProfessional}
-                className="btn-pro inline-flex items-center gap-2 bg-blue-600 text-white font-semibold px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors"
+                className="btn-primary"
+                style={{ height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
               >
                 {isArabic ? 'ابدأ مجانًا' : 'Démarrer gratuitement'}
                 <Icon name="arrow" className="w-4 h-4" strokeWidth={2} />
               </button>
             </div>
             <div className="hidden md:flex justify-center">
-              <div className="w-40 h-40 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
-                <Icon name="building" className="w-20 h-20 text-blue-300" strokeWidth={1.4} />
+              <div
+                className="w-44 h-44 rounded-3xl flex items-center justify-center"
+                style={{ background: 'rgba(0,102,204,0.07)', border: '1px solid rgba(0,102,204,0.12)' }}
+              >
+                <span style={{ color: 'var(--accent)', opacity: 0.5 }}>
+                  <Icon name="building" className="w-20 h-20" strokeWidth={1.4} />
+                </span>
               </div>
             </div>
           </div>
@@ -410,22 +544,32 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
       </section>
 
       {/* ── FOOTER ── */}
-      <footer className="bg-gray-950 text-gray-400 pt-16 pb-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <footer style={{ background: '#111113', color: 'rgba(255,255,255,0.45)' }}>
+        <div className="max-w-7xl mx-auto px-5 sm:px-8 pt-16 pb-10">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 mb-14">
-            <div className="lg:col-span-2 max-w-sm">
+            <div className="lg:col-span-2 max-w-xs">
               <div className="flex items-center gap-2.5 mb-5">
-                <LogoMark className="h-10 w-10" pulseColor="#23a6a0" />
-                <span className="text-xl font-bold text-white tracking-tight">chifak</span>
+                <LogoMark className="h-9 w-9" pulseColor="#23a6a0" />
+                <span
+                  className="text-lg font-bold text-white tracking-tight"
+                  style={{ fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                >
+                  chifak
+                </span>
               </div>
-              <p className="leading-relaxed text-gray-400 mb-6">
+              <p className="leading-relaxed text-sm mb-6">
                 {isArabic
                   ? 'منصة رقمية لحجز المواعيد الطبية في الجزائر. بسيطة وسريعة وآمنة.'
                   : 'La plateforme de prise de rendez-vous médicaux en Algérie. Simple, rapide et sécurisée.'}
               </p>
-              <div className="flex gap-2.5">
+              <div className="flex gap-2">
                 {['f', 'in', '𝕏', 'ig'].map((s, i) => (
-                  <a key={i} href="#" className="w-9 h-9 bg-white/5 hover:bg-blue-600 hover:text-white rounded-lg flex items-center justify-center text-sm font-medium transition-colors border border-white/5">
+                  <a
+                    key={i}
+                    href="#"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-medium transition-colors hover:bg-blue-600 hover:text-white"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)' }}
+                  >
                     {s}
                   </a>
                 ))}
@@ -433,13 +577,15 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
               {onAdminClick && (
                 <button
                   onClick={onAdminClick}
-                  className="mt-6 flex items-center gap-2 text-sm font-medium bg-white/5 hover:bg-white/10 text-gray-300 px-4 py-2.5 rounded-lg transition-colors border border-white/5"
+                  className="mt-5 flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl transition-colors hover:bg-white/10"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}
                 >
                   <Icon name="shield" className="w-4 h-4" />
                   {isArabic ? 'مساحة الموظفين' : 'Portail administration'}
                 </button>
               )}
             </div>
+
             {[
               {
                 title: isArabic ? 'للمرضى' : 'Patients',
@@ -461,11 +607,16 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
               },
             ].map((col, i) => (
               <div key={i}>
-                <h4 className="text-white font-semibold text-sm mb-4">{col.title}</h4>
+                <h4
+                  className="text-sm font-semibold text-white mb-4"
+                  style={{ fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+                >
+                  {col.title}
+                </h4>
                 <ul className="space-y-3">
                   {col.links.map((link, j) => (
                     <li key={j}>
-                      <a href="#" className="text-sm hover:text-white transition-colors">{link}</a>
+                      <a href="#" className="text-sm transition-colors hover:text-white">{link}</a>
                     </li>
                   ))}
                 </ul>
@@ -473,9 +624,12 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
             ))}
           </div>
 
-          <div className="pt-8 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+          <div
+            className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+          >
             <p>© 2026 chifak Algérie. {isArabic ? 'جميع الحقوق محفوظة' : 'Tous droits réservés'}.</p>
-            <div className="flex gap-6">
+            <div className="flex gap-5">
               <a href="#" className="hover:text-white transition-colors">Cookies</a>
               <a href="#" className="hover:text-white transition-colors">{isArabic ? 'الأمان' : 'Sécurité'}</a>
               <a href="#" className="hover:text-white transition-colors">{isArabic ? 'خريطة الموقع' : 'Plan du site'}</a>

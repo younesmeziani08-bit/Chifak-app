@@ -4,6 +4,7 @@ import { Doctor } from '../App';
 import Header from './Header';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useDoctors } from '../contexts/DoctorsContext';
+import { appointmentsAPI } from '../services/api';
 
 const NAVY = '#00264c';
 
@@ -139,15 +140,29 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
     stripRef.current?.scrollBy({ left: dir * 240, behavior: 'smooth' });
   };
 
+  // Créneaux déjà réservés ce jour-là (pour les masquer) : clé "doctorId|HH:MM"
+  const [bookedSet, setBookedSet] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let alive = true;
+    appointmentsAPI.getBookedSlots(activeDay).then((rows) => {
+      if (!alive) return;
+      setBookedSet(new Set(rows.map((r) => `${r.doctor_id}|${r.appointment_time}`)));
+    });
+    return () => { alive = false; };
+  }, [activeDay]);
+
+  const freeSlotsFor = (doctor: Doctor) =>
+    slotsForDay(doctor, activeDay).filter((t) => !bookedSet.has(`${doctor.id}|${t}`));
+
   const allDoctors = getDoctorsBySpecialtyAndLocation(searchQuery.specialty, searchQuery.location);
   const doctors = [...allDoctors].sort((a, b) => {
     if (sortBy === 'rating') return b.rating - a.rating;
-    const av = slotsForDay(a, activeDay).length > 0 ? 0 : 1;
-    const bv = slotsForDay(b, activeDay).length > 0 ? 0 : 1;
+    const av = freeSlotsFor(a).length > 0 ? 0 : 1;
+    const bv = freeSlotsFor(b).length > 0 ? 0 : 1;
     return av - bv;
   });
 
-  const availableCount = doctors.filter((d) => slotsForDay(d, activeDay).length > 0).length;
+  const availableCount = doctors.filter((d) => freeSlotsFor(d).length > 0).length;
   const activeDayInfo = days.find((d) => d.full === activeDay);
 
   return (
@@ -290,7 +305,7 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
                 key={doctor.id}
                 doctor={doctor}
                 isArabic={isArabic}
-                slots={slotsForDay(doctor, activeDay)}
+                slots={freeSlotsFor(doctor)}
                 nextDay={nextAvailableDay(doctor, days, activeDay)}
                 onSelect={() => onDoctorSelect(doctor)}
                 onPickDay={(iso) => setActiveDay(iso)}
