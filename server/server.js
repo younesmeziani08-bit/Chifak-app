@@ -756,6 +756,116 @@ app.get('/api/consultations', authenticateDoctorToken, async (req, res) => {
   }
 });
 
+// ==================== ROUTES AVIS (REVIEWS) ====================
+
+// GET /api/doctors/:id/reviews - Avis d'un médecin
+app.get('/api/doctors/:id/reviews', async (req, res) => {
+  try {
+    const doctorId = Number(req.params.id);
+    const reviews = await db.prepare(`
+      SELECT id, patient_name, rating, comment, created_at
+      FROM reviews WHERE doctor_id = ? ORDER BY created_at DESC
+    `).all(doctorId);
+    res.json(reviews);
+  } catch (error) {
+    console.error('Erreur récupération avis:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/doctors/:id/reviews - Laisser (ou mettre à jour) son avis
+app.post('/api/doctors/:id/reviews', authenticatePatientToken, async (req, res) => {
+  try {
+    const doctorId = Number(req.params.id);
+    const rating = Number(req.body.rating);
+    const comment = typeof req.body.comment === 'string' ? req.body.comment.trim() : null;
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Note invalide (1 à 5)' });
+    }
+
+    const doctor = await db.prepare('SELECT id FROM doctors WHERE id = ?').get(doctorId);
+    if (!doctor) {
+      return res.status(404).json({ error: 'Médecin non trouvé' });
+    }
+
+    // On ne peut laisser un avis qu'APRÈS la consultation (rendez-vous passé)
+    const today = new Date().toISOString().split('T')[0];
+    const hadAppt = await db.prepare(`
+      SELECT id FROM appointments
+      WHERE doctor_id = ? AND patient_email = ? AND status != 'cancelled' AND appointment_date <= ?
+    `).get(doctorId, req.user.email, today);
+    if (!hadAppt) {
+      return res.status(403).json({ error: 'Vous pourrez laisser un avis après votre consultation.' });
+    }
+
+    const patient = await db.prepare('SELECT name FROM patients WHERE email = ?').get(req.user.email);
+
+    await db.prepare(`
+      INSERT INTO reviews (doctor_id, patient_email, patient_name, rating, comment)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT (doctor_id, patient_email)
+      DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, patient_name = EXCLUDED.patient_name, created_at = CURRENT_TIMESTAMP
+    `).run(doctorId, req.user.email, patient ? patient.name : null, rating, comment);
+
+    // Recalcul de la note moyenne et du nombre d'avis du médecin
+    const stats = await db.prepare('SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0) AS avg FROM reviews WHERE doctor_id = ?').get(doctorId);
+    const avg = Math.round(Number(stats.avg) * 10) / 10;
+    await db.prepare('UPDATE doctors SET rating = ?, review_count = ? WHERE id = ?').run(avg, stats.count, doctorId);
+
+    res.status(201).json({ rating: avg, reviewCount: stats.count });
+  } catch (error) {
+    console.error('Erreur enregistrement avis:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/patient/reviews - Médecins déjà notés par le patient connecté
+app.get('/api/patient/reviews', authenticatePatientToken, async (req, res) => {
+  try {
+    const rows = await db.prepare('SELECT doctor_id FROM reviews WHERE patient_email = ?').all(req.user.email);
+    res.json(rows);
+  } catch (error) {
+    console.error('Erreur récupération avis patient:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/reviews - Tous les avis (espace admin/personnel)
+app.get('/api/reviews', authenticateToken, async (req, res) => {
+  try {
+    const rows = await db.prepare(`
+      SELECT r.id, r.doctor_id, r.patient_name, r.rating, r.comment, r.created_at,
+             d.name AS doctor_name, d.specialty
+      FROM reviews r JOIN doctors d ON r.doctor_id = d.id
+      ORDER BY r.created_at DESC
+    `).all();
+    res.json(rows);
+  } catch (error) {
+    console.error('Erreur récupération avis (admin):', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/reviews/:id - Supprimer un avis (admin/personnel) + recalcul de la note
+app.delete('/api/reviews/:id', authenticateToken, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const review = await db.prepare('SELECT doctor_id FROM reviews WHERE id = ?').get(id);
+    if (!review) {
+      return res.status(404).json({ error: 'Avis non trouvé' });
+    }
+    await db.prepare('DELETE FROM reviews WHERE id = ?').run(id);
+    const stats = await db.prepare('SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0) AS avg FROM reviews WHERE doctor_id = ?').get(review.doctor_id);
+    const avg = Math.round(Number(stats.avg) * 10) / 10;
+    await db.prepare('UPDATE doctors SET rating = ?, review_count = ? WHERE id = ?').run(avg, stats.count, review.doctor_id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur suppression avis:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // ==================== ROUTES APPOINTMENTS ====================
 
 // POST /api/appointments - Créer un rendez-vous

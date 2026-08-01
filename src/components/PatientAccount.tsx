@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import Header from './Header';
 import { useLanguage } from '../contexts/LanguageContext';
-import { appointmentsAPI, patientAPI } from '../services/api';
+import { appointmentsAPI, patientAPI, reviewsAPI } from '../services/api';
 
 const NAVY = '#00264c';
 
@@ -27,6 +27,7 @@ function Icon({ name, className = 'w-5 h-5', strokeWidth = 1.75 }: { name: strin
 
 interface Appointment {
   id: number;
+  doctor_id: number;
   doctor_name: string;
   specialty: string;
   address?: string;
@@ -61,6 +62,7 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loadingRdv, setLoadingRdv] = useState(true);
+  const [reviewedDoctors, setReviewedDoctors] = useState<Set<number>>(new Set());
 
   const [name, setName] = useState(patientUser.name || '');
   const [phone, setPhone] = useState('');
@@ -91,8 +93,15 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
         // profil optionnel
       }
     })();
+    (async () => {
+      const mine = await reviewsAPI.getMine();
+      if (alive) setReviewedDoctors(new Set(mine.map((m) => m.doctor_id)));
+    })();
     return () => { alive = false; };
   }, []);
+
+  const isPast = (a: Appointment) =>
+    new Date(`${a.appointment_date}T${a.appointment_time || '00:00'}`).getTime() < Date.now();
 
   const todayISO = new Date().toISOString().split('T')[0];
   const timeOptions: string[] = [];
@@ -133,6 +142,31 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
       const updated = await appointmentsAPI.reschedule(id, rDate, rTime);
       setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated } : a)));
       setRescheduleId(null);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const [reviewId, setReviewId] = useState<number | null>(null);
+  const [rStars, setRStars] = useState(5);
+  const [rComment, setRComment] = useState('');
+
+  const openReview = (a: Appointment) => {
+    setReviewId(a.id);
+    setRStars(5);
+    setRComment('');
+    setActionError('');
+  };
+
+  const handleReview = async (a: Appointment) => {
+    setBusyId(a.id);
+    setActionError('');
+    try {
+      await reviewsAPI.submit(a.doctor_id, rStars, rComment);
+      setReviewedDoctors((prev) => new Set(prev).add(a.doctor_id));
+      setReviewId(null);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Erreur');
     } finally {
@@ -207,9 +241,30 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
         {/* Appointments */}
         {tab === 'appointments' && (
           <div>
+            {(() => {
+              const toReview = appointments.filter((a) => a.status !== 'cancelled' && isPast(a) && !reviewedDoctors.has(a.doctor_id));
+              if (toReview.length === 0) return null;
+              return (
+                <div className="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <span className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
+                    <Icon name="calendar" className="w-5 h-5" strokeWidth={2} />
+                  </span>
+                  <div>
+                    <p className="font-semibold text-amber-800">
+                      {isArabic
+                        ? `لديك ${toReview.length} استشارة بانتظار تقييمك`
+                        : `Vous avez ${toReview.length} consultation${toReview.length > 1 ? 's' : ''} à évaluer`}
+                    </p>
+                    <p className="text-sm text-amber-700">
+                      {isArabic ? 'قيّم طبيبك لمساعدة المرضى الآخرين.' : 'Donnez votre avis pour aider les autres patients.'}
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
             {loadingRdv ? (
               <p className="text-gray-500">{isArabic ? 'جاري التحميل…' : 'Chargement…'}</p>
-            ) : appointments.length === 0 ? (
+            ) : appointments.filter((a) => a.status !== 'cancelled').length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-200 p-10 text-center">
                 <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4">
                   <Icon name="calendar" className="w-6 h-6" />
@@ -224,7 +279,7 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
               </div>
             ) : (
               <div className="space-y-3">
-                {appointments.map((a) => (
+                {appointments.filter((a) => a.status !== 'cancelled').map((a) => (
                   <div key={a.id} className="bg-white rounded-xl border border-gray-200 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
@@ -253,7 +308,32 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
 
                     {a.status !== 'cancelled' && (
                       <div className="mt-4 pt-4 border-t border-gray-100">
-                        {rescheduleId === a.id ? (
+                        {reviewId === a.id ? (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map((n) => (
+                                <button key={n} type="button" onClick={() => setRStars(n)} aria-label={`${n}`} className="p-0.5">
+                                  <svg className={`w-6 h-6 ${n <= rStars ? 'text-amber-400' : 'text-gray-300'}`} viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="m12 3 2.6 5.5 6 .9-4.3 4.2 1 6-5.3-2.8L6.7 19.6l1-6L3.4 9.4l6-.9L12 3Z" />
+                                  </svg>
+                                </button>
+                              ))}
+                            </div>
+                            <textarea value={rComment} onChange={(e) => setRComment(e.target.value)} rows={2}
+                              placeholder={isArabic ? 'تعليقك (اختياري)' : 'Votre commentaire (facultatif)'}
+                              className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                            <div className="flex gap-2">
+                              <button onClick={() => handleReview(a)} disabled={busyId === a.id}
+                                className="btn-pro px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:bg-gray-300 transition-colors">
+                                {busyId === a.id ? '…' : (isArabic ? 'إرسال' : "Envoyer l'avis")}
+                              </button>
+                              <button onClick={() => { setReviewId(null); setActionError(''); }}
+                                className="px-4 py-2 text-gray-500 text-sm hover:text-gray-800">
+                                {isArabic ? 'تراجع' : 'Annuler'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : rescheduleId === a.id ? (
                           <div className="flex flex-wrap items-end gap-3">
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">{isArabic ? 'التاريخ' : 'Nouvelle date'}</label>
@@ -277,18 +357,36 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
                             </button>
                           </div>
                         ) : (
-                          <div className="flex gap-2">
-                            <button onClick={() => openReschedule(a)}
-                              className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors">
-                              {isArabic ? 'تغيير الموعد' : 'Reprogrammer'}
-                            </button>
-                            <button onClick={() => handleCancel(a.id)} disabled={busyId === a.id}
-                              className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-red-300 hover:text-red-600 transition-colors">
-                              {isArabic ? 'إلغاء' : 'Annuler le RDV'}
-                            </button>
+                          <div className="flex flex-wrap gap-2">
+                            {!isPast(a) && (
+                              <>
+                                <button onClick={() => openReschedule(a)}
+                                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors">
+                                  {isArabic ? 'تغيير الموعد' : 'Reprogrammer'}
+                                </button>
+                                <button onClick={() => handleCancel(a.id)} disabled={busyId === a.id}
+                                  className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-red-300 hover:text-red-600 transition-colors">
+                                  {isArabic ? 'إلغاء' : 'Annuler le RDV'}
+                                </button>
+                              </>
+                            )}
+                            {isPast(a) && (
+                              reviewedDoctors.has(a.doctor_id) ? (
+                                <span className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-green-600">
+                                  <Icon name="check" className="w-4 h-4" strokeWidth={2.5} />
+                                  {isArabic ? 'شكرًا على تقييمك' : 'Merci pour votre avis'}
+                                </span>
+                              ) : (
+                                <button onClick={() => openReview(a)}
+                                  className="btn-pro inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-semibold hover:bg-amber-600 transition-colors">
+                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="m12 3 2.6 5.5 6 .9-4.3 4.2 1 6-5.3-2.8L6.7 19.6l1-6L3.4 9.4l6-.9L12 3Z" /></svg>
+                                  {isArabic ? 'اترك تقييمًا' : 'Laisser un avis'}
+                                </button>
+                              )
+                            )}
                           </div>
                         )}
-                        {actionError && rescheduleId === a.id && <p className="text-sm text-red-600 mt-2">{actionError}</p>}
+                        {actionError && (rescheduleId === a.id || reviewId === a.id) && <p className="text-sm text-red-600 mt-2">{actionError}</p>}
                       </div>
                     )}
                   </div>

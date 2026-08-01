@@ -5,8 +5,9 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import LanguageToggle from '../LanguageToggle';
 import AddDoctorForm from './AddDoctorForm';
 import DoctorsList from './DoctorsList';
+import AdminReviews from './AdminReviews';
 
-type Tab = 'add' | 'list';
+type Tab = 'add' | 'list' | 'reviews';
 
 interface AdminDashboardProps {
   onBackToHome: () => void;
@@ -53,6 +54,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'add', label: isArabic ? 'إضافة طبيب' : 'Ajouter un médecin', icon: '➕' },
     { key: 'list', label: isArabic ? 'قائمة الأطباء' : 'Liste des médecins', icon: '📋' },
+    { key: 'reviews', label: isArabic ? 'التقييمات' : 'Avis', icon: '⭐' },
   ];
 
   return (
@@ -164,7 +166,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
             </div>
           </div>
           <div className="p-6">
-            {activeTab === 'add' ? <AddDoctorForm /> : <DoctorsList />}
+            {activeTab === 'add' ? <AddDoctorForm /> : activeTab === 'reviews' ? <AdminReviews /> : <DoctorsList />}
           </div>
         </div>
       </div>

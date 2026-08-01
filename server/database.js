@@ -147,6 +147,20 @@ export async function initDatabase() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reviews (
+      id SERIAL PRIMARY KEY,
+      doctor_id INTEGER NOT NULL,
+      patient_email TEXT NOT NULL,
+      patient_name TEXT,
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (doctor_id, patient_email),
+      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
+    )
+  `);
+
   console.log('✅ Tables PostgreSQL prêtes');
 
   // Utilisateurs par défaut (admin / employés)
@@ -187,6 +201,52 @@ export async function initDatabase() {
       '0555234567', 'fatima.zahra@chifak.dz', 'MED-002', '👩‍⚕️', 4.8, 189, slots, 'Disponible maintenant', 30, '[1,2,3,4,5]',
     ]);
     console.log('✅ Médecins par défaut créés');
+  }
+
+  // Quelques avis de démonstration
+  const reviewCount = await pool.query('SELECT COUNT(*)::int AS count FROM reviews');
+  if (reviewCount.rows[0].count === 0) {
+    const d1 = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-001'")).rows[0];
+    const d2 = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-002'")).rows[0];
+    const seedReviews = [];
+    if (d1) {
+      seedReviews.push([d1.id, 'amina.b@example.dz', 'Amina B.', 5, 'Médecin très à l\'écoute et professionnel. Je recommande.']);
+      seedReviews.push([d1.id, 'yacine.m@example.dz', 'Yacine M.', 4, 'Bonne consultation, explications claires. Un peu d\'attente.']);
+      seedReviews.push([d1.id, 'nadia.h@example.dz', 'Nadia H.', 5, 'Excellent accueil, rien à redire.']);
+    }
+    if (d2) {
+      seedReviews.push([d2.id, 'sara.k@example.dz', 'Sara K.', 5, 'Dentiste douce et compétente, cabinet impeccable.']);
+      seedReviews.push([d2.id, 'karim.d@example.dz', 'Karim D.', 4, 'Travail soigné, je reviendrai.']);
+    }
+    for (const r of seedReviews) {
+      await pool.query(
+        'INSERT INTO reviews (doctor_id, patient_email, patient_name, rating, comment) VALUES ($1, $2, $3, $4, $5)',
+        r
+      );
+    }
+    // Recalcul des notes des médecins concernés
+    for (const d of [d1, d2]) {
+      if (!d) continue;
+      const s = (await pool.query('SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0) AS avg FROM reviews WHERE doctor_id = $1', [d.id])).rows[0];
+      await pool.query('UPDATE doctors SET rating = $1, review_count = $2 WHERE id = $3', [Math.round(Number(s.avg) * 10) / 10, s.count, d.id]);
+    }
+    console.log('✅ Avis de démonstration créés');
+  }
+
+  // Rendez-vous passé de démonstration (pour tester la notification + les avis)
+  const demoAppt = await pool.query("SELECT COUNT(*)::int AS count FROM appointments WHERE patient_email = 'demo.patient@chifak.dz'");
+  if (demoAppt.rows[0].count === 0) {
+    const dd = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-001'")).rows[0];
+    if (dd) {
+      const past = new Date();
+      past.setDate(past.getDate() - 3);
+      const iso = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
+      await pool.query(
+        "INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, status) VALUES ($1, $2, $3, $4, $5, $6, 'confirmed')",
+        [dd.id, 'Patient Demo', 'demo.patient@chifak.dz', '0555000000', iso, '09:00']
+      );
+      console.log('✅ Rendez-vous de démonstration (passé) créé');
+    }
   }
 }
 

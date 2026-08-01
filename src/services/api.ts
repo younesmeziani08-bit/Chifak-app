@@ -293,6 +293,65 @@ export const appointmentsAPI = {
   }
 };
 
+// ==================== AVIS (REVIEWS) ====================
+
+export const reviewsAPI = {
+  getForDoctor: async (doctorId: number) => {
+    try {
+      const response = await fetch(`${API_URL}/doctors/${doctorId}/reviews`);
+      if (!response.ok) return [];
+      return await response.json();
+    } catch {
+      return [];
+    }
+  },
+
+  submit: async (doctorId: number, rating: number, comment: string) => {
+    const token = localStorage.getItem('chifak_patient_token');
+    const response = await fetch(`${API_URL}/doctors/${doctorId}/reviews`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
+      body: JSON.stringify({ rating, comment }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "Erreur lors de l'envoi de l'avis");
+    }
+    return await response.json();
+  },
+
+  // Patient : médecins qu'il a déjà notés
+  getMine: async (): Promise<{ doctor_id: number }[]> => {
+    const token = localStorage.getItem('chifak_patient_token');
+    try {
+      const response = await fetch(`${API_URL}/patient/reviews`, {
+        headers: { ...(token && { Authorization: `Bearer ${token}` }) },
+      });
+      if (!response.ok) return [];
+      return await response.json();
+    } catch {
+      return [];
+    }
+  },
+
+  // Admin : tous les avis
+  getAll: async () => {
+    const response = await fetch(`${API_URL}/reviews`, { headers: getAuthHeaders() });
+    if (!response.ok) throw new Error('Erreur lors de la récupération des avis');
+    return await response.json();
+  },
+
+  // Admin : supprimer un avis
+  remove: async (id: number) => {
+    const response = await fetch(`${API_URL}/reviews/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Erreur lors de la suppression');
+    }
+    return await response.json();
+  },
+};
+
 // ==================== PATIENT (profil) ====================
 
 export interface PatientProfile {

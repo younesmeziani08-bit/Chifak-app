@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, AppointmentCreate } from '../services/api';
+import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, AppointmentCreate } from '../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
   const { language } = useLanguage();
@@ -10,7 +10,8 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [doctorInfo, setDoctorInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'consultation' | 'history'>('consultation');
+  const [activeTab, setActiveTab] = useState<'consultation' | 'history' | 'reviews'>('consultation');
+  const [reviews, setReviews] = useState<any[]>([]);
 
   // Consultation form state
   const [patientData, setPatientData] = useState({
@@ -40,6 +41,9 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       setDoctorInfo(data.user);
       setIsAuthenticated(true);
       fetchConsultations();
+      if (data.user?.id) {
+        reviewsAPI.getForDoctor(data.user.id).then(setReviews).catch(() => setReviews([]));
+      }
     } catch (err: any) {
       setError(err.message || 'Erreur de connexion');
     } finally {
@@ -242,6 +246,14 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           >
             {isArabic ? 'تاريخ المعاينات' : 'Historique'}
           </button>
+          <button
+            onClick={() => setActiveTab('reviews')}
+            className={`flex-1 py-3 text-sm font-bold rounded-lg transition ${
+              activeTab === 'reviews' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {isArabic ? `التقييمات (${reviews.length})` : `Avis (${reviews.length})`}
+          </button>
         </div>
 
         {activeTab === 'consultation' ? (
@@ -423,6 +435,35 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
               {loading ? (isArabic ? 'جاري الحفظ...' : 'Enregistrement...') : (isArabic ? 'حفظ ملف المتابعة' : 'Enregistrer la fiche de suivi')}
             </button>
           </form>
+        ) : activeTab === 'reviews' ? (
+          /* Avis des patients */
+          <div className="space-y-4">
+            {reviews.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
+                <span className="text-5xl block mb-4">⭐</span>
+                <p className="text-gray-500 font-medium">
+                  {isArabic ? 'لا توجد تقييمات بعد' : 'Aucun avis pour le moment'}
+                </p>
+              </div>
+            ) : (
+              reviews.map((r) => (
+                <div key={r.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-gray-900">{r.patient_name || (isArabic ? 'مريض' : 'Patient')}</span>
+                    <span className="flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <svg key={n} className={`w-4 h-4 ${n <= r.rating ? 'text-amber-400' : 'text-gray-200'}`} viewBox="0 0 24 24" fill="currentColor">
+                          <path d="m12 3 2.6 5.5 6 .9-4.3 4.2 1 6-5.3-2.8L6.7 19.6l1-6L3.4 9.4l6-.9L12 3Z" />
+                        </svg>
+                      ))}
+                    </span>
+                  </div>
+                  {r.comment && <p className="text-gray-700 text-sm">{r.comment}</p>}
+                  <p className="text-xs text-gray-400 mt-2">{new Date(r.created_at).toLocaleDateString(isArabic ? 'ar-DZ' : 'fr-FR')}</p>
+                </div>
+              ))
+            )}
+          </div>
         ) : (
           /* Liste historique */
           <div className="space-y-4">
