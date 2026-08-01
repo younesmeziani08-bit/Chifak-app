@@ -30,6 +30,9 @@ export interface Doctor {
   nextAvailable: string;
   slotDuration?: number;
   workingDays?: number[];
+  offDays?: string[];
+  description?: string;
+  bio?: string;
   latitude?: number;
   longitude?: number;
   mapsUrl?: string;

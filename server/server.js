@@ -559,6 +559,9 @@ app.get('/api/doctors', async (req, res) => {
       nextAvailable: doctor.next_available,
       slotDuration: doctor.slot_duration || 30,
       workingDays: doctor.working_days ? JSON.parse(doctor.working_days) : [1, 2, 3, 4, 5],
+      description: doctor.description || '',
+      bio: doctor.bio || '',
+      offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
     }));
 
     res.json(doctorsWithParsedSlots);
@@ -583,6 +586,9 @@ app.get('/api/doctors/:id', async (req, res) => {
       nextAvailable: doctor.next_available,
       slotDuration: doctor.slot_duration || 30,
       workingDays: doctor.working_days ? JSON.parse(doctor.working_days) : [1, 2, 3, 4, 5],
+      description: doctor.description || '',
+      bio: doctor.bio || '',
+      offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
     };
 
     res.json(doctorWithParsedSlots);
@@ -1031,6 +1037,94 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
     res.json(appointments);
   } catch (error) {
     console.error('Erreur récupération rendez-vous:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== ESPACE MÉDECIN ====================
+
+// GET /api/doctor/profile - Profil du médecin connecté
+app.get('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
+  try {
+    const d = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
+    if (!d) return res.status(404).json({ error: 'Médecin non trouvé' });
+    res.json({
+      id: d.id,
+      name: d.name,
+      email: d.email || '',
+      phone: d.phone || '',
+      address: d.address || '',
+      city: d.city || '',
+      specialty: d.specialty,
+      doctorCode: d.doctor_code,
+      description: d.description || '',
+      bio: d.bio || '',
+      slotDuration: d.slot_duration || 30,
+      offDays: d.off_days ? JSON.parse(d.off_days) : [],
+    });
+  } catch (error) {
+    console.error('Erreur profil médecin:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/doctor/profile - Modifier UNIQUEMENT descriptif, parcours, durée créneau, jours off
+app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
+  try {
+    const current = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
+    if (!current) return res.status(404).json({ error: 'Médecin non trouvé' });
+
+    const { description, bio, slotDuration, offDays } = req.body;
+    const dur = Number(slotDuration);
+    const newDescription = typeof description === 'string' ? description : (current.description || null);
+    const newBio = typeof bio === 'string' ? bio : (current.bio || null);
+    const newDuration = dur >= 5 && dur <= 120 ? dur : (current.slot_duration || 30);
+    const newOff = Array.isArray(offDays) ? JSON.stringify(offDays) : (current.off_days || '[]');
+
+    await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(newDescription, newBio, newDuration, newOff, req.user.id);
+
+    const d = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
+    res.json({
+      description: d.description || '',
+      bio: d.bio || '',
+      slotDuration: d.slot_duration || 30,
+      offDays: d.off_days ? JSON.parse(d.off_days) : [],
+    });
+  } catch (error) {
+    console.error('Erreur mise à jour profil médecin:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/doctor/appointments - Rendez-vous du médecin + coordonnées patients + remarques
+app.get('/api/doctor/appointments', authenticateDoctorToken, async (req, res) => {
+  try {
+    const rows = await db.prepare(`
+      SELECT id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, status, doctor_notes
+      FROM appointments
+      WHERE doctor_id = ?
+      ORDER BY appointment_date DESC, appointment_time DESC
+    `).all(req.user.id);
+    res.json(rows);
+  } catch (error) {
+    console.error('Erreur rendez-vous médecin:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// PATCH /api/doctor/appointments/:id/notes - Remarques privées du médecin
+app.patch('/api/doctor/appointments/:id/notes', authenticateDoctorToken, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const appt = await db.prepare('SELECT doctor_id FROM appointments WHERE id = ?').get(id);
+    if (!appt) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
+    if (appt.doctor_id !== req.user.id) return res.status(403).json({ error: 'Non autorisé' });
+    const notes = typeof req.body.notes === 'string' ? req.body.notes : null;
+    await db.prepare('UPDATE appointments SET doctor_notes = ? WHERE id = ?').run(notes, id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Erreur remarques médecin:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });

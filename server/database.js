@@ -161,6 +161,12 @@ export async function initDatabase() {
     )
   `);
 
+  // Colonnes supplémentaires (espace médecin) — sans casser l'existant
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS description TEXT");
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS bio TEXT");
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS off_days TEXT DEFAULT '[]'");
+  await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS doctor_notes TEXT");
+
   console.log('✅ Tables PostgreSQL prêtes');
 
   // Utilisateurs par défaut (admin / employés)

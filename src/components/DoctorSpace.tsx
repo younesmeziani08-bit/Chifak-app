@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, AppointmentCreate } from '../services/api';
+import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, AppointmentCreate } from '../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
   const { language } = useLanguage();
@@ -10,8 +10,21 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [doctorInfo, setDoctorInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'consultation' | 'history' | 'reviews'>('consultation');
+  const [activeTab, setActiveTab] = useState<'consultation' | 'history' | 'reviews' | 'appointments' | 'profile'>('appointments');
   const [reviews, setReviews] = useState<any[]>([]);
+
+  // Espace médecin — profil éditable + rendez-vous + remarques
+  const [docAppointments, setDocAppointments] = useState<any[]>([]);
+  const [noteEdits, setNoteEdits] = useState<Record<number, string>>({});
+  const [noteSavedId, setNoteSavedId] = useState<number | null>(null);
+  const [pDesc, setPDesc] = useState('');
+  const [pBio, setPBio] = useState('');
+  const [pDuration, setPDuration] = useState(30);
+  const [pOffDays, setPOffDays] = useState<string[]>([]);
+  const [pOffInput, setPOffInput] = useState('');
+  const [pSaving, setPSaving] = useState(false);
+  const [pSaved, setPSaved] = useState(false);
+  const [docProfile, setDocProfile] = useState<any>(null);
 
   // Consultation form state
   const [patientData, setPatientData] = useState({
@@ -44,6 +57,8 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       if (data.user?.id) {
         reviewsAPI.getForDoctor(data.user.id).then(setReviews).catch(() => setReviews([]));
       }
+      loadDoctorProfile();
+      loadDoctorAppointments();
     } catch (err: any) {
       setError(err.message || 'Erreur de connexion');
     } finally {
@@ -57,6 +72,63 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       setConsultations(data);
     } catch (err) {
       console.error('Erreur chargement consultations:', err);
+    }
+  };
+
+  const loadDoctorProfile = async () => {
+    try {
+      const p = await doctorAPI.getProfile();
+      setDocProfile(p);
+      setPDesc(p.description || '');
+      setPBio(p.bio || '');
+      setPDuration(p.slotDuration || 30);
+      setPOffDays(p.offDays || []);
+    } catch (err) {
+      console.error('Erreur chargement profil médecin:', err);
+    }
+  };
+
+  const loadDoctorAppointments = async () => {
+    try {
+      const data = await doctorAPI.getAppointments();
+      setDocAppointments(Array.isArray(data) ? data : []);
+      const edits: Record<number, string> = {};
+      (data || []).forEach((a: any) => { edits[a.id] = a.doctor_notes || ''; });
+      setNoteEdits(edits);
+    } catch (err) {
+      console.error('Erreur chargement rendez-vous médecin:', err);
+    }
+  };
+
+  const handleProfileSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPSaving(true);
+    setPSaved(false);
+    try {
+      await doctorAPI.updateProfile({ description: pDesc, bio: pBio, slotDuration: pDuration, offDays: pOffDays });
+      setPSaved(true);
+    } catch (err: any) {
+      setError(err.message || 'Erreur');
+    } finally {
+      setPSaving(false);
+    }
+  };
+
+  const addOffDay = () => {
+    if (pOffInput && !pOffDays.includes(pOffInput)) {
+      setPOffDays([...pOffDays, pOffInput].sort());
+      setPOffInput('');
+    }
+  };
+  const removeOffDay = (d: string) => setPOffDays(pOffDays.filter((x) => x !== d));
+
+  const saveNote = async (id: number) => {
+    try {
+      await doctorAPI.saveNotes(id, noteEdits[id] || '');
+      setNoteSavedId(id);
+      setTimeout(() => setNoteSavedId((cur) => (cur === id ? null : cur)), 2000);
+    } catch (err: any) {
+      window.alert(err.message || 'Erreur');
     }
   };
 
@@ -231,20 +303,20 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
         {/* Onglets */}
         <div className="flex bg-white rounded-xl p-1 shadow-sm mb-8">
           <button
-            onClick={() => setActiveTab('consultation')}
+            onClick={() => setActiveTab('appointments')}
             className={`flex-1 py-3 text-sm font-bold rounded-lg transition ${
-              activeTab === 'consultation' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
+              activeTab === 'appointments' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
-            {isArabic ? 'سجل متابعة جديد' : 'Nouveau suivi'}
+            {isArabic ? 'المواعيد' : 'Rendez-vous'}
           </button>
           <button
-            onClick={() => setActiveTab('history')}
+            onClick={() => setActiveTab('profile')}
             className={`flex-1 py-3 text-sm font-bold rounded-lg transition ${
-              activeTab === 'history' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
+              activeTab === 'profile' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
-            {isArabic ? 'تاريخ المعاينات' : 'Historique'}
+            {isArabic ? 'ملفي' : 'Mon profil'}
           </button>
           <button
             onClick={() => setActiveTab('reviews')}
@@ -256,7 +328,127 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           </button>
         </div>
 
-        {activeTab === 'consultation' ? (
+        {activeTab === 'appointments' ? (
+          /* ── Rendez-vous : coordonnées patients + remarques ── */
+          <div className="space-y-4">
+            {docAppointments.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
+                <span className="text-5xl block mb-4">📅</span>
+                <p className="text-gray-500 font-medium">{isArabic ? 'لا مواعيد محجوزة' : 'Aucun rendez-vous réservé'}</p>
+              </div>
+            ) : (
+              docAppointments.map((a) => (
+                <div key={a.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-bold text-gray-900">{a.patient_name}</div>
+                      <div className="text-sm text-gray-500 mt-1 space-y-0.5">
+                        <div>📞 {a.patient_phone}</div>
+                        <div>✉️ {a.patient_email}</div>
+                        {a.reason && <div>📝 {a.reason}</div>}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-blue-700">{a.appointment_date}</div>
+                      <div className="text-sm text-gray-500">{a.appointment_time}</div>
+                      <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${a.status === 'cancelled' ? 'bg-red-50 text-red-600' : a.status === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-green-50 text-green-700'}`}>
+                        {a.status === 'cancelled' ? (isArabic ? 'ملغى' : 'Annulé') : a.status === 'completed' ? (isArabic ? 'منتهٍ' : 'Terminé') : (isArabic ? 'مؤكد' : 'Confirmé')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      {isArabic ? 'ملاحظاتي (للزيارة القادمة)' : 'Mes remarques (pour la prochaine visite)'}
+                    </label>
+                    <textarea
+                      value={noteEdits[a.id] || ''}
+                      onChange={(e) => setNoteEdits({ ...noteEdits, [a.id]: e.target.value })}
+                      rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={isArabic ? 'اكتب ملاحظاتك…' : 'Notez vos observations…'}
+                    />
+                    <div className="flex items-center gap-2 mt-2">
+                      <button type="button" onClick={() => saveNote(a.id)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition">
+                        {isArabic ? 'حفظ' : 'Enregistrer'}
+                      </button>
+                      {noteSavedId === a.id && <span className="text-green-600 text-sm font-medium">✓ {isArabic ? 'تم الحفظ' : 'Enregistré'}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : activeTab === 'profile' ? (
+          /* ── Mon profil ── */
+          <form onSubmit={handleProfileSave} className="space-y-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+              <h3 className="font-bold text-gray-900 mb-4">{isArabic ? 'المعلومات (غير قابلة للتعديل)' : 'Coordonnées (non modifiables)'}</h3>
+              <div className="grid sm:grid-cols-2 gap-4 text-sm">
+                {[
+                  { l: isArabic ? 'الاسم' : 'Nom', v: docProfile?.name },
+                  { l: isArabic ? 'التخصص' : 'Spécialité', v: docProfile?.specialty },
+                  { l: isArabic ? 'الهاتف' : 'Téléphone', v: docProfile?.phone },
+                  { l: 'Email', v: docProfile?.email },
+                  { l: isArabic ? 'العنوان' : 'Adresse', v: `${docProfile?.address || ''}${docProfile?.city ? ', ' + docProfile.city : ''}` },
+                ].map((f, i) => (
+                  <div key={i}>
+                    <div className="text-xs text-gray-400 mb-1">{f.l}</div>
+                    <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-600">{f.v || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{isArabic ? 'وصف العلاجات المقترحة' : 'Descriptif des soins proposés'}</label>
+                <textarea value={pDesc} onChange={(e) => setPDesc(e.target.value)} rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder={isArabic ? 'مثال: استشارات عامة، متابعة…' : 'Ex : consultations générales, suivi, vaccinations…'} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{isArabic ? 'مساري المهني' : 'Mon parcours'}</label>
+                <textarea value={pBio} onChange={(e) => setPBio(e.target.value)} rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder={isArabic ? 'الدراسات، الخبرة، التخصصات…' : 'Études, expérience, spécialisations…'} />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{isArabic ? 'مدة الموعد (دقائق)' : "Durée d'un créneau (minutes)"}</label>
+                <select value={pDuration} onChange={(e) => setPDuration(Number(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                  {[15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m} min</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">{isArabic ? 'أيام عدم التوفر' : "Jours d'indisponibilité"}</label>
+                <div className="flex gap-2">
+                  <input type="date" min={new Date().toISOString().split('T')[0]} value={pOffInput} onChange={(e) => setPOffInput(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+                  <button type="button" onClick={addOffDay} className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50">
+                    {isArabic ? 'إضافة' : 'Ajouter'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {pOffDays.length === 0 && <span className="text-sm text-gray-400">{isArabic ? 'لا شيء' : 'Aucun'}</span>}
+                  {pOffDays.map((d) => (
+                    <span key={d} className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 text-sm px-3 py-1 rounded-full">
+                      {d}
+                      <button type="button" onClick={() => removeOffDay(d)} className="hover:text-red-900" aria-label="retirer">×</button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {pSaved && <p className="text-green-600 text-sm font-medium">✓ {isArabic ? 'تم حفظ التغييرات' : 'Modifications enregistrées'}</p>}
+            <button type="submit" disabled={pSaving} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold shadow hover:bg-blue-700 disabled:opacity-50 transition">
+              {pSaving ? (isArabic ? 'جاري الحفظ…' : 'Enregistrement…') : (isArabic ? 'حفظ' : 'Enregistrer')}
+            </button>
+          </form>
+        ) : activeTab === 'consultation' ? (
           <form onSubmit={handleConsultationSubmit} className="space-y-8">
             {/* Section Patient */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">

@@ -97,6 +97,7 @@ function expandSlots(slots: string[], duration?: number): string[] {
 
 function slotsForDay(doctor: Doctor, iso: string): string[] {
   if (!workingDaysOf(doctor).includes(weekdayOf(iso))) return [];
+  if (doctor.offDays && doctor.offDays.includes(iso)) return []; // jour d'indisponibilité posé par le médecin
   return expandSlots(doctor.availableSlots || [], doctor.slotDuration);
 }
 
