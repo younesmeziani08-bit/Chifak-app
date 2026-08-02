@@ -35,8 +35,9 @@ export default function ConfirmationPage({ booking, onBackToHome, onOpenProfessi
     <div className="relative min-h-screen bg-[#f8fafc] overflow-hidden" dir={isArabic ? 'rtl' : 'ltr'}>
       <FloatingShapes variant="soft" />
       <div className="relative z-10">
-      <Header 
+      <Header
         onHomeClick={onBackToHome}
+        onBack={onBackToHome}
         onOpenProfessional={onOpenProfessional}
         onOpenLogin={onOpenLogin}
         onOpenSignup={onOpenSignup}

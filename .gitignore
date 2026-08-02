@@ -31,3 +31,4 @@ Thumbs.db
 # Fichiers temporaires FUSE
 .fuse_hidden*
 server/.fuse_hidden*
+.claude/

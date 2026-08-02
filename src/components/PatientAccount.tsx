@@ -204,6 +204,7 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
     <div className="min-h-screen bg-gray-50" dir={isArabic ? 'rtl' : 'ltr'}>
       <Header
         onHomeClick={onBackToHome}
+        onBack={onBackToHome}
         onDoctorClick={onDoctorClick}
         onOpenProfessional={onOpenProfessional}
         patientUser={patientUser}

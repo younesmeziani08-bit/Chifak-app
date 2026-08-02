@@ -4,6 +4,9 @@ import { useLanguage } from '../contexts/LanguageContext';
 
 interface LocationSelectorProps {
   onLocationChange: (location: string) => void;
+  onWilayaChange?: (wilaya: { code: number; name: string; nameAr: string } | null) => void;
+  onDairaChange?: (daira: { name: string; communes: string[] } | null) => void;
+  onCommuneChange?: (name: string | null) => void;
   showWilayaLabel?: boolean;
   selectVariant?: 'default' | 'hero';
 }
@@ -28,6 +31,9 @@ interface Commune {
 
 export default function LocationSelector({
   onLocationChange,
+  onWilayaChange,
+  onDairaChange,
+  onCommuneChange,
   showWilayaLabel = true,
   selectVariant = 'default',
 }: LocationSelectorProps) {
@@ -98,17 +104,28 @@ export default function LocationSelector({
     setSelectedWilaya(wilaya);
     setSelectedDaira(null);
     setSelectedCommune(null);
+    onWilayaChange?.(wilaya ? { code: wilaya.code, name: wilaya.name, nameAr: wilaya.nameAr } : null);
+    onDairaChange?.(null);
+    onCommuneChange?.(null);
   };
 
   const handleDairaChange = (dairaId: string) => {
     const daira = dairas.find(d => String(d.id) === dairaId) || null;
     setSelectedDaira(daira);
     setSelectedCommune(null);
+    if (daira) {
+      const list = (leblad as any).getBaladyiatsForDairaCode?.(daira.id, ['name']) || [];
+      onDairaChange?.({ name: daira.name, communes: list.map((c: any) => c.name).filter(Boolean) });
+    } else {
+      onDairaChange?.(null);
+    }
+    onCommuneChange?.(null);
   };
 
   const handleCommuneChange = (communeId: string) => {
     const commune = communes.find(c => String(c.id) === communeId) || null;
     setSelectedCommune(commune);
+    onCommuneChange?.(commune ? commune.name : null);
   };
 
   return (

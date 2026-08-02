@@ -15,6 +15,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
 
   // Espace médecin — profil éditable + rendez-vous + remarques
   const [docAppointments, setDocAppointments] = useState<any[]>([]);
+  const [apptSearch, setApptSearch] = useState('');
   const [noteEdits, setNoteEdits] = useState<Record<number, string>>({});
   const [noteSavedId, setNoteSavedId] = useState<number | null>(null);
   const [pDesc, setPDesc] = useState('');
@@ -131,6 +132,16 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       window.alert(err.message || 'Erreur');
     }
   };
+
+  const filteredAppointments = docAppointments.filter((a) => {
+    const q = apptSearch.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      (a.patient_name || '').toLowerCase().includes(q) ||
+      (a.patient_phone || '').toLowerCase().includes(q) ||
+      (a.patient_email || '').toLowerCase().includes(q)
+    );
+  });
 
   // Fetch doctor slots for next appointment
   useEffect(() => {
@@ -331,13 +342,24 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
         {activeTab === 'appointments' ? (
           /* ── Rendez-vous : coordonnées patients + remarques ── */
           <div className="space-y-4">
+            <input
+              type="text"
+              value={apptSearch}
+              onChange={(e) => setApptSearch(e.target.value)}
+              placeholder={isArabic ? 'ابحث عن مريض (اسم، هاتف، بريد)…' : 'Rechercher un patient (nom, téléphone, email)…'}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
             {docAppointments.length === 0 ? (
               <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
                 <span className="text-5xl block mb-4">📅</span>
                 <p className="text-gray-500 font-medium">{isArabic ? 'لا مواعيد محجوزة' : 'Aucun rendez-vous réservé'}</p>
               </div>
+            ) : filteredAppointments.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+                <p className="text-gray-500 font-medium">{isArabic ? 'لا يوجد مريض مطابق' : 'Aucun patient trouvé'}</p>
+              </div>
             ) : (
-              docAppointments.map((a) => (
+              filteredAppointments.map((a) => (
                 <div key={a.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>

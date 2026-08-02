@@ -170,6 +170,7 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
     <div className="min-h-screen bg-gray-50" dir={isArabic ? 'rtl' : 'ltr'}>
       <Header
         onHomeClick={onBackToHome}
+        onBack={onBackToHome}
         onDoctorClick={onDoctorClick}
         onOpenLogin={onOpenLogin}
         onOpenSignup={onOpenSignup}

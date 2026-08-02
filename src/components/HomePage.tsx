@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import Header from './Header';
 import LocationSelector from './LocationSelector';
+import AlgeriaMap from './AlgeriaMap';
 import LogoMark from './LogoMark';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -58,6 +59,41 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
   const [specialty, setSpecialty] = useState('');
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
+  const [selectedWilaya, setSelectedWilaya] = useState<{ code: number; name: string; nameAr: string } | null>(null);
+  const [selectedDaira, setSelectedDaira] = useState<{ name: string; communes: string[] } | null>(null);
+  const [selectedCommune, setSelectedCommune] = useState<string | null>(null);
+  const [communeCoords, setCommuneCoords] = useState<Record<string, [number, number]>>({});
+
+  useEffect(() => {
+    fetch('/algeria-communes.json')
+      .then((r) => (r.ok ? r.json() : {}))
+      .then(setCommuneCoords)
+      .catch(() => {});
+  }, []);
+
+  const normPlace = (s: string) =>
+    (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '').trim();
+
+  const mapPin = useMemo(() => {
+    if (selectedCommune) {
+      const c = communeCoords[normPlace(selectedCommune)];
+      return c ? { lat: c[0], lng: c[1] } : null;
+    }
+    if (selectedDaira) {
+      // Position de la daïra = moyenne des coordonnées de ses communes trouvées
+      const pts = selectedDaira.communes
+        .map((n) => communeCoords[normPlace(n)])
+        .filter(Boolean) as [number, number][];
+      if (pts.length) {
+        const lat = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+        const lng = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+        return { lat, lng };
+      }
+      const seat = communeCoords[normPlace(selectedDaira.name)];
+      return seat ? { lat: seat[0], lng: seat[1] } : null;
+    }
+    return null;
+  }, [selectedCommune, selectedDaira, communeCoords]);
   const isArabic = language === 'ar';
   const todayISO = new Date().toISOString().split('T')[0];
 
@@ -196,7 +232,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                       <label className="block text-[11px] font-bold uppercase tracking-widest mb-1.5 px-1" style={{ color: 'var(--ink-3)' }}>
                         {isArabic ? 'المكان' : 'Où ?'}
                       </label>
-                      <LocationSelector onLocationChange={setLocation} showWilayaLabel={false} selectVariant="hero" />
+                      <LocationSelector onLocationChange={setLocation} onWilayaChange={setSelectedWilaya} onDairaChange={setSelectedDaira} onCommuneChange={setSelectedCommune} showWilayaLabel={false} selectVariant="hero" />
                     </div>
                   </div>
 
@@ -258,61 +294,18 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                   zIndex: 0,
                 }}
               />
-              <div className="relative rounded-3xl overflow-hidden" style={{ boxShadow: '0 24px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08)', zIndex: 1 }}>
-                <img
-                  src="https://images.pexels.com/photos/5452201/pexels-photo-5452201.jpeg?auto=compress&cs=tinysrgb&w=900&h=1100&fit=crop"
-                  alt={isArabic ? 'طبيب متخصص في عيادة حديثة' : 'Médecin spécialiste dans une clinique moderne'}
-                  loading="lazy"
-                  className="w-full h-72 sm:h-96 lg:h-[500px] object-cover object-top"
-                  style={{ background: 'var(--bg-2)' }}
+              <div className="relative" style={{ zIndex: 1 }}>
+                <AlgeriaMap
+                  selectedCode={selectedWilaya?.code}
+                  selectedNames={selectedWilaya ? [selectedWilaya.name, selectedWilaya.nameAr] : []}
+                  pin={mapPin}
+                  pinScale={selectedCommune ? 16 : 9}
                 />
-                <div className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
-                  style={{ background: 'linear-gradient(to top, rgba(0,20,50,0.32), transparent)' }} />
+                <p className="text-center text-xs mt-2" style={{ color: 'var(--ink-2)' }}>
+                  {isArabic ? 'اختر ولاية لعرضها على الخريطة' : 'Choisissez une wilaya pour la voir sur la carte'}
+                </p>
               </div>
 
-              {/* RDV badge */}
-              <div
-                className="absolute top-4 ltr:left-4 rtl:right-4 flex items-center gap-2 rounded-full ltr:pl-2 ltr:pr-4 rtl:pr-2 rtl:pl-4 py-1.5"
-                style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-md)', border: '1px solid rgba(0,0,0,0.06)' }}
-              >
-                <span className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'var(--success)' }}>
-                  <Icon name="check" className="w-3 h-3 text-white" strokeWidth={3} />
-                </span>
-                <span className="text-xs font-semibold" style={{ color: 'var(--ink)' }}>
-                  {isArabic ? 'تم تأكيد الموعد' : 'RDV confirmé'}
-                </span>
-              </div>
-
-              {/* Doctor availability card */}
-              <div
-                className="hidden sm:block absolute bottom-4 ltr:left-4 rtl:right-4 rounded-2xl p-4"
-                style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-lg)', border: '1px solid rgba(0,0,0,0.06)', width: '220px' }}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-                    style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                    AB
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold leading-tight" style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                      Dr Amina Benali
-                    </div>
-                    <div className="text-xs mt-0.5" style={{ color: 'var(--ink-2)' }}>
-                      {isArabic ? 'أخصائية القلب' : 'Cardiologue'}
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {[isArabic ? 'اليوم 14:30' : 'Auj. 14:30', isArabic ? 'غدًا 09:00' : 'Dem. 09:00'].map((slot) => (
-                    <div key={slot}
-                      className="text-center text-xs font-semibold rounded-xl py-1.5"
-                      style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid rgba(0,102,204,0.12)' }}>
-                      {slot}
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         </div>

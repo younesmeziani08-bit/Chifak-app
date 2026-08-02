@@ -14,6 +14,7 @@ interface HeaderProps {
   onOpenLogin?: () => void;
   onOpenSignup?: () => void;
   onOpenAccount?: () => void;
+  onBack?: () => void;
   patientUser?: { id: number; name: string; email: string } | null;
   onLogout?: () => void;
 }
@@ -33,6 +34,7 @@ export default function Header({
   onOpenLogin,
   onOpenSignup,
   onOpenAccount,
+  onBack,
   patientUser,
   onLogout,
 }: HeaderProps) {
@@ -72,7 +74,21 @@ export default function Header({
       <div className="max-w-7xl mx-auto px-5 sm:px-8">
         <div className="flex items-center justify-between" style={{ height: '56px' }}>
 
-          {/* Logo */}
+          {/* Retour + Logo */}
+          <div className="flex items-center gap-2">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label={isArabic ? 'رجوع' : 'Retour'}
+              title={isArabic ? 'رجوع' : 'Retour'}
+              className="flex items-center justify-center w-9 h-9 rounded-full border border-gray-200 text-gray-600 hover:text-blue-600 hover:border-blue-300 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d={isArabic ? 'M9 5l7 7-7 7' : 'M15 19l-7-7 7-7'} />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             onClick={onHomeClick}
@@ -91,6 +107,7 @@ export default function Header({
               chifak
             </span>
           </button>
+          </div>
 
           {/* Desktop nav */}
           <nav className="hidden lg:flex items-center gap-7">
