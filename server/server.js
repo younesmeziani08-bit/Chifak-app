@@ -98,6 +98,48 @@ const authenticateDoctorToken = (req, res, next) => {
   });
 };
 
+// ==================== MOT DE PASSE : VALIDATION ====================
+
+// Distance de Levenshtein (nb minimal d'éditions entre deux chaînes)
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  const prev = Array.from({ length: n + 1 }, (_, i) => i);
+  const cur = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = cur[j];
+  }
+  return prev[n];
+}
+
+// Règles de robustesse du nouveau mot de passe
+function passwordStrengthError(pwd) {
+  if (!pwd || pwd.length < 8) return 'Le mot de passe doit contenir au moins 8 caractères.';
+  if (!/[A-Za-z]/.test(pwd) || !/[0-9]/.test(pwd)) return 'Le mot de passe doit contenir des lettres et des chiffres.';
+  return null;
+}
+
+// Le nouveau mot de passe ne doit pas ressembler à l'ancien
+function isTooSimilar(oldPwd, newPwd) {
+  if (!oldPwd) return false;
+  const a = String(oldPwd).toLowerCase();
+  const b = String(newPwd).toLowerCase();
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true; // l'un contient l'autre
+  const dist = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  // Trop proche si peu d'éditions séparent les deux mots de passe
+  if (dist <= 3) return true;
+  if (dist / maxLen < 0.34) return true; // moins d'un tiers de différence
+  return false;
+}
+
 // ==================== ROUTES AUTH ====================
 
 // POST /api/auth/login - Connexion employé
@@ -141,10 +183,10 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// POST /api/auth/login-doctor - Connexion médecin avec code spécial
+// POST /api/auth/login-doctor - Connexion médecin (code + mot de passe)
 app.post('/api/auth/login-doctor', async (req, res) => {
   try {
-    const { doctorCode } = req.body;
+    const { doctorCode, password } = req.body;
 
     if (!doctorCode) {
       return res.status(400).json({ error: 'Code médecin requis' });
@@ -154,6 +196,17 @@ app.post('/api/auth/login-doctor', async (req, res) => {
 
     if (!doctor) {
       return res.status(401).json({ error: 'Code médecin invalide' });
+    }
+
+    // Si un mot de passe a été défini par l'admin, il est obligatoire
+    if (doctor.password) {
+      if (!password) {
+        return res.status(401).json({ error: 'Mot de passe requis' });
+      }
+      const ok = bcrypt.compareSync(password, doctor.password);
+      if (!ok) {
+        return res.status(401).json({ error: 'Mot de passe incorrect' });
+      }
     }
 
     const token = jwt.sign(
@@ -168,10 +221,62 @@ app.post('/api/auth/login-doctor', async (req, res) => {
         id: doctor.id,
         name: doctor.name,
         type: 'doctor'
-      }
+      },
+      mustChangePassword: !!doctor.must_change_password
     });
   } catch (error) {
     console.error('Erreur login médecin:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/doctor/change-password - Le médecin change son mot de passe (obligatoire à la 1re connexion)
+app.post('/api/doctor/change-password', authenticateDoctorToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!newPassword) {
+      return res.status(400).json({ error: 'Nouveau mot de passe requis' });
+    }
+
+    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
+    if (!doctor) {
+      return res.status(404).json({ error: 'Médecin non trouvé' });
+    }
+
+    // Si un mot de passe existe déjà, vérifier l'actuel
+    if (doctor.password) {
+      if (!currentPassword) {
+        return res.status(400).json({ error: 'Mot de passe actuel requis' });
+      }
+      if (!bcrypt.compareSync(currentPassword, doctor.password)) {
+        return res.status(401).json({ error: 'Mot de passe actuel incorrect' });
+      }
+    }
+
+    // Robustesse
+    const strengthErr = passwordStrengthError(newPassword);
+    if (strengthErr) {
+      return res.status(400).json({ error: strengthErr });
+    }
+
+    // Le nouveau mot de passe ne doit pas ressembler à l'ancien
+    const reference = currentPassword || doctor.password_plain || '';
+    if (doctor.password && currentPassword && isTooSimilar(currentPassword, newPassword)) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe est trop proche de l\'ancien. Choisissez-en un différent.' });
+    }
+    // (garde-fou supplémentaire si l'ancien clair n'est pas disponible)
+    if (reference && isTooSimilar(reference, newPassword)) {
+      return res.status(400).json({ error: 'Le nouveau mot de passe est trop proche de l\'ancien. Choisissez-en un différent.' });
+    }
+
+    const hashed = bcrypt.hashSync(newPassword, 10);
+    await db.prepare('UPDATE doctors SET password = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(hashed, req.user.id);
+
+    res.json({ message: 'Mot de passe mis à jour avec succès' });
+  } catch (error) {
+    console.error('Erreur changement mot de passe médecin:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
@@ -555,6 +660,8 @@ app.get('/api/doctors', async (req, res) => {
     // Parser les available_slots (JSON string vers array)
     const doctorsWithParsedSlots = doctors.map(doctor => ({
       ...doctor,
+      password: undefined, // ne jamais exposer le hash
+      hasPassword: !!doctor.password,
       availableSlots: JSON.parse(doctor.available_slots),
       nextAvailable: doctor.next_available,
       slotDuration: doctor.slot_duration || 30,
@@ -582,6 +689,8 @@ app.get('/api/doctors/:id', async (req, res) => {
 
     const doctorWithParsedSlots = {
       ...doctor,
+      password: undefined, // ne jamais exposer le hash
+      hasPassword: !!doctor.password,
       availableSlots: JSON.parse(doctor.available_slots),
       nextAvailable: doctor.next_available,
       slotDuration: doctor.slot_duration || 30,
@@ -601,7 +710,7 @@ app.get('/api/doctors/:id', async (req, res) => {
 // POST /api/doctors - Créer un médecin (authentification requise)
 app.post('/api/doctors', authenticateToken, async (req, res) => {
   try {
-    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl } = req.body;
+    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password } = req.body;
 
     if (!name || !specialty || !address || !city) {
       return res.status(400).json({ error: 'Champs requis manquants' });
@@ -610,9 +719,13 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
     const slots = JSON.stringify(availableSlots || ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00']);
     const serializedWorkingDays = JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5]);
 
+    // Mot de passe défini par l'admin : haché + changement obligatoire à la 1re connexion
+    const hashedPassword = password ? bcrypt.hashSync(password, 10) : null;
+    const mustChange = password ? 1 : 0;
+
     const result = await db.prepare(`
-      INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, available_slots, next_available, slot_duration, working_days, latitude, longitude, maps_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, available_slots, next_available, slot_duration, working_days, latitude, longitude, maps_url, password, must_change_password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       name,
       specialty,
@@ -628,13 +741,17 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
       serializedWorkingDays,
       latitude || null,
       longitude || null,
-      mapsUrl || null
+      mapsUrl || null,
+      hashedPassword,
+      mustChange
     );
 
     const newDoctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(result.lastInsertRowid);
 
     res.status(201).json({
       ...newDoctor,
+      password: undefined,
+      hasPassword: !!newDoctor.password,
       availableSlots: JSON.parse(newDoctor.available_slots),
       nextAvailable: newDoctor.next_available,
       slotDuration: newDoctor.slot_duration || 30,
@@ -649,7 +766,7 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
 // PUT /api/doctors/:id - Modifier un médecin (authentification requise)
 app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
   try {
-    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl } = req.body;
+    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password } = req.body;
 
     const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 
@@ -663,10 +780,14 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
         ? JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5])
         : doctor.working_days;
 
+    // Réinitialisation du mot de passe par l'admin : haché + changement obligatoire à la prochaine connexion
+    const newHashed = password ? bcrypt.hashSync(password, 10) : doctor.password;
+    const mustChange = password ? 1 : (doctor.must_change_password || 0);
+
     await db.prepare(`
-      UPDATE doctors 
+      UPDATE doctors
       SET name = ?, specialty = ?, address = ?, city = ?, phone = ?, email = ?, doctor_code = ?,
-          image = ?, available_slots = ?, next_available = ?, slot_duration = ?, working_days = ?, latitude = ?, longitude = ?, maps_url = ?, updated_at = CURRENT_TIMESTAMP
+          image = ?, available_slots = ?, next_available = ?, slot_duration = ?, working_days = ?, latitude = ?, longitude = ?, maps_url = ?, password = ?, must_change_password = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       name || doctor.name,
@@ -684,6 +805,8 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
       latitude !== undefined ? latitude : doctor.latitude,
       longitude !== undefined ? longitude : doctor.longitude,
       mapsUrl !== undefined ? mapsUrl : doctor.maps_url,
+      newHashed,
+      mustChange,
       req.params.id
     );
 
@@ -691,6 +814,8 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
 
     res.json({
       ...updatedDoctor,
+      password: undefined,
+      hasPassword: !!updatedDoctor.password,
       availableSlots: JSON.parse(updatedDoctor.available_slots),
       nextAvailable: updatedDoctor.next_available,
       slotDuration: updatedDoctor.slot_duration || 30,

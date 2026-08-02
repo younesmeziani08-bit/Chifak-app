@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import leblad from '@dzcode-io/leblad';
 import { useLanguage } from '../contexts/LanguageContext';
 
@@ -88,16 +88,21 @@ export default function LocationSelector({
       .sort((a: Commune, b: Commune) => a.name.localeCompare(b.name));
   }, [selectedDaira]);
 
+  // On garde une référence stable de la callback pour éviter que sa recréation
+  // à chaque frappe du parent ne relance cet effet (boucle de re-rendu qui figeait le formulaire).
+  const onLocationChangeRef = useRef(onLocationChange);
+  useEffect(() => { onLocationChangeRef.current = onLocationChange; }, [onLocationChange]);
+
   useEffect(() => {
     if (selectedCommune && selectedWilaya) {
       const communeName = isArabic ? selectedCommune.nameAr : selectedCommune.name;
       const wilayaName = isArabic ? selectedWilaya.nameAr : selectedWilaya.name;
-      onLocationChange(`${communeName}, ${wilayaName}`);
+      onLocationChangeRef.current(`${communeName}, ${wilayaName}`);
     } else if (selectedWilaya && !selectedDaira) {
       const wilayaName = isArabic ? selectedWilaya.nameAr : selectedWilaya.name;
-      onLocationChange(wilayaName);
+      onLocationChangeRef.current(wilayaName);
     }
-  }, [selectedCommune, selectedWilaya, selectedDaira, isArabic, onLocationChange]);
+  }, [selectedCommune, selectedWilaya, selectedDaira, isArabic]);
 
   const handleWilayaChange = (wilayaCode: string) => {
     const wilaya = wilayas.find(w => String(w.code) === wilayaCode) || null;

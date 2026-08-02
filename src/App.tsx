@@ -26,6 +26,7 @@ export interface Doctor {
   reviewCount: number;
   image: string;
   doctorCode?: string;
+  hasPassword?: boolean;
   availableSlots: string[];
   nextAvailable: string;
   slotDuration?: number;

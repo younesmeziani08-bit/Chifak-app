@@ -38,6 +38,8 @@ const normalizeDoctor = (doctor: any): Doctor => ({
   rating: Number(doctor.rating ?? 5),
   reviewCount: Number(doctor.reviewCount ?? doctor.review_count ?? 0),
   image: doctor.image || '👨‍⚕️',
+  doctorCode: doctor.doctorCode || doctor.doctor_code,
+  hasPassword: doctor.hasPassword ?? !!doctor.password,
   availableSlots: doctor.availableSlots || [],
   nextAvailable: doctor.nextAvailable || doctor.next_available || 'Disponible maintenant',
   slotDuration: Number(doctor.slotDuration ?? doctor.slot_duration ?? 30),

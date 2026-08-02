@@ -165,6 +165,8 @@ export async function initDatabase() {
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS description TEXT");
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS bio TEXT");
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS off_days TEXT DEFAULT '[]'");
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS password TEXT");
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS must_change_password INTEGER DEFAULT 0");
   await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS doctor_notes TEXT");
 
   console.log('✅ Tables PostgreSQL prêtes');

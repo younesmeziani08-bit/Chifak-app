@@ -7,9 +7,17 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const isArabic = language === 'ar';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [doctorCode, setDoctorCode] = useState('');
+  const [password, setPassword] = useState('');
   const [doctorInfo, setDoctorInfo] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Changement de mot de passe obligatoire (1re connexion)
+  const [mustChange, setMustChange] = useState(false);
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdError, setPwdError] = useState('');
+  const [pwdLoading, setPwdLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'consultation' | 'history' | 'reviews' | 'appointments' | 'profile'>('appointments');
   const [reviews, setReviews] = useState<any[]>([]);
 
@@ -46,24 +54,89 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [consultations, setConsultations] = useState<any[]>([]);
 
   // Login handler
+  const enterSpace = (user: any) => {
+    setDoctorInfo(user);
+    setIsAuthenticated(true);
+    fetchConsultations();
+    if (user?.id) {
+      reviewsAPI.getForDoctor(user.id).then(setReviews).catch(() => setReviews([]));
+    }
+    loadDoctorProfile();
+    loadDoctorAppointments();
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const data = await doctorAuthAPI.login(doctorCode);
-      setDoctorInfo(data.user);
-      setIsAuthenticated(true);
-      fetchConsultations();
-      if (data.user?.id) {
-        reviewsAPI.getForDoctor(data.user.id).then(setReviews).catch(() => setReviews([]));
+      const data = await doctorAuthAPI.login(doctorCode, password);
+      if (data.mustChangePassword) {
+        // On garde le token (stocké par login) mais on bloque l'accès tant que le mdp n'est pas changé
+        setDoctorInfo(data.user);
+        setMustChange(true);
+      } else {
+        enterSpace(data.user);
       }
-      loadDoctorProfile();
-      loadDoctorAppointments();
     } catch (err: any) {
       setError(err.message || 'Erreur de connexion');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Vérif locale : le nouveau mdp ne doit pas ressembler à l'ancien
+  const tooSimilar = (oldP: string, newP: string) => {
+    if (!oldP) return false;
+    const a = oldP.toLowerCase(), b = newP.toLowerCase();
+    if (a === b) return true;
+    if (a.includes(b) || b.includes(a)) return true;
+    // distance de Levenshtein
+    const m = a.length, n = b.length;
+    const prev = Array.from({ length: n + 1 }, (_, i) => i);
+    const cur = new Array(n + 1).fill(0);
+    for (let i = 1; i <= m; i++) {
+      cur[0] = i;
+      for (let j = 1; j <= n; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      }
+      for (let j = 0; j <= n; j++) prev[j] = cur[j];
+    }
+    const dist = prev[n];
+    const maxLen = Math.max(m, n);
+    return dist <= 3 || dist / maxLen < 0.34;
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwdError('');
+    if (newPwd.length < 8 || !/[A-Za-z]/.test(newPwd) || !/[0-9]/.test(newPwd)) {
+      setPwdError(isArabic
+        ? 'يجب أن تحتوي كلمة المرور على 8 أحرف على الأقل مع حروف وأرقام.'
+        : 'Le mot de passe doit contenir au moins 8 caractères avec lettres et chiffres.');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdError(isArabic ? 'كلمتا المرور غير متطابقتين.' : 'Les deux mots de passe ne correspondent pas.');
+      return;
+    }
+    if (tooSimilar(password, newPwd)) {
+      setPwdError(isArabic
+        ? 'كلمة المرور الجديدة قريبة جدًا من القديمة. اختر كلمة مختلفة.'
+        : 'Le nouveau mot de passe est trop proche de l\'ancien. Choisissez-en un différent.');
+      return;
+    }
+    setPwdLoading(true);
+    try {
+      await doctorAuthAPI.changePassword(password, newPwd);
+      setMustChange(false);
+      setNewPwd(''); setConfirmPwd(''); setPassword('');
+      enterSpace(doctorInfo);
+    } catch (err: any) {
+      setPwdError(err.message || 'Erreur lors du changement de mot de passe');
+    } finally {
+      setPwdLoading(false);
     }
   };
 
@@ -222,6 +295,84 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
     }
   };
 
+  // Écran obligatoire : changer le mot de passe à la première connexion
+  if (mustChange) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" dir={isArabic ? 'rtl' : 'ltr'}>
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-100 rounded-full mb-4">
+              <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900">
+              {isArabic ? 'تغيير كلمة المرور' : 'Changez votre mot de passe'}
+            </h2>
+            <p className="text-gray-600 mt-2 text-sm">
+              {isArabic
+                ? 'لأول اتصال، يجب عليك تعيين كلمة مرور جديدة خاصة بك.'
+                : 'Pour votre première connexion, choisissez un nouveau mot de passe personnel.'}
+            </p>
+          </div>
+
+          <form onSubmit={handleChangePassword} className="space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {isArabic ? 'كلمة المرور الجديدة' : 'Nouveau mot de passe'}
+              </label>
+              <input
+                type="password"
+                required
+                value={newPwd}
+                onChange={(e) => setNewPwd(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                placeholder="••••••••"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                {isArabic ? '8 أحرف على الأقل، حروف وأرقام، مختلفة عن القديمة.' : '8 caractères min., lettres + chiffres, différent de l\'ancien.'}
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {isArabic ? 'تأكيد كلمة المرور' : 'Confirmez le mot de passe'}
+              </label>
+              <input
+                type="password"
+                required
+                value={confirmPwd}
+                onChange={(e) => setConfirmPwd(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                placeholder="••••••••"
+              />
+            </div>
+
+            {pwdError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-lg text-sm">
+                {pwdError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={pwdLoading}
+              className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 transition transform active:scale-95 disabled:opacity-50"
+            >
+              {pwdLoading ? (isArabic ? 'جاري الحفظ...' : 'Enregistrement...') : (isArabic ? 'حفظ والمتابعة' : 'Enregistrer et continuer')}
+            </button>
+          </form>
+
+          <button
+            onClick={() => { setMustChange(false); doctorAuthAPI.logout(); setPassword(''); }}
+            className="w-full mt-4 py-3 text-gray-500 font-medium hover:text-gray-700 transition"
+          >
+            {isArabic ? 'إلغاء' : 'Annuler'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" dir={isArabic ? 'rtl' : 'ltr'}>
@@ -250,6 +401,19 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                 onChange={(e) => setDoctorCode(e.target.value.toUpperCase())}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
                 placeholder="MED-XXX"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {isArabic ? 'كلمة المرور' : 'Mot de passe'}
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
+                placeholder="••••••••"
               />
             </div>
 

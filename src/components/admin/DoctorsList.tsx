@@ -3,11 +3,35 @@ import { useDoctors } from '../../contexts/DoctorsContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function DoctorsList() {
-  const { doctors, deleteDoctor } = useDoctors();
+  const { doctors, deleteDoctor, updateDoctor } = useDoctors();
   const { language } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
 
   const isArabic = language === 'ar';
+
+  const handleResetPassword = async (id: number, name: string) => {
+    const pwd = window.prompt(
+      isArabic
+        ? `كلمة مرور جديدة للطبيب ${name} (8 أحرف على الأقل، حروف وأرقام):`
+        : `Nouveau mot de passe pour ${name} (8 caractères min., lettres + chiffres) :`
+    );
+    if (pwd === null) return; // annulé
+    if (pwd.length < 8 || !/[A-Za-z]/.test(pwd) || !/[0-9]/.test(pwd)) {
+      alert(isArabic
+        ? 'كلمة المرور يجب أن تحتوي على 8 أحرف على الأقل مع حروف وأرقام.'
+        : 'Le mot de passe doit contenir au moins 8 caractères avec lettres et chiffres.');
+      return;
+    }
+    try {
+      await updateDoctor(id, { password: pwd });
+      alert(isArabic
+        ? 'تم تعيين كلمة المرور. سيُطلب من الطبيب تغييرها عند أول اتصال.'
+        : 'Mot de passe défini. Le médecin devra le changer à sa prochaine connexion.');
+    } catch (error) {
+      alert(isArabic ? 'خطأ أثناء تعيين كلمة المرور' : 'Erreur lors de la réinitialisation');
+      console.error(error);
+    }
+  };
 
   const filteredDoctors = doctors.filter(doctor =>
     doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -95,7 +119,22 @@ export default function DoctorsList() {
                     {doctor.city}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-blue-600 font-bold">
-                    {doctor.doctorCode || '-'}
+                    <div className="flex items-center gap-2">
+                      <span>{doctor.doctorCode || '-'}</span>
+                      {doctor.hasPassword ? (
+                        <span title={isArabic ? 'كلمة المرور مُعيّنة' : 'Mot de passe défini'} className="inline-flex items-center text-green-600">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </span>
+                      ) : (
+                        <span title={isArabic ? 'بدون كلمة مرور' : 'Aucun mot de passe'} className="inline-flex items-center text-gray-300">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2M6 21h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                          </svg>
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -107,14 +146,26 @@ export default function DoctorsList() {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleDelete(doctor.id, doctor.name)}
-                      className="text-red-600 hover:text-red-900 transition"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        onClick={() => handleResetPassword(doctor.id, doctor.name)}
+                        title={isArabic ? 'إعادة تعيين كلمة المرور' : 'Réinitialiser le mot de passe'}
+                        className="text-gray-500 hover:text-blue-600 transition"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDelete(doctor.id, doctor.name)}
+                        title={isArabic ? 'حذف' : 'Supprimer'}
+                        className="text-red-600 hover:text-red-900 transition"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))

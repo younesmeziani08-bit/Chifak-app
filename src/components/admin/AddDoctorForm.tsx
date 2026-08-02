@@ -14,6 +14,7 @@ export default function AddDoctorForm() {
     phone: '',
     email: '',
     doctorCode: '',
+    password: '',
     image: '👨‍⚕️',
     slotDuration: '30',
     workingDays: [1, 2, 3, 4, 5] as number[],
@@ -91,6 +92,7 @@ export default function AddDoctorForm() {
         phone: formData.phone,
         email: formData.email,
         doctorCode: formData.doctorCode,
+        password: formData.password || undefined,
         image: formData.image,
         latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
         longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
@@ -112,6 +114,7 @@ export default function AddDoctorForm() {
         phone: '',
         email: '',
         doctorCode: '',
+        password: '',
         image: '👨‍⚕️',
         slotDuration: '30',
         workingDays: [1, 2, 3, 4, 5],
@@ -245,7 +248,7 @@ export default function AddDoctorForm() {
 
           {/* Localisation */}
           <div>
-            <LocationSelector onLocationChange={(location) => setFormData({ ...formData, city: location })} />
+            <LocationSelector onLocationChange={(location) => setFormData((prev) => ({ ...prev, city: location }))} />
           </div>
 
           {/* Téléphone */}
@@ -314,10 +317,30 @@ export default function AddDoctorForm() {
               placeholder="MED-001"
             />
             <p className="text-xs text-gray-500 mt-1">
-              {isArabic 
-                ? 'هذا الرمز سيسمح للطبيب بالوصول إلى مساحته الخاصة' 
+              {isArabic
+                ? 'هذا الرمز سيسمح للطبيب بالوصول إلى مساحته الخاصة'
                 : 'Ce code permettra au médecin d\'accéder à son espace privé'
               }
+            </p>
+          </div>
+
+          {/* Mot de passe initial */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {isArabic ? 'كلمة المرور الأولية *' : 'Mot de passe initial *'}
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
+              placeholder={isArabic ? '8 أحرف على الأقل' : '8 caractères minimum'}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              {isArabic
+                ? 'يجب على الطبيب تغييره عند أول تسجيل دخول. اختر لتره وأرقامًا (8 أحرف على الأقل).'
+                : 'Le médecin devra le changer à sa première connexion. Utilisez lettres + chiffres (8 min.).'}
             </p>
           </div>
         </div>
@@ -453,6 +476,7 @@ export default function AddDoctorForm() {
               phone: '',
               email: '',
               doctorCode: '',
+              password: '',
               image: '👨‍⚕️',
               slotDuration: '30',
               workingDays: [1, 2, 3, 4, 5],

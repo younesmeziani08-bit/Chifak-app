@@ -58,11 +58,11 @@ export const authAPI = {
 };
 
 export const doctorAuthAPI = {
-  login: async (doctorCode: string) => {
+  login: async (doctorCode: string, password?: string) => {
     const response = await fetch(`${API_URL}/auth/login-doctor`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doctorCode })
+      body: JSON.stringify({ doctorCode, password })
     });
 
     if (!response.ok) {
@@ -72,7 +72,22 @@ export const doctorAuthAPI = {
 
     const data = await response.json();
     localStorage.setItem('chifak_doctor_token', data.token);
-    return data;
+    return data; // { token, user, mustChangePassword }
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const token = localStorage.getItem('chifak_doctor_token');
+    const response = await fetch(`${API_URL}/doctor/change-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Erreur lors du changement de mot de passe');
+    }
+    return await response.json();
   },
 
   logout: () => {
@@ -90,6 +105,7 @@ export interface DoctorCreate {
   phone?: string;
   email?: string;
   doctorCode?: string;
+  password?: string;
   image?: string;
   availableSlots?: string[];
   nextAvailable?: string;
