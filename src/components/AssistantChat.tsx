@@ -131,6 +131,17 @@ export default function AssistantChat() {
     }
   };
 
+  // Position/taille du panneau. Sur mobile : petite fenêtre en bas qui remonte au-dessus du clavier.
+  const layoutH = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const panelStyle: React.CSSProperties = isMobile
+    ? (() => {
+        const visH = viewport ? viewport.height : layoutH;
+        const keyboard = viewport ? Math.max(0, layoutH - viewport.height - viewport.top) : 0;
+        const height = Math.min(Math.round(layoutH * 0.6), visH - 16);
+        return { left: '10px', right: '10px', bottom: `${keyboard + 10}px`, top: 'auto', height: `${height}px` };
+      })()
+    : ({ [isArabic ? 'left' : 'right']: '20px' } as React.CSSProperties);
+
   return (
     <div dir={isArabic ? 'rtl' : 'ltr'}>
       {/* Keyframes de flottement */}
@@ -195,16 +206,9 @@ export default function AssistantChat() {
       {/* Panneau de chat */}
       {open && (
         <div
-          className="fixed z-[95] bg-white shadow-2xl flex flex-col overflow-hidden border border-gray-100
-                     left-0 right-0 top-0 sm:left-auto sm:top-auto sm:bottom-5 sm:w-[390px] sm:h-[560px] sm:max-h-[85vh] sm:rounded-2xl"
-          style={
-            isMobile
-              ? {
-                  top: viewport ? `${viewport.top}px` : 0,
-                  height: viewport ? `${viewport.height}px` : '100dvh',
-                }
-              : ({ [isArabic ? 'left' : 'right']: '20px' } as React.CSSProperties)
-          }
+          className="fixed z-[95] bg-white shadow-2xl flex flex-col overflow-hidden border border-gray-100 rounded-2xl
+                     sm:left-auto sm:top-auto sm:bottom-5 sm:w-[390px] sm:h-[560px] sm:max-h-[85vh]"
+          style={panelStyle}
         >
           {/* En-tête */}
           <div className="flex items-center justify-between px-4 py-3 text-white" style={{ background: 'var(--accent, #0e75c4)' }}>
