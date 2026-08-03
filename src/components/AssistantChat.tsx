@@ -50,6 +50,8 @@ export default function AssistantChat() {
 
   const [open, setOpen] = useState(false);
   const [bubbleOpen, setBubbleOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
+  const [viewport, setViewport] = useState<{ height: number; top: number } | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -80,6 +82,29 @@ export default function AssistantChat() {
   }, [open]);
 
   const openChat = () => { setOpen(true); setBubbleOpen(false); };
+
+  // Détecte le mobile pour adapter la mise en page du panneau
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const onChange = () => setIsMobile(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // Suit la zone réellement visible (au-dessus du clavier) pour garder la barre d'écriture accessible
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!open || !isMobile || !vv) { setViewport(null); return; }
+    const update = () => setViewport({ height: vv.height, top: vv.offsetTop });
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, [open, isMobile]);
 
   const send = async (text: string) => {
     const content = text.trim();
@@ -171,8 +196,15 @@ export default function AssistantChat() {
       {open && (
         <div
           className="fixed z-[95] bg-white shadow-2xl flex flex-col overflow-hidden border border-gray-100
-                     inset-0 sm:inset-auto sm:bottom-5 sm:h-[560px] sm:w-[390px] sm:max-h-[85vh] sm:rounded-2xl"
-          style={{ [isArabic ? 'left' : 'right']: '20px' } as React.CSSProperties}
+                     left-0 right-0 top-0 sm:left-auto sm:top-auto sm:bottom-5 sm:w-[390px] sm:h-[560px] sm:max-h-[85vh] sm:rounded-2xl"
+          style={
+            isMobile
+              ? {
+                  top: viewport ? `${viewport.top}px` : 0,
+                  height: viewport ? `${viewport.height}px` : '100dvh',
+                }
+              : ({ [isArabic ? 'left' : 'right']: '20px' } as React.CSSProperties)
+          }
         >
           {/* En-tête */}
           <div className="flex items-center justify-between px-4 py-3 text-white" style={{ background: 'var(--accent, #0e75c4)' }}>
@@ -199,7 +231,7 @@ export default function AssistantChat() {
           </div>
 
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#f8fafc]">
+          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3 bg-[#f8fafc]">
             {/* Bulle d'accueil */}
             <div className="flex">
               <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-white border border-gray-100 px-3.5 py-2.5 text-sm text-gray-700 leading-relaxed">
