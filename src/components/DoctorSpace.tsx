@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import VideoCall from './VideoCall';
+import { slotsForDay } from '../utils/slots';
 import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, AppointmentCreate } from '../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
@@ -224,7 +225,8 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       const fetchSlots = async () => {
         try {
           const doctor = await doctorsAPI.getById(doctorInfo.id);
-          setAvailableSlots(doctor.availableSlots);
+          // Mêmes créneaux que ceux vus par le patient (durée de consultation appliquée)
+          setAvailableSlots(slotsForDay(doctor, selectedDate));
         } catch (err) {
           console.error('Erreur slots:', err);
         }
