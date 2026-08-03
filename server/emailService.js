@@ -14,14 +14,30 @@ export function isEmailConfigured() {
   );
 }
 
-// Configuration du transporteur email
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
-  }
-});
+// Adresse d'expéditeur (doit être validée chez le fournisseur, ex : Brevo/Resend)
+const FROM_ADDRESS = process.env.EMAIL_FROM || `"chifak" <${process.env.EMAIL_USER}>`;
+
+// Configuration du transporteur email.
+// Compatible avec n'importe quel fournisseur SMTP (Brevo, Resend, SendGrid, Gmail...).
+// - Avec EMAIL_HOST défini : SMTP générique (recommandé pour Brevo/Resend).
+// - Sinon : on retombe sur Gmail (dépannage).
+const transporter = process.env.EMAIL_HOST
+  ? nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT) || 587,
+      secure: process.env.EMAIL_SECURE === 'true' || Number(process.env.EMAIL_PORT) === 465,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    })
+  : nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+    });
 
 // Générer un code de vérification à 6 chiffres
 export function generateVerificationCode() {
@@ -128,7 +144,7 @@ export async function sendVerificationEmail(email, code, language = 'fr') {
   }
 
   const mailOptions = {
-    from: `"chifak" <${process.env.EMAIL_USER}>`,
+    from: FROM_ADDRESS,
     to: email,
     subject: subject,
     html: htmlContent
@@ -142,6 +158,78 @@ export async function sendVerificationEmail(email, code, language = 'fr') {
     console.error('❌ Erreur envoi email:', error);
     console.log(`\n📧 [FALLBACK DÉMO] Code de vérification pour ${email}: ${code}\n`);
     return true;
+  }
+}
+
+// Envoyer au médecin l'agenda du jour (créneaux réservés + créneaux libres)
+export async function sendDoctorDailyAgenda(email, doctorName, dateLabel, slots) {
+  const reserved = slots.filter((s) => s.reserved).length;
+  const free = slots.length - reserved;
+  const subject = `chifak - Votre agenda du ${dateLabel} (${reserved} RDV, ${free} libres)`;
+
+  const rows = slots.map((s) => {
+    if (s.reserved) {
+      const p = s.patient || {};
+      return `
+        <tr style="background:#eff6ff;">
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:bold;color:#1e3a8a;white-space:nowrap;">${s.time}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#1d4ed8;font-weight:bold;">Réservé</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;">${p.name || '-'}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#374151;white-space:nowrap;">${p.phone || '-'}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${p.reason || ''}</td>
+        </tr>`;
+    }
+    return `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#111827;white-space:nowrap;">${s.time}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#16a34a;">Libre</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#9ca3af;" colspan="3">—</td>
+      </tr>`;
+  }).join('');
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head><meta charset="UTF-8"></head>
+    <body style="font-family:Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px;">
+      <div style="max-width:640px;margin:0 auto;background:#fff;padding:32px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+        <div style="text-align:center;margin-bottom:24px;">
+          <div style="font-size:26px;font-weight:bold;color:#0e75c4;">chifak</div>
+          <p style="color:#666;margin:4px 0 0;">Votre agenda du ${dateLabel}</p>
+        </div>
+        <p style="color:#374151;">Bonjour ${doctorName || ''},</p>
+        <p style="color:#374151;">Voici votre programme du jour : <strong>${reserved}</strong> rendez-vous et <strong>${free}</strong> créneaux encore libres.</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:14px;">
+          <thead>
+            <tr style="background:#f9fafb;text-align:left;">
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;color:#374151;">Heure</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;color:#374151;">État</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;color:#374151;">Patient</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;color:#374151;">Téléphone</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;color:#374151;">Motif</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="text-align:center;color:#999;font-size:12px;margin-top:28px;border-top:1px solid #eee;padding-top:16px;">
+          <p>© 2026 chifak. E-mail automatique, ne pas répondre.</p>
+        </div>
+      </div>
+    </body>
+    </html>`;
+
+  if (!isEmailConfigured()) {
+    console.log(`\n📧 [MODE DÉMO] Agenda du ${dateLabel} pour ${doctorName} (${email}) : ${reserved} RDV / ${free} libres\n`);
+    return true;
+  }
+
+  try {
+    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html: htmlContent });
+    console.log(`✅ Agenda du jour envoyé à ${doctorName} <${email}>`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Erreur envoi agenda à ${email}:`, error.message);
+    return false;
   }
 }
 
@@ -287,7 +375,7 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
   }
 
   const mailOptions = {
-    from: `"chifak" <${process.env.EMAIL_USER}>`,
+    from: FROM_ADDRESS,
     to: email,
     subject: subject,
     html: htmlContent

@@ -111,6 +111,25 @@ h1, h2, h3, h4, h5, h6 {
 }
 .field option { background: #fff; }
 
+/* Même apparence que .field mais en gardant la flèche native (ex : select wilaya) */
+.field-native {
+  width: 100%;
+  background: var(--bg-2);
+  border: 1.5px solid transparent;
+  border-radius: var(--r-md);
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  color: var(--ink);
+  font-family: "Inter", sans-serif;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  outline: none;
+}
+.field-native:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.field-native option { background: #fff; }
+
 /* ── Primary CTA button ── */
 .btn-primary {
   display: inline-flex;

@@ -208,13 +208,10 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                         {isArabic ? 'التخصص' : 'Spécialité'}
                       </label>
                       <div className="relative">
-                        <span className="absolute inset-y-0 ltr:left-3 rtl:right-3 flex items-center pointer-events-none" style={{ color: 'var(--ink-3)' }}>
-                          <Icon name="search" className="w-4 h-4" />
-                        </span>
                         <select
                           value={specialty}
                           onChange={(e) => setSpecialty(e.target.value)}
-                          className="field ltr:pl-9 rtl:pr-9 ltr:pr-8 rtl:pl-8 cursor-pointer"
+                          className="field ltr:pr-9 rtl:pl-9 cursor-pointer"
                           style={{ color: specialty ? 'var(--ink)' : 'var(--ink-3)' }}
                         >
                           <option value="">{isArabic ? 'Choisir une spécialité' : 'Choisir une spécialité'}</option>

@@ -45,7 +45,7 @@ export default function LocationSelector({
   const isArabic = language === 'ar';
   const selectClassName =
     selectVariant === 'hero'
-      ? 'w-full px-4 py-3.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 bg-white transition'
+      ? 'field-native cursor-pointer'
       : 'w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 
   const wilayas = useMemo<Wilaya[]>(() => {

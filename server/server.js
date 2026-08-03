@@ -7,7 +7,9 @@ import session from 'express-session';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
+import cron from 'node-cron';
 import db, { initDatabase } from './database.js';
+import { sendDailyAgendas } from './dailyAgenda.js';
 import passport from './passport-config.js';
 import { generateVerificationCode, sendVerificationEmail, sendAppointmentConfirmation } from './emailService.js';
 import { saveAccountToFile } from './storageService.js';
@@ -1428,6 +1430,19 @@ app.post('/api/assistant/chat', async (req, res) => {
   }
 });
 
+// POST /api/admin/daily-agendas - Déclenche manuellement l'envoi des agendas (test)
+// Body optionnel : { date: 'YYYY-MM-DD', doctorId: number }
+app.post('/api/admin/daily-agendas', authenticateToken, async (req, res) => {
+  try {
+    const { date, doctorId } = req.body || {};
+    const summary = await sendDailyAgendas({ date, doctorId: doctorId ? Number(doctorId) : undefined });
+    res.json(summary);
+  } catch (error) {
+    console.error('Erreur envoi agendas (manuel):', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // Route de test
 app.get('/', async (req, res) => {
   res.json({ message: 'API chifak fonctionne ! 🏥' });
@@ -1465,6 +1480,20 @@ initDatabase()
     // Laisse plus de temps aux connexions lentes (mobiles) avant de couper.
     server.keepAliveTimeout = 65000;
     server.headersTimeout = 66000;
+
+    // Envoi automatique de l'agenda du jour à chaque médecin, tous les matins à 5h00 (heure d'Alger).
+    const AGENDA_TZ = process.env.AGENDA_TIMEZONE || 'Africa/Algiers';
+    if (cron.validate('0 5 * * *')) {
+      cron.schedule('0 5 * * *', async () => {
+        console.log('⏰ Envoi des agendas quotidiens (5h00)...');
+        try {
+          await sendDailyAgendas();
+        } catch (err) {
+          console.error('Erreur envoi agendas planifiés:', err);
+        }
+      }, { timezone: AGENDA_TZ });
+      console.log(`🗓️  Agendas quotidiens planifiés à 05:00 (${AGENDA_TZ})`);
+    }
   })
   .catch((err) => {
     console.error('❌ Échec de l\'initialisation de la base de données:', err);
