@@ -10,11 +10,27 @@ import rateLimit from 'express-rate-limit';
 import cron from 'node-cron';
 import db, { initDatabase } from './database.js';
 import { sendDailyAgendas } from './dailyAgenda.js';
+import {
+  cleanString,
+  isValidEmail,
+  normalizeEmail,
+  isValidDate,
+  isValidTime,
+  isValidPhone,
+  isValidId,
+  toBoundedInt,
+  passwordStrengthError,
+  isTooSimilar,
+  assertStrongSecrets,
+} from './security.js';
 import passport from './passport-config.js';
 import { generateVerificationCode, sendVerificationEmail, sendAppointmentConfirmation } from './emailService.js';
 import { saveAccountToFile } from './storageService.js';
 
 dotenv.config();
+
+// SÉCURITÉ : on refuse de démarrer en production avec des secrets absents ou faibles.
+assertStrongSecrets();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -22,18 +38,32 @@ const PORT = process.env.PORT || 3001;
 // Derrière le proxy de Render : nécessaire pour lire la vraie IP (rate-limiting, cookies sécurisés).
 app.set('trust proxy', 1);
 
+// Masque l'en-tête « X-Powered-By: Express » (moins d'informations pour un attaquant)
+app.disable('x-powered-by');
+
 // Sécurité des en-têtes HTTP (API JSON : pas besoin de CSP)
 app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
 
 // Compression gzip des réponses (moins de bande passante, réponses plus rapides)
 app.use(compression());
 
-// CORS
-// En dev, on reflète l'origine de la requête pour autoriser le réseau local
-// (accès depuis un téléphone via l'IP du Mac). À restreindre en production.
+// ── CORS ──
+// En production : liste blanche stricte d'origines (ALLOWED_ORIGINS séparées par des virgules,
+// ou FRONTEND_URL). En développement : on reflète l'origine pour autoriser le réseau local.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || true,
-  credentials: true
+  origin(origin, callback) {
+    // Requêtes sans origine (applications mobiles, curl, health checks) : autorisées
+    if (!origin) return callback(null, true);
+    if (process.env.NODE_ENV !== 'production') return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origine non autorisée par la politique CORS'));
+  },
+  credentials: true,
 }));
 
 // Limite la taille des corps de requête (protège contre les payloads abusifs)
@@ -58,8 +88,15 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
 });
-['/api/auth/login', '/api/auth/login-patient', '/api/auth/login-doctor', '/api/auth/register', '/api/doctor/change-password']
-  .forEach((path) => app.use(path, authLimiter));
+[
+  '/api/auth/login',
+  '/api/auth/login-patient',
+  '/api/auth/login-doctor',
+  '/api/auth/register',
+  '/api/auth/verify-code',   // anti-force brute du code à 6 chiffres
+  '/api/auth/resend-code',   // anti-spam d'e-mails
+  '/api/doctor/change-password',
+].forEach((path) => app.use(path, authLimiter));
 
 // Limiteur dédié à l'assistant IA (appels coûteux) : plafonne les messages par IP.
 const assistantLimiter = rateLimit({
@@ -75,11 +112,16 @@ app.use('/api/assistant', assistantLimiter);
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 // Session pour OAuth
+// Cookie durci : httpOnly (inaccessible au JavaScript), sameSite (anti-CSRF),
+// secure en production (transmis uniquement en HTTPS).
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'chifak_session_secret',
+  name: 'chifak.sid',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
+    httpOnly: true,
+    sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     maxAge: 24 * 60 * 60 * 1000 // 24 heures
   }
@@ -91,7 +133,10 @@ app.use(passport.session());
 
 // La base est initialisée au démarrage (voir en bas du fichier).
 
-// Middleware d'authentification
+// Middleware d'authentification du personnel (admin / employé).
+// SÉCURITÉ : on vérifie explicitement le type ET le rôle du jeton.
+// Sans ce contrôle, un jeton de patient ou de médecin donnerait accès
+// aux routes d'administration (création/suppression de médecins, etc.).
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -104,9 +149,20 @@ const authenticateToken = (req, res, next) => {
     if (err) {
       return res.status(403).json({ error: 'Token invalide' });
     }
+    if (user.type !== 'staff' || !['admin', 'employee'].includes(user.role)) {
+      return res.status(403).json({ error: 'Accès réservé à l\'administration' });
+    }
     req.user = user;
     next();
   });
+};
+
+// Réservé aux administrateurs (actions destructrices)
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+  }
+  next();
 };
 
 const authenticatePatientToken = (req, res, next) => {
@@ -144,52 +200,16 @@ const authenticateDoctorToken = (req, res, next) => {
     if (user.type !== 'doctor') {
       return res.status(403).json({ error: 'Accès réservé aux médecins' });
     }
+    // SÉCURITÉ : tant que le mot de passe initial n'est pas changé, le jeton ne
+    // donne accès à AUCUNE donnée, sauf à la route de changement de mot de passe.
+    // Sans ce contrôle, on pourrait contourner l'écran du navigateur en appelant l'API.
+    if (user.mustChangePassword && req.path !== '/api/doctor/change-password') {
+      return res.status(403).json({ error: 'Changement de mot de passe requis', mustChangePassword: true });
+    }
     req.user = user;
     next();
   });
 };
-
-// ==================== MOT DE PASSE : VALIDATION ====================
-
-// Distance de Levenshtein (nb minimal d'éditions entre deux chaînes)
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  if (!m) return n;
-  if (!n) return m;
-  const prev = Array.from({ length: n + 1 }, (_, i) => i);
-  const cur = new Array(n + 1).fill(0);
-  for (let i = 1; i <= m; i++) {
-    cur[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
-    }
-    for (let j = 0; j <= n; j++) prev[j] = cur[j];
-  }
-  return prev[n];
-}
-
-// Règles de robustesse du nouveau mot de passe
-function passwordStrengthError(pwd) {
-  if (!pwd || pwd.length < 8) return 'Le mot de passe doit contenir au moins 8 caractères.';
-  if (!/[A-Za-z]/.test(pwd) || !/[0-9]/.test(pwd)) return 'Le mot de passe doit contenir des lettres et des chiffres.';
-  return null;
-}
-
-// Le nouveau mot de passe ne doit pas ressembler à l'ancien
-function isTooSimilar(oldPwd, newPwd) {
-  if (!oldPwd) return false;
-  const a = String(oldPwd).toLowerCase();
-  const b = String(newPwd).toLowerCase();
-  if (a === b) return true;
-  if (a.includes(b) || b.includes(a)) return true; // l'un contient l'autre
-  const dist = levenshtein(a, b);
-  const maxLen = Math.max(a.length, b.length);
-  // Trop proche si peu d'éditions séparent les deux mots de passe
-  if (dist <= 3) return true;
-  if (dist / maxLen < 0.34) return true; // moins d'un tiers de différence
-  return false;
-}
 
 // ==================== ROUTES AUTH ====================
 
@@ -237,7 +257,8 @@ app.post('/api/auth/login', async (req, res) => {
 // POST /api/auth/login-doctor - Connexion médecin (code + mot de passe)
 app.post('/api/auth/login-doctor', async (req, res) => {
   try {
-    const { doctorCode, password } = req.body;
+    const doctorCode = cleanString(req.body.doctorCode, 64);
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
 
     if (!doctorCode) {
       return res.status(400).json({ error: 'Code médecin requis' });
@@ -245,8 +266,9 @@ app.post('/api/auth/login-doctor', async (req, res) => {
 
     const doctor = await db.prepare('SELECT * FROM doctors WHERE doctor_code = ?').get(doctorCode);
 
+    // Message volontairement identique pour ne pas révéler si le code existe
     if (!doctor) {
-      return res.status(401).json({ error: 'Code médecin invalide' });
+      return res.status(401).json({ error: 'Identifiants incorrects' });
     }
 
     // Si un mot de passe a été défini par l'admin, il est obligatoire
@@ -256,12 +278,17 @@ app.post('/api/auth/login-doctor', async (req, res) => {
       }
       const ok = await bcrypt.compare(password, doctor.password);
       if (!ok) {
-        return res.status(401).json({ error: 'Mot de passe incorrect' });
+        return res.status(401).json({ error: 'Identifiants incorrects' });
       }
     }
 
     const token = jwt.sign(
-      { id: doctor.id, name: doctor.name, type: 'doctor' },
+      {
+        id: doctor.id,
+        name: doctor.name,
+        type: 'doctor',
+        mustChangePassword: !!doctor.must_change_password,
+      },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -325,7 +352,14 @@ app.post('/api/doctor/change-password', authenticateDoctorToken, async (req, res
     await db.prepare('UPDATE doctors SET password = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(hashed, req.user.id);
 
-    res.json({ message: 'Mot de passe mis à jour avec succès' });
+    // Nouveau jeton sans le drapeau « changement requis » : l'ancien reste bloqué.
+    const token = jwt.sign(
+      { id: doctor.id, name: doctor.name, type: 'doctor', mustChangePassword: false },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({ message: 'Mot de passe mis à jour avec succès', token });
   } catch (error) {
     console.error('Erreur changement mot de passe médecin:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -342,10 +376,21 @@ app.get('/api/auth/verify', authenticateToken, async (req, res) => {
 // POST /api/auth/register - Inscription avec email (envoie code de vérification)
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, name, password, language } = req.body;
+    const { language } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const name = cleanString(req.body.name, 120);
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
 
-    if (!email || !name || !password) {
-      return res.status(400).json({ error: 'Email, nom et mot de passe requis' });
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ error: 'Adresse e-mail invalide' });
+    }
+    if (!name || name.length < 2) {
+      return res.status(400).json({ error: 'Nom invalide' });
+    }
+    // Le mot de passe doit être robuste dès l'inscription
+    const pwdError = passwordStrengthError(password);
+    if (pwdError) {
+      return res.status(400).json({ error: pwdError });
     }
 
     // Vérifier si l'email existe déjà
@@ -390,10 +435,11 @@ app.post('/api/auth/register', async (req, res) => {
 // POST /api/auth/verify-code - Vérifier le code
 app.post('/api/auth/verify-code', async (req, res) => {
   try {
-    const { email, code } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const code = typeof req.body.code === 'string' ? req.body.code.trim() : '';
 
-    if (!email || !code) {
-      return res.status(400).json({ error: 'Email et code requis' });
+    if (!isValidEmail(email) || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ error: 'Email ou code invalide' });
     }
 
     // Récupérer le code
@@ -452,10 +498,11 @@ app.post('/api/auth/verify-code', async (req, res) => {
 // POST /api/auth/login-patient - Connexion patient avec email
 app.post('/api/auth/login-patient', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const password = typeof req.body.password === 'string' ? req.body.password : '';
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email et mot de passe requis' });
+    if (!isValidEmail(email) || !password) {
+      return res.status(401).json({ error: 'Identifiants incorrects' });
     }
 
     const demoEmail = 'demo.patient@chifak.dz';
@@ -564,13 +611,17 @@ app.get('/api/patient/profile', authenticatePatientToken, async (req, res) => {
 // PUT /api/patient/profile - Modifier ses informations (nom, téléphone)
 app.put('/api/patient/profile', authenticatePatientToken, async (req, res) => {
   try {
-    const { name, phone } = req.body;
+    const name = cleanString(req.body.name, 120);
+    const phone = cleanString(req.body.phone, 20);
     const current = await db.prepare('SELECT * FROM patients WHERE email = ?').get(req.user.email);
     if (!current) {
       return res.status(404).json({ error: 'Patient non trouvé' });
     }
-    const newName = typeof name === 'string' && name.trim() ? name.trim() : current.name;
-    const newPhone = typeof phone === 'string' ? phone.trim() : (current.phone || '');
+    if (phone && !isValidPhone(phone)) {
+      return res.status(400).json({ error: 'Numéro de téléphone invalide' });
+    }
+    const newName = name && name.length >= 2 ? name : current.name;
+    const newPhone = phone !== null ? phone : (current.phone || '');
     await db.prepare('UPDATE patients SET name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')
       .run(newName, newPhone, req.user.email);
 
@@ -689,26 +740,32 @@ app.get('/api/auth/facebook/callback',
 // GET /api/doctors - Récupérer tous les médecins
 app.get('/api/doctors', async (req, res) => {
   try {
-    const { specialty, location } = req.query;
+    // Entrées bornées et nettoyées ; les valeurs restent des paramètres liés.
+    const specialty = cleanString(req.query.specialty, 80);
+    const location = cleanString(req.query.location, 80);
+    // Neutralise les jokers LIKE fournis par l'utilisateur (% et _)
+    const escapeLike = (v) => v.replace(/[\\%_]/g, (m) => `\\${m}`);
 
     let query = 'SELECT * FROM doctors WHERE 1=1';
     const params = [];
 
     if (specialty) {
-      query += ' AND specialty ILIKE ?';
-      params.push(`%${specialty}%`);
+      query += " AND specialty ILIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(specialty)}%`);
     }
 
     if (location) {
-      query += ' AND city ILIKE ?';
-      params.push(`%${location}%`);
+      query += " AND city ILIKE ? ESCAPE '\\'";
+      params.push(`%${escapeLike(location)}%`);
     }
 
     // Plafond de sécurité + pagination optionnelle (?limit & ?offset) — évite de renvoyer
     // des dizaines de milliers de lignes d'un coup si l'annuaire grossit.
-    const limit = Math.min(Number(req.query.limit) || 500, 1000);
-    const offset = Math.max(Number(req.query.offset) || 0, 0);
-    query += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    // Valeurs passées en paramètres liés (jamais concaténées dans le SQL).
+    const limit = toBoundedInt(req.query.limit, { min: 1, max: 1000, fallback: 500 }) ?? 500;
+    const offset = toBoundedInt(req.query.offset, { min: 0, max: 1000000, fallback: 0 }) ?? 0;
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
 
     const doctors = await db.prepare(query).all(...params);
 
@@ -775,6 +832,11 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
     const serializedWorkingDays = JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5]);
 
     // Mot de passe défini par l'admin : haché + changement obligatoire à la 1re connexion
+    // Le mot de passe initial fixé par l'admin doit lui aussi être robuste
+    if (password) {
+      const pwdError = passwordStrengthError(password);
+      if (pwdError) return res.status(400).json({ error: pwdError });
+    }
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
     const mustChange = password ? 1 : 0;
 
@@ -836,6 +898,10 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
         : doctor.working_days;
 
     // Réinitialisation du mot de passe par l'admin : haché + changement obligatoire à la prochaine connexion
+    if (password) {
+      const pwdError = passwordStrengthError(password);
+      if (pwdError) return res.status(400).json({ error: pwdError });
+    }
     const newHashed = password ? await bcrypt.hash(password, 10) : doctor.password;
     const mustChange = password ? 1 : (doctor.must_change_password || 0);
 
@@ -883,7 +949,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/doctors/:id - Supprimer un médecin (authentification requise)
-app.delete('/api/doctors/:id', authenticateToken, async (req, res) => {
+app.delete('/api/doctors/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 
@@ -947,6 +1013,9 @@ app.get('/api/consultations', authenticateDoctorToken, async (req, res) => {
 // GET /api/doctors/:id/reviews - Avis d'un médecin
 app.get('/api/doctors/:id/reviews', async (req, res) => {
   try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
     const doctorId = Number(req.params.id);
     const reviews = await db.prepare(`
       SELECT id, patient_name, rating, comment, created_at
@@ -962,6 +1031,9 @@ app.get('/api/doctors/:id/reviews', async (req, res) => {
 // POST /api/doctors/:id/reviews - Laisser (ou mettre à jour) son avis
 app.post('/api/doctors/:id/reviews', authenticatePatientToken, async (req, res) => {
   try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
     const doctorId = Number(req.params.id);
     const rating = Number(req.body.rating);
     const comment = typeof req.body.comment === 'string' ? req.body.comment.trim() : null;
@@ -1034,8 +1106,11 @@ app.get('/api/reviews', authenticateToken, async (req, res) => {
 });
 
 // DELETE /api/reviews/:id - Supprimer un avis (admin/personnel) + recalcul de la note
-app.delete('/api/reviews/:id', authenticateToken, async (req, res) => {
+app.delete('/api/reviews/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
     const id = Number(req.params.id);
     const review = await db.prepare('SELECT doctor_id FROM reviews WHERE id = ?').get(id);
     if (!review) {
@@ -1057,16 +1132,68 @@ app.delete('/api/reviews/:id', authenticateToken, async (req, res) => {
 // POST /api/appointments - Créer un rendez-vous
 app.post('/api/appointments', async (req, res) => {
   try {
-    const { doctorId, patientName, patientEmail, patientPhone, appointmentDate, appointmentTime, reason, language } = req.body;
+    const { doctorId, appointmentDate, appointmentTime, language } = req.body;
 
-    if (!doctorId || !patientName || !patientEmail || !patientPhone || !appointmentDate || !appointmentTime) {
-      return res.status(400).json({ error: 'Champs requis manquants' });
+    // ── Validation stricte de toutes les entrées (endpoint public) ──
+    const patientName = cleanString(req.body.patientName, 120);
+    const patientEmail = normalizeEmail(req.body.patientEmail);
+    const patientPhone = cleanString(req.body.patientPhone, 20);
+    const reason = cleanString(req.body.reason, 1000);
+
+    if (!isValidId(doctorId)) {
+      return res.status(400).json({ error: 'Médecin invalide' });
+    }
+    if (!patientName || patientName.length < 2) {
+      return res.status(400).json({ error: 'Nom du patient invalide' });
+    }
+    if (!isValidEmail(patientEmail)) {
+      return res.status(400).json({ error: 'Adresse e-mail invalide' });
+    }
+    if (!isValidPhone(patientPhone)) {
+      return res.status(400).json({ error: 'Numéro de téléphone invalide' });
+    }
+    if (!isValidDate(appointmentDate)) {
+      return res.status(400).json({ error: 'Date invalide' });
+    }
+    if (!isValidTime(appointmentTime)) {
+      return res.status(400).json({ error: 'Heure invalide' });
+    }
+
+    // On ne réserve pas dans le passé, ni au-delà d'un an
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const maxIso = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    if (appointmentDate < todayIso || appointmentDate > maxIso) {
+      return res.status(400).json({ error: 'Date hors de la période autorisée' });
     }
 
     const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(doctorId);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
+    }
+
+    // ── Le créneau demandé doit être réellement proposé par le médecin ──
+    // (sinon on pourrait forcer un rendez-vous à 3h du matin ou un jour de fermeture)
+    const parseJson = (raw, fallback) => { try { return JSON.parse(raw); } catch { return fallback; } };
+    const workingDays = parseJson(doctor.working_days, [1, 2, 3, 4, 5]);
+    const offDays = parseJson(doctor.off_days, []);
+    const slots = parseJson(doctor.available_slots, []);
+    const weekday = new Date(`${appointmentDate}T12:00:00Z`).getUTCDay();
+
+    if (!workingDays.includes(weekday) || offDays.includes(appointmentDate)) {
+      return res.status(400).json({ error: 'Le médecin ne consulte pas à cette date.' });
+    }
+    if (!slots.includes(appointmentTime)) {
+      return res.status(400).json({ error: 'Créneau horaire non proposé par ce médecin.' });
+    }
+
+    // Anti-spam : un même e-mail ne peut pas réserver en masse
+    const recent = await db.prepare(`
+      SELECT COUNT(*)::int AS count FROM appointments
+      WHERE patient_email = ? AND status != 'cancelled' AND created_at > NOW() - INTERVAL '1 hour'
+    `).get(patientEmail);
+    if (recent && recent.count >= 5) {
+      return res.status(429).json({ error: 'Trop de réservations récentes. Réessayez plus tard.' });
     }
 
     // Anti-double réservation : ce créneau est-il déjà pris (hors annulés) ?
@@ -1112,8 +1239,8 @@ app.post('/api/appointments', async (req, res) => {
 app.get('/api/booked-slots', async (req, res) => {
   try {
     const { date } = req.query;
-    if (!date) {
-      return res.status(400).json({ error: 'Paramètre date requis' });
+    if (!isValidDate(date)) {
+      return res.status(400).json({ error: 'Paramètre date invalide (format AAAA-MM-JJ)' });
     }
     const rows = await db.prepare(`
       SELECT doctor_id, appointment_time
@@ -1148,6 +1275,9 @@ app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) 
 // PATCH /api/patient/appointments/:id/cancel - Annuler son rendez-vous
 app.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, async (req, res) => {
   try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
     const id = Number(req.params.id);
     const appt = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
     if (!appt) {
@@ -1171,6 +1301,9 @@ app.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, asyn
 // PATCH /api/patient/appointments/:id/reschedule - Reprogrammer son rendez-vous
 app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, async (req, res) => {
   try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
     const id = Number(req.params.id);
     const { appointmentDate, appointmentTime } = req.body;
     if (!appointmentDate || !appointmentTime) {
@@ -1296,6 +1429,9 @@ app.get('/api/doctor/appointments', authenticateDoctorToken, async (req, res) =>
 // PATCH /api/doctor/appointments/:id/notes - Remarques privées du médecin
 app.patch('/api/doctor/appointments/:id/notes', authenticateDoctorToken, async (req, res) => {
   try {
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
     const id = Number(req.params.id);
     const appt = await db.prepare('SELECT doctor_id FROM appointments WHERE id = ?').get(id);
     if (!appt) return res.status(404).json({ error: 'Rendez-vous non trouvé' });

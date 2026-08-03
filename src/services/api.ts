@@ -111,7 +111,10 @@ export const doctorAuthAPI = {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || 'Erreur lors du changement de mot de passe');
     }
-    return await response.json();
+    const data = await response.json();
+    // Le serveur renvoie un jeton neuf (sans l'obligation de changement) : on le remplace.
+    if (data.token) localStorage.setItem('chifak_doctor_token', data.token);
+    return data;
   },
 
   logout: () => {

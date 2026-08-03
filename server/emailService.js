@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import { randomInt } from 'crypto';
+import { escapeHtml } from './security.js';
 
 dotenv.config();
 
@@ -39,9 +41,11 @@ const transporter = process.env.EMAIL_HOST
       },
     });
 
-// Générer un code de vérification à 6 chiffres
+// Générer un code de vérification à 6 chiffres.
+// SÉCURITÉ : on utilise un générateur cryptographique (crypto.randomInt) et non
+// Math.random(), dont les valeurs sont prédictibles et pourraient être devinées.
 export function generateVerificationCode() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(randomInt(100000, 1000000));
 }
 
 // Envoyer un email de vérification
@@ -172,16 +176,16 @@ export async function sendDoctorDailyAgenda(email, doctorName, dateLabel, slots)
       const p = s.patient || {};
       return `
         <tr style="background:#eff6ff;">
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:bold;color:#1e3a8a;white-space:nowrap;">${s.time}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:bold;color:#1e3a8a;white-space:nowrap;">${escapeHtml(s.time)}</td>
           <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#1d4ed8;font-weight:bold;">Réservé</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;">${p.name || '-'}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#374151;white-space:nowrap;">${p.phone || '-'}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${p.reason || ''}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;">${escapeHtml(p.name) || '-'}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#374151;white-space:nowrap;">${escapeHtml(p.phone) || '-'}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#6b7280;">${escapeHtml(p.reason)}</td>
         </tr>`;
     }
     return `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#111827;white-space:nowrap;">${s.time}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#111827;white-space:nowrap;">${escapeHtml(s.time)}</td>
         <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#16a34a;">Libre</td>
         <td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;color:#9ca3af;" colspan="3">—</td>
       </tr>`;
@@ -195,9 +199,9 @@ export async function sendDoctorDailyAgenda(email, doctorName, dateLabel, slots)
       <div style="max-width:640px;margin:0 auto;background:#fff;padding:32px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
         <div style="text-align:center;margin-bottom:24px;">
           <div style="font-size:26px;font-weight:bold;color:#0e75c4;">chifak</div>
-          <p style="color:#666;margin:4px 0 0;">Votre agenda du ${dateLabel}</p>
+          <p style="color:#666;margin:4px 0 0;">Votre agenda du ${escapeHtml(dateLabel)}</p>
         </div>
-        <p style="color:#374151;">Bonjour ${doctorName || ''},</p>
+        <p style="color:#374151;">Bonjour ${escapeHtml(doctorName)},</p>
         <p style="color:#374151;">Voici votre programme du jour : <strong>${reserved}</strong> rendez-vous et <strong>${free}</strong> créneaux encore libres.</p>
         <table style="width:100%;border-collapse:collapse;margin-top:16px;font-size:14px;">
           <thead>
@@ -264,29 +268,29 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
           <h1 style="margin: 0;">تم تأكيد موعدك!</h1>
         </div>
         
-        <p class="message">عزيزي/عزيزتي ${appointmentDetails.patientName},</p>
+        <p class="message">عزيزي/عزيزتي ${escapeHtml(appointmentDetails.patientName)},</p>
         <p class="message">تم تأكيد موعدك الطبي بنجاح. إليك التفاصيل:</p>
         
         <div class="details">
           <div class="detail-row">
             <span class="detail-label">الطبيب:</span>
-            <span class="detail-value">${appointmentDetails.doctorName}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.doctorName)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">التخصص:</span>
-            <span class="detail-value">${appointmentDetails.specialty}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.specialty)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">التاريخ:</span>
-            <span class="detail-value">${appointmentDetails.date}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.date)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">الوقت:</span>
-            <span class="detail-value">${appointmentDetails.time}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.time)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">العنوان:</span>
-            <span class="detail-value">${appointmentDetails.address}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.address)}</span>
           </div>
         </div>
         
@@ -328,29 +332,29 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
           <h1 style="margin: 0;">Rendez-vous confirmé !</h1>
         </div>
         
-        <p class="message">Cher/Chère ${appointmentDetails.patientName},</p>
+        <p class="message">Cher/Chère ${escapeHtml(appointmentDetails.patientName)},</p>
         <p class="message">Votre rendez-vous médical a été confirmé avec succès. Voici les détails :</p>
         
         <div class="details">
           <div class="detail-row">
             <span class="detail-label">Médecin :</span>
-            <span class="detail-value">${appointmentDetails.doctorName}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.doctorName)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Spécialité :</span>
-            <span class="detail-value">${appointmentDetails.specialty}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.specialty)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Date :</span>
-            <span class="detail-value">${appointmentDetails.date}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.date)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Heure :</span>
-            <span class="detail-value">${appointmentDetails.time}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.time)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Adresse :</span>
-            <span class="detail-value">${appointmentDetails.address}</span>
+            <span class="detail-value">${escapeHtml(appointmentDetails.address)}</span>
           </div>
         </div>
         
