@@ -17,6 +17,30 @@ const getAuthHeaders = () => {
   };
 };
 
+// ==================== ASSISTANT SANTÉ (IA) ====================
+
+export interface AssistantMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export const assistantAPI = {
+  chat: async (messages: AssistantMessage[]): Promise<string> => {
+    const response = await fetch(`${API_URL}/assistant/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      // Le backend renvoie souvent un champ "reply" lisible même en cas d'erreur
+      throw new Error(data.reply || data.error || 'Erreur de l\'assistant');
+    }
+    return data.reply || '';
+  },
+};
+
 // ==================== AUTH ====================
 
 export const authAPI = {

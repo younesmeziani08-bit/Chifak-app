@@ -4,6 +4,7 @@ import Header from './Header';
 import LocationSelector from './LocationSelector';
 import AlgeriaMap from './AlgeriaMap';
 import LogoMark from './LogoMark';
+import HealthArticles from './HealthArticles';
 import { useLanguage } from '../contexts/LanguageContext';
 
 const ICONS: Record<string, ReactNode> = {
@@ -311,29 +312,8 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
         </div>
       </section>
 
-      {/* ── STATS BAR ── */}
-      <section style={{ background: 'var(--bg)', borderTop: '1px solid rgba(0,0,0,0.06)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-10">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {[
-              { num: '12 000+', label: isArabic ? 'طبيب مسجل' : 'Praticiens inscrits' },
-              { num: '48', label: isArabic ? 'ولاية مغطاة' : 'Wilayas couvertes' },
-              { num: '60+', label: isArabic ? 'تخصص طبي' : 'Spécialités' },
-              { num: '4,8 ★', label: isArabic ? 'رضا المرضى' : 'Satisfaction patients' },
-            ].map((s) => (
-              <div key={s.label} className="text-center">
-                <div
-                  className="text-3xl sm:text-4xl font-extrabold tracking-tight mb-1"
-                  style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}
-                >
-                  {s.num}
-                </div>
-                <div className="text-sm" style={{ color: 'var(--ink-2)' }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* ── SANTÉ & PRÉVENTION (documentation / articles) ── */}
+      <HealthArticles />
 
       {/* ── QUICK SPECIALTIES ── */}
       <section className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20">

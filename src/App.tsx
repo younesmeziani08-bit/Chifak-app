@@ -11,6 +11,7 @@ import OAuthCallback from './components/auth/OAuthCallback';
 import AdminLogin from './components/admin/AdminLogin';
 import AdminDashboard from './components/admin/AdminDashboard';
 import DoctorSpace from './components/DoctorSpace';
+import AssistantChat from './components/AssistantChat';
 import ProfessionalModal from './components/ProfessionalModal';
 import { useAdminAuth } from './contexts/AdminAuthContext';
 import { appointmentsAPI } from './services/api';
@@ -299,6 +300,9 @@ export default function App() {
           />
         </PageTransition>
       )}
+
+      {/* Assistant santé IA — disponible sur toutes les pages patient */}
+      <AssistantChat />
     </div>
   );
 }

@@ -59,6 +59,16 @@ const authLimiter = rateLimit({
 ['/api/auth/login', '/api/auth/login-patient', '/api/auth/login-doctor', '/api/auth/register', '/api/doctor/change-password']
   .forEach((path) => app.use(path, authLimiter));
 
+// Limiteur dédié à l'assistant IA (appels coûteux) : plafonne les messages par IP.
+const assistantLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.ASSISTANT_RATE_LIMIT_MAX) || 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { reply: 'Vous envoyez des messages trop vite. Patientez un instant avant de réessayer.' },
+});
+app.use('/api/assistant', assistantLimiter);
+
 // Endpoint de santé (surveillance / réveil Render)
 app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
@@ -1314,6 +1324,107 @@ app.get('/api/stats', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Erreur récupération stats:', error);
     res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== ASSISTANT SANTÉ (IA) ====================
+
+// Configuration IA (modèle open-source via API compatible OpenAI, ex : Groq)
+const AI_BASE_URL = process.env.AI_BASE_URL || 'https://api.groq.com/openai/v1';
+const AI_MODEL = process.env.AI_MODEL || 'llama-3.3-70b-versatile';
+const AI_API_KEY = process.env.AI_API_KEY || '';
+
+const ASSISTANT_SYSTEM_PROMPT = `Tu es « l'Assistant Santé chifak », un assistant d'orientation médicale pour une plateforme de prise de rendez-vous en Algérie. Tu parles au patient avec bienveillance, clarté et simplicité.
+
+RÈGLES DE LANGUE :
+- Réponds TOUJOURS dans la langue du patient (français, arabe standard, ou derja algérienne). S'il écrit en arabe, réponds en arabe.
+- Phrases courtes et claires. Pas de jargon inutile.
+
+TON RÔLE :
+1. Demander au patient de décrire ses symptômes : où il a mal, depuis quand, l'intensité, les signes associés (fièvre, nausées, etc.). Pose 1 à 2 questions à la fois, sans le submerger.
+2. À partir de la description, ORIENTER vers la spécialité la plus adaptée parmi cette liste UNIQUEMENT :
+   Médecin généraliste, Dentiste, Ophtalmologue, Dermatologue, Cardiologue, Pédiatre, Gynécologue, ORL, Kinésithérapeute, Psychologue, Ostéopathe, Sage-femme.
+   En cas de doute ou de symptômes généraux, oriente vers « Médecin généraliste ».
+3. Donner des conseils SIMPLES et SÛRS en attendant la consultation (repos, hydratation, surveiller la fièvre, etc.).
+4. Expliquer comment prendre rendez-vous sur chifak si on te le demande (voir plus bas).
+5. Discuter de sujets de santé et de prévention de façon pédagogique.
+
+SÉCURITÉ — TRÈS IMPORTANT :
+- Tu n'es PAS un médecin et tu ne poses JAMAIS de diagnostic définitif. Rappelle-le brièvement quand c'est utile.
+- Ne prescris JAMAIS de médicament précis ni de dosage. Tu peux mentionner des mesures générales et conseiller de voir un médecin ou un pharmacien.
+- URGENCES : si le patient décrit des signes graves (douleur thoracique intense, difficulté à respirer, signes d'AVC comme visage qui tombe/bras faible/parole troublée, saignement abondant, perte de conscience, douleur abdominale intense, pensées suicidaires, réaction allergique grave), tu DOIS lui dire d'appeler immédiatement les secours : Protection Civile 14 (ou 1021) et SAMU 115, ou de se rendre aux urgences les plus proches, SANS attendre un rendez-vous.
+- Reste dans le domaine médical et de la santé. Si on te demande autre chose, ramène poliment vers ce sujet.
+
+COMMENT PRENDRE RENDEZ-VOUS SUR CHIFAK (à expliquer si demandé) :
+1. Sur la page d'accueil, choisir la spécialité et la wilaya dans la barre de recherche.
+2. Parcourir la liste des médecins et en choisir un.
+3. Sélectionner une date et un créneau horaire disponibles.
+4. Remplir ses informations et confirmer. Une confirmation est envoyée par e-mail.
+
+FORMAT : réponses concises (quelques phrases), chaleureuses. Quand tu orientes vers une spécialité, dis-le clairement (ex : « Je vous conseille de consulter un Dermatologue »).`;
+
+// POST /api/assistant/chat - Dialogue avec l'assistant santé
+app.post('/api/assistant/chat', async (req, res) => {
+  try {
+    const { messages } = req.body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'Messages requis' });
+    }
+
+    if (!AI_API_KEY) {
+      return res.status(503).json({
+        error: 'assistant_non_configuré',
+        reply: "L'assistant n'est pas encore configuré (clé API manquante). Veuillez réessayer plus tard.",
+      });
+    }
+
+    // On ne garde que les 12 derniers échanges pour limiter la taille du contexte
+    const trimmed = messages
+      .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .slice(-12)
+      .map((m) => ({ role: m.role, content: String(m.content).slice(0, 4000) }));
+
+    const payload = {
+      model: AI_MODEL,
+      messages: [{ role: 'system', content: ASSISTANT_SYSTEM_PROMPT }, ...trimmed],
+      temperature: 0.4,
+      max_tokens: 600,
+    };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    let aiRes;
+    try {
+      aiRes = await fetch(`${AI_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${AI_API_KEY}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!aiRes.ok) {
+      const detail = await aiRes.text().catch(() => '');
+      console.error('Erreur API IA:', aiRes.status, detail.slice(0, 300));
+      return res.status(502).json({ error: 'Service IA indisponible', reply: "Désolé, je rencontre un problème technique. Réessayez dans un instant." });
+    }
+
+    const data = await aiRes.json();
+    const reply = data?.choices?.[0]?.message?.content?.trim() || "Je n'ai pas de réponse pour le moment.";
+    res.json({ reply });
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      return res.status(504).json({ error: 'Délai dépassé', reply: 'La réponse a mis trop de temps. Réessayez.' });
+    }
+    console.error('Erreur assistant:', error);
+    res.status(500).json({ error: 'Erreur serveur', reply: 'Une erreur est survenue.' });
   }
 });
 
