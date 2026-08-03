@@ -4,6 +4,9 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import session from 'express-session';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import db, { initDatabase } from './database.js';
 import passport from './passport-config.js';
 import { generateVerificationCode, sendVerificationEmail, sendAppointmentConfirmation } from './emailService.js';
@@ -14,14 +17,50 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
+// Derrière le proxy de Render : nécessaire pour lire la vraie IP (rate-limiting, cookies sécurisés).
+app.set('trust proxy', 1);
+
+// Sécurité des en-têtes HTTP (API JSON : pas besoin de CSP)
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+
+// Compression gzip des réponses (moins de bande passante, réponses plus rapides)
+app.use(compression());
+
+// CORS
 // En dev, on reflète l'origine de la requête pour autoriser le réseau local
 // (accès depuis un téléphone via l'IP du Mac). À restreindre en production.
 app.use(cors({
   origin: process.env.FRONTEND_URL || true,
   credentials: true
 }));
-app.use(express.json());
+
+// Limite la taille des corps de requête (protège contre les payloads abusifs)
+app.use(express.json({ limit: '1mb' }));
+
+// ── Rate limiting ──
+// Limiteur général : plafonne les requêtes par IP pour absorber les pics / abus.
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: Number(process.env.RATE_LIMIT_MAX) || 300, // 300 req/min/IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de requêtes, réessayez dans un instant.' },
+});
+app.use('/api/', generalLimiter);
+
+// Limiteur strict sur les endpoints sensibles (connexion/inscription) : anti brute-force.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
+});
+['/api/auth/login', '/api/auth/login-patient', '/api/auth/login-doctor', '/api/auth/register', '/api/doctor/change-password']
+  .forEach((path) => app.use(path, authLimiter));
+
+// Endpoint de santé (surveillance / réveil Render)
+app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 // Session pour OAuth
 app.use(session({
@@ -157,7 +196,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Identifiants incorrects' });
     }
 
-    const validPassword = bcrypt.compareSync(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.password);
 
     if (!validPassword) {
       return res.status(401).json({ error: 'Identifiants incorrects' });
@@ -203,7 +242,7 @@ app.post('/api/auth/login-doctor', async (req, res) => {
       if (!password) {
         return res.status(401).json({ error: 'Mot de passe requis' });
       }
-      const ok = bcrypt.compareSync(password, doctor.password);
+      const ok = await bcrypt.compare(password, doctor.password);
       if (!ok) {
         return res.status(401).json({ error: 'Mot de passe incorrect' });
       }
@@ -249,7 +288,7 @@ app.post('/api/doctor/change-password', authenticateDoctorToken, async (req, res
       if (!currentPassword) {
         return res.status(400).json({ error: 'Mot de passe actuel requis' });
       }
-      if (!bcrypt.compareSync(currentPassword, doctor.password)) {
+      if (!await bcrypt.compare(currentPassword, doctor.password)) {
         return res.status(401).json({ error: 'Mot de passe actuel incorrect' });
       }
     }
@@ -270,7 +309,7 @@ app.post('/api/doctor/change-password', authenticateDoctorToken, async (req, res
       return res.status(400).json({ error: 'Le nouveau mot de passe est trop proche de l\'ancien. Choisissez-en un différent.' });
     }
 
-    const hashed = bcrypt.hashSync(newPassword, 10);
+    const hashed = await bcrypt.hash(newPassword, 10);
     await db.prepare('UPDATE doctors SET password = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(hashed, req.user.id);
 
@@ -317,7 +356,7 @@ app.post('/api/auth/register', async (req, res) => {
     await sendVerificationEmail(email, code, language || 'fr');
 
     // Sauvegarder temporairement l'utilisateur (non vérifié)
-    const hashedPassword = bcrypt.hashSync(password, 10);
+    const hashedPassword = await bcrypt.hash(password, 10);
     await db.prepare(`
       INSERT INTO patients (email, name, password, is_verified)
       VALUES (?, ?, ?, 0)
@@ -414,7 +453,7 @@ app.post('/api/auth/login-patient', async (req, res) => {
     if (email === demoEmail && password === demoPassword) {
       const existingDemo = await db.prepare('SELECT * FROM patients WHERE email = ?').get(demoEmail);
       if (!existingDemo) {
-        const hashed = bcrypt.hashSync(demoPassword, 10);
+        const hashed = await bcrypt.hash(demoPassword, 10);
         await db.prepare(`
           INSERT INTO patients (email, name, password, is_verified)
           VALUES (?, ?, ?, 1)
@@ -432,7 +471,7 @@ app.post('/api/auth/login-patient', async (req, res) => {
       return res.status(401).json({ error: 'Compte non vérifié. Vérifiez votre email.' });
     }
 
-    const validPassword = bcrypt.compareSync(password, patient.password);
+    const validPassword = await bcrypt.compare(password, patient.password);
 
     if (!validPassword) {
       return res.status(401).json({ error: 'Identifiants incorrects' });
@@ -653,7 +692,11 @@ app.get('/api/doctors', async (req, res) => {
       params.push(`%${location}%`);
     }
 
-    query += ' ORDER BY created_at DESC';
+    // Plafond de sécurité + pagination optionnelle (?limit & ?offset) — évite de renvoyer
+    // des dizaines de milliers de lignes d'un coup si l'annuaire grossit.
+    const limit = Math.min(Number(req.query.limit) || 500, 1000);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    query += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
 
     const doctors = await db.prepare(query).all(...params);
 
@@ -720,7 +763,7 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
     const serializedWorkingDays = JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5]);
 
     // Mot de passe défini par l'admin : haché + changement obligatoire à la 1re connexion
-    const hashedPassword = password ? bcrypt.hashSync(password, 10) : null;
+    const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
     const mustChange = password ? 1 : 0;
 
     const result = await db.prepare(`
@@ -781,7 +824,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
         : doctor.working_days;
 
     // Réinitialisation du mot de passe par l'admin : haché + changement obligatoire à la prochaine connexion
-    const newHashed = password ? bcrypt.hashSync(password, 10) : doctor.password;
+    const newHashed = password ? await bcrypt.hash(password, 10) : doctor.password;
     const mustChange = password ? 1 : (doctor.must_change_password || 0);
 
     await db.prepare(`
@@ -1279,14 +1322,38 @@ app.get('/', async (req, res) => {
   res.json({ message: 'API chifak fonctionne ! 🏥' });
 });
 
+// 404 pour les routes API inconnues
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Route introuvable' });
+});
+
+// Gestionnaire d'erreurs global : toute erreur non capturée renvoie une 500 propre
+// au lieu de faire tomber la requête (ou le process).
+app.use((err, req, res, next) => {
+  console.error('Erreur non gérée:', err);
+  if (res.headersSent) return next(err);
+  res.status(err.status || 500).json({ error: 'Erreur serveur' });
+});
+
+// Filets de sécurité au niveau du process : on log sans tuer le serveur brutalement.
+process.on('unhandledRejection', (reason) => {
+  console.error('Rejet de promesse non géré:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Exception non capturée:', err);
+});
+
 // Démarrer le serveur
 initDatabase()
   .then(() => {
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`\n🚀 Serveur chifak démarré sur http://localhost:${PORT}`);
       console.log(`📊 Base de données: PostgreSQL`);
       console.log(`\n✅ Prêt à recevoir des requêtes!\n`);
     });
+    // Laisse plus de temps aux connexions lentes (mobiles) avant de couper.
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
   })
   .catch((err) => {
     console.error('❌ Échec de l\'initialisation de la base de données:', err);

@@ -4,12 +4,25 @@ import bcrypt from 'bcrypt';
 const { Pool } = pg;
 
 // Connexion PostgreSQL (via DATABASE_URL fournie par Render)
+// Réglages pensés pour tenir la charge sans épuiser la base :
+// - max : plafonne le nombre de connexions simultanées (les offres gratuites en ont peu)
+// - idleTimeout : recycle les connexions inactives
+// - connectionTimeout : échoue vite plutôt que d'empiler des requêtes bloquées
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: Number(process.env.PG_POOL_MAX) || 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  keepAlive: true,
   ssl:
     process.env.DATABASE_URL && !/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL)
       ? { rejectUnauthorized: false }
       : false,
+});
+
+// Un client du pool peut échouer (coupure réseau, redémarrage DB). On log sans tuer le process.
+pool.on('error', (err) => {
+  console.error('Erreur inattendue sur un client PostgreSQL inactif:', err.message);
 });
 
 // Convertit les placeholders SQLite (?) en placeholders PostgreSQL ($1, $2, ...)
@@ -169,15 +182,31 @@ export async function initDatabase() {
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS must_change_password INTEGER DEFAULT 0");
   await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS doctor_notes TEXT");
 
+  // Index : indispensables pour éviter les balayages complets de table sous charge
+  const indexes = [
+    "CREATE INDEX IF NOT EXISTS idx_doctors_specialty ON doctors (specialty)",
+    "CREATE INDEX IF NOT EXISTS idx_doctors_city ON doctors (city)",
+    "CREATE INDEX IF NOT EXISTS idx_doctors_doctor_code ON doctors (doctor_code)",
+    "CREATE INDEX IF NOT EXISTS idx_appointments_doctor_date ON appointments (doctor_id, appointment_date)",
+    "CREATE INDEX IF NOT EXISTS idx_appointments_patient_email ON appointments (patient_email)",
+    "CREATE INDEX IF NOT EXISTS idx_reviews_doctor ON reviews (doctor_id)",
+    "CREATE INDEX IF NOT EXISTS idx_patients_email ON patients (email)",
+    "CREATE INDEX IF NOT EXISTS idx_consultations_doctor ON consultations (doctor_id)",
+    "CREATE INDEX IF NOT EXISTS idx_verification_email ON verification_codes (email)",
+  ];
+  for (const sql of indexes) {
+    try { await pool.query(sql); } catch (e) { console.warn('Index ignoré:', e.message); }
+  }
+
   console.log('✅ Tables PostgreSQL prêtes');
 
   // Utilisateurs par défaut (admin / employés)
   const userCount = await pool.query('SELECT COUNT(*)::int AS count FROM users');
   if (userCount.rows[0].count === 0) {
     const insertUser = 'INSERT INTO users (username, password, role) VALUES ($1, $2, $3)';
-    await pool.query(insertUser, ['admin', bcrypt.hashSync('chifak2026', 10), 'admin']);
-    await pool.query(insertUser, ['employee1', bcrypt.hashSync('chifak123', 10), 'employee']);
-    await pool.query(insertUser, ['employee2', bcrypt.hashSync('chifak456', 10), 'employee']);
+    await pool.query(insertUser, ['admin', await bcrypt.hash('chifak2026', 10), 'admin']);
+    await pool.query(insertUser, ['employee1', await bcrypt.hash('chifak123', 10), 'employee']);
+    await pool.query(insertUser, ['employee2', await bcrypt.hash('chifak456', 10), 'employee']);
     console.log('✅ Utilisateurs par défaut créés');
   }
 
@@ -187,7 +216,7 @@ export async function initDatabase() {
   if (existingDemo.rows.length === 0) {
     await pool.query(
       'INSERT INTO patients (email, name, password, is_verified) VALUES ($1, $2, $3, 1)',
-      [demoPatientEmail, 'Patient Demo', bcrypt.hashSync('patient123', 10)]
+      [demoPatientEmail, 'Patient Demo', await bcrypt.hash('patient123', 10)]
     );
     console.log('✅ Patient de démonstration créé');
   }
