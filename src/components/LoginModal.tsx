@@ -1,6 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { appointmentsAPI } from '../services/api';
 import { API_URL, AUTH_FACEBOOK_URL, AUTH_GOOGLE_URL } from '../config';
 import { startOAuth } from '../utils/nativeAuth';
 

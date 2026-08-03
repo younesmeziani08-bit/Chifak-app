@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Doctor, Booking } from '../App';
 import Header from './Header';
 import FloatingShapes from './FloatingShapes';
-import GoogleMapsView from './GoogleMapsView';
 import DoctorAvatar from './DoctorAvatar';
 import { useLanguage } from '../contexts/LanguageContext';
 import { slotsForDay, isWorkingDate as isWorkingDateShared } from '../utils/slots';
@@ -119,8 +118,6 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
       reason: form.reason,
     });
   };
-
-  const hasMap = doctor.mapsUrl || (doctor.latitude && doctor.longitude);
 
   return (
     <div className="relative min-h-screen bg-[#f8fafc] overflow-hidden" dir={isArabic ? 'rtl' : 'ltr'}>
