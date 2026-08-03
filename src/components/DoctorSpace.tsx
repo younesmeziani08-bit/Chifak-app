@@ -229,8 +229,20 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   };
   const removeOffDay = (d: string) => setPOffDays(pOffDays.filter((x) => x !== d));
 
+  // Grille horaire de secours (07:00 → 21:00 au pas de la durée de consultation),
+  // utilisée si les plages du médecin ne sont pas encore chargées : ainsi les listes
+  // « De » et « À » ne sont jamais vides et le blocage reste toujours possible.
+  const fallbackTimeGrid = (() => {
+    const step = pDuration > 0 ? pDuration : 30;
+    const out: string[] = [];
+    for (let m = 7 * 60; m <= 21 * 60; m += step) {
+      out.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+    }
+    return out;
+  })();
+
   // Tous les créneaux du jour choisi (y compris ceux déjà bloqués, pour pouvoir les rouvrir)
-  const slotsOfBlockDate = blockDate
+  const doctorSlotsOfDate = blockDate
     ? slotsForDay(
         {
           availableSlots: docProfile?.availableSlots || [],
@@ -240,6 +252,11 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
         },
         blockDate
       )
+    : [];
+
+  // Horaires proposés dans « De » / « À » : ceux du médecin si disponibles, sinon la grille de secours.
+  const slotsOfBlockDate = blockDate
+    ? (doctorSlotsOfDate.length > 0 ? doctorSlotsOfDate : fallbackTimeGrid)
     : [];
 
   /**
@@ -879,21 +896,28 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                   {isArabic ? 'حجز الفترة' : 'Bloquer la plage'}
                 </button>
               </div>
-              {blockDate && slotsOfBlockDate.length === 0 && (
+              {!blockDate && (
                 <p className="text-sm text-gray-400 mt-2">
-                  {isArabic ? 'لا تعمل في هذا اليوم.' : 'Vous ne consultez pas ce jour-là.'}
+                  {isArabic ? 'اختر يومًا أولاً لعرض الساعات.' : "Choisissez d'abord un jour pour voir les horaires."}
+                </p>
+              )}
+              {blockDate && doctorSlotsOfDate.length === 0 && (
+                <p className="text-sm text-amber-600 mt-2">
+                  {isArabic
+                    ? 'لا تعمل عادةً في هذا اليوم — يمكنك مع ذلك حجز فترة.'
+                    : "Vous ne consultez normalement pas ce jour-là — vous pouvez tout de même réserver une plage."}
                 </p>
               )}
 
               {/* Aperçu du jour sélectionné : ce que verra le patient */}
-              {blockDate && slotsOfBlockDate.length > 0 && (
+              {blockDate && doctorSlotsOfDate.length > 0 && (
                 <div className="mt-4">
                   <p className="text-xs text-gray-500 mb-2">
                     {isArabic ? 'معاينة اليوم (الأحمر = محجوز لك)' : 'Aperçu de la journée (rouge = réservé pour vous)'}
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {slotsOfBlockDate.map((t) => {
-                      const isBlocked = pBlockedSlots.includes(`${blockDate} ${t}`);
+                    {doctorSlotsOfDate.map((t) => {
+                      const isBlocked = pBlockedSlots.some((e) => blockedKey(e) === `${blockDate} ${t}`);
                       return (
                         <span
                           key={t}
