@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import VideoCall from './VideoCall';
-import { slotsForDay, todayIso, maxBookingIso } from '../utils/slots';
+import { slotsForDay, todayIso, maxBookingIso, blockedKey, BlockedSlotEntry } from '../utils/slots';
 import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, AppointmentCreate } from '../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
@@ -35,8 +35,12 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [pOffDays, setPOffDays] = useState<string[]>([]);
   const [pOffInput, setPOffInput] = useState('');
   // Créneaux réservés par le médecin (« AAAA-MM-JJ HH:MM ») + date en cours d'édition
-  const [pBlockedSlots, setPBlockedSlots] = useState<string[]>([]);
+  const [pBlockedSlots, setPBlockedSlots] = useState<BlockedSlotEntry[]>([]);
   const [blockDate, setBlockDate] = useState('');
+  const [blockFrom, setBlockFrom] = useState('');
+  const [blockTo, setBlockTo] = useState('');
+  // Patient à qui la plage est réservée (facultatif)
+  const [blockPatient, setBlockPatient] = useState({ name: '', phone: '', email: '', note: '' });
   const [pSaving, setPSaving] = useState(false);
   const [pSaved, setPSaved] = useState(false);
   const [docProfile, setDocProfile] = useState<any>(null);
@@ -158,12 +162,28 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const loadDoctorProfile = async () => {
     try {
       const p = await doctorAPI.getProfile();
-      setDocProfile(p);
       setPDesc(p.description || '');
       setPBio(p.bio || '');
       setPDuration(p.slotDuration || 30);
       setPOffDays(p.offDays || []);
       setPBlockedSlots(p.blockedSlots || []);
+
+      // Les plages horaires et jours travaillés ne sont pas toujours renvoyés par le profil :
+      // on complète depuis la fiche publique du médecin pour toujours avoir des créneaux.
+      let merged: any = p;
+      if (!p.availableSlots || p.availableSlots.length === 0) {
+        try {
+          const full = await doctorsAPI.getById(p.id);
+          merged = {
+            ...p,
+            availableSlots: full.availableSlots || [],
+            workingDays: full.workingDays || p.workingDays || [1, 2, 3, 4, 5],
+          };
+        } catch {
+          // fiche publique indisponible : on garde le profil tel quel
+        }
+      }
+      setDocProfile(merged);
     } catch (err) {
       console.error('Erreur chargement profil médecin:', err);
     }
@@ -209,8 +229,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   };
   const removeOffDay = (d: string) => setPOffDays(pOffDays.filter((x) => x !== d));
 
-  // Créneaux du jour choisi pour le blocage (on affiche TOUS les créneaux,
-  // y compris ceux déjà bloqués, afin de pouvoir les débloquer).
+  // Tous les créneaux du jour choisi (y compris ceux déjà bloqués, pour pouvoir les rouvrir)
   const slotsOfBlockDate = blockDate
     ? slotsForDay(
         {
@@ -222,6 +241,99 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
         blockDate
       )
     : [];
+
+  /**
+   * Bloque tous les créneaux de la plage choisie (bornes incluses).
+   * Si un patient est renseigné, la plage lui est nominativement réservée.
+   */
+  const blockRange = () => {
+    if (!blockDate || !blockFrom || !blockTo) return;
+    const [start, end] = blockFrom <= blockTo ? [blockFrom, blockTo] : [blockTo, blockFrom];
+    const times = slotsOfBlockDate.filter((t) => t >= start && t <= end);
+    if (times.length === 0) return;
+
+    const patient = {
+      ...(blockPatient.name.trim() ? { patientName: blockPatient.name.trim() } : {}),
+      ...(blockPatient.phone.trim() ? { patientPhone: blockPatient.phone.trim() } : {}),
+      ...(blockPatient.email.trim() ? { patientEmail: blockPatient.email.trim() } : {}),
+      ...(blockPatient.note.trim() ? { note: blockPatient.note.trim() } : {}),
+    };
+    const hasPatient = Object.keys(patient).length > 0;
+
+    const entries: BlockedSlotEntry[] = times.map((t) => {
+      const slot = `${blockDate} ${t}`;
+      return hasPatient ? { slot, ...patient } : slot;
+    });
+
+    setPBlockedSlots((prev) => {
+      const newKeys = new Set(entries.map(blockedKey));
+      // On remplace d'éventuels blocages existants sur ces mêmes créneaux
+      const kept = prev.filter((e) => !newKeys.has(blockedKey(e)));
+      return [...kept, ...entries].sort((a, b) => blockedKey(a).localeCompare(blockedKey(b)));
+    });
+
+    setBlockFrom('');
+    setBlockTo('');
+    setBlockPatient({ name: '', phone: '', email: '', note: '' });
+  };
+
+  /**
+   * Regroupe les créneaux bloqués en plages continues, par jour.
+   * Ex. 10:00, 10:15, 10:30 → « 10:00 – 10:45 » (fin = dernier créneau + durée).
+   */
+  const blockedRanges = (() => {
+    const addMinutes = (t: string, m: number) => {
+      const [h, min] = t.split(':').map(Number);
+      const total = h * 60 + min + m;
+      return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    };
+
+    // Regroupement par jour, en conservant les informations du patient
+    type Item = { time: string; info?: { patientName?: string; patientPhone?: string; patientEmail?: string; note?: string } };
+    const byDate = new Map<string, Item[]>();
+    for (const entry of pBlockedSlots) {
+      const [d, t] = blockedKey(entry).split(' ');
+      if (!d || !t) continue;
+      const info = typeof entry === 'string' ? undefined : entry;
+      byDate.set(d, [...(byDate.get(d) || []), { time: t, info }]);
+    }
+
+    const label = (i?: Item['info']) =>
+      i ? [i.patientName, i.patientPhone, i.patientEmail, i.note].filter(Boolean).join(' | ') : '';
+
+    const out: {
+      date: string; from: string; toEnd: string; keys: string[];
+      patientName?: string; patientPhone?: string; patientEmail?: string; note?: string;
+    }[] = [];
+
+    for (const [date, items] of [...byDate.entries()].sort()) {
+      const sorted = [...items].sort((a, b) => a.time.localeCompare(b.time));
+      let group: Item[] = [];
+      const flush = () => {
+        if (!group.length) return;
+        const info = group[0].info;
+        out.push({
+          date,
+          from: group[0].time,
+          toEnd: addMinutes(group[group.length - 1].time, pDuration),
+          keys: group.map((g) => `${date} ${g.time}`),
+          patientName: info?.patientName,
+          patientPhone: info?.patientPhone,
+          patientEmail: info?.patientEmail,
+          note: info?.note,
+        });
+        group = [];
+      };
+      for (const it of sorted) {
+        const contiguous = group.length && addMinutes(group[group.length - 1].time, pDuration) === it.time;
+        const samePatient = group.length && label(group[0].info) === label(it.info);
+        if (group.length && (!contiguous || !samePatient)) flush();
+        group.push(it);
+      }
+      flush();
+    }
+    return out;
+  })();
 
   const saveNote = async (id: number) => {
     try {
@@ -670,81 +782,172 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
             {/* ── Réserver des créneaux précis (patients habitués, urgences…) ── */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-6">
               <h3 className="font-bold text-gray-900 mb-1">
-                {isArabic ? 'حجز خانات معيّنة' : 'Bloquer des créneaux précis'}
+                {isArabic ? 'حجز فترة زمنية' : 'Bloquer une plage horaire'}
               </h3>
               <p className="text-sm text-gray-500 mb-4">
                 {isArabic
-                  ? 'اختر تاريخًا ثم انقر على الخانات التي تريد الاحتفاظ بها. لن تظهر للمرضى.'
-                  : 'Choisissez une date, puis cliquez sur les créneaux à réserver. Ils disparaîtront pour les patients.'}
+                  ? 'اختر يومًا وفترة (مثلاً من 10:00 إلى 12:00). هذه الفترة فقط تُحجز لك، وليس اليوم كله.'
+                  : "Choisissez un jour et une plage (ex. de 10:00 à 12:00). Seule cette plage vous est réservée, pas la journée entière."}
               </p>
 
-              <input
-                type="date"
-                value={blockDate}
-                min={todayIso()}
-                max={maxBookingIso()}
-                onChange={(e) => setBlockDate(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{isArabic ? 'اليوم' : 'Jour'}</label>
+                  <input
+                    type="date"
+                    value={blockDate}
+                    min={todayIso()}
+                    max={maxBookingIso()}
+                    onChange={(e) => setBlockDate(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{isArabic ? 'من' : 'De'}</label>
+                  <select
+                    value={blockFrom}
+                    onChange={(e) => setBlockFrom(e.target.value)}
+                    disabled={slotsOfBlockDate.length === 0}
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  >
+                    <option value="">--:--</option>
+                    {slotsOfBlockDate.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">{isArabic ? 'إلى' : 'À'}</label>
+                  <select
+                    value={blockTo}
+                    onChange={(e) => setBlockTo(e.target.value)}
+                    disabled={!blockFrom}
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                  >
+                    <option value="">--:--</option>
+                    {slotsOfBlockDate.filter((t) => !blockFrom || t >= blockFrom).map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
-              {blockDate && (
+              {/* Réserver la plage à un patient précis (facultatif) */}
+              <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                <p className="text-sm font-medium text-gray-700 mb-1">
+                  {isArabic ? 'محجوز لمريض (اختياري)' : 'Réservé à un patient (facultatif)'}
+                </p>
+                <p className="text-xs text-gray-500 mb-3">
+                  {isArabic
+                    ? 'إذا كانت الفترة مخصّصة لمريض معتاد، أدخل معلوماته للتذكير.'
+                    : "Si la plage est réservée à un patient habitué, renseignez ses informations pour vous en souvenir."}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="text"
+                    value={blockPatient.name}
+                    onChange={(e) => setBlockPatient({ ...blockPatient, name: e.target.value })}
+                    placeholder={isArabic ? 'الاسم واللقب' : 'Nom et prénom'}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <input
+                    type="tel"
+                    value={blockPatient.phone}
+                    onChange={(e) => setBlockPatient({ ...blockPatient, phone: e.target.value })}
+                    placeholder={isArabic ? 'الهاتف' : 'Téléphone'}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <input
+                    type="email"
+                    value={blockPatient.email}
+                    onChange={(e) => setBlockPatient({ ...blockPatient, email: e.target.value })}
+                    placeholder={isArabic ? 'البريد الإلكتروني' : 'Email'}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  <input
+                    type="text"
+                    value={blockPatient.note}
+                    onChange={(e) => setBlockPatient({ ...blockPatient, note: e.target.value })}
+                    placeholder={isArabic ? 'ملاحظة (سبب الزيارة…)' : 'Note (motif…)'}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={blockRange}
+                  disabled={!blockDate || !blockFrom || !blockTo}
+                  className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:bg-gray-300 transition"
+                >
+                  {isArabic ? 'حجز الفترة' : 'Bloquer la plage'}
+                </button>
+              </div>
+              {blockDate && slotsOfBlockDate.length === 0 && (
+                <p className="text-sm text-gray-400 mt-2">
+                  {isArabic ? 'لا تعمل في هذا اليوم.' : 'Vous ne consultez pas ce jour-là.'}
+                </p>
+              )}
+
+              {/* Aperçu du jour sélectionné : ce que verra le patient */}
+              {blockDate && slotsOfBlockDate.length > 0 && (
                 <div className="mt-4">
-                  {slotsOfBlockDate.length === 0 ? (
-                    <p className="text-sm text-gray-400">
-                      {isArabic ? 'لا تعمل في هذا اليوم.' : 'Vous ne consultez pas ce jour-là.'}
-                    </p>
-                  ) : (
-                    <>
-                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                        {slotsOfBlockDate.map((t) => {
-                          const key = `${blockDate} ${t}`;
-                          const isBlocked = pBlockedSlots.includes(key);
-                          return (
-                            <button
-                              key={t}
-                              type="button"
-                              onClick={() =>
-                                setPBlockedSlots((prev) =>
-                                  isBlocked ? prev.filter((x) => x !== key) : [...prev, key].sort()
-                                )
-                              }
-                              className={`py-2.5 rounded-lg text-sm font-semibold border transition ${
-                                isBlocked
-                                  ? 'bg-red-50 border-red-200 text-red-600 line-through'
-                                  : 'bg-white border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
-                              }`}
-                            >
-                              {t}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {isArabic ? 'الخانات الحمراء محجوزة لك.' : 'Les créneaux en rouge vous sont réservés.'}
-                      </p>
-                    </>
-                  )}
+                  <p className="text-xs text-gray-500 mb-2">
+                    {isArabic ? 'معاينة اليوم (الأحمر = محجوز لك)' : 'Aperçu de la journée (rouge = réservé pour vous)'}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {slotsOfBlockDate.map((t) => {
+                      const isBlocked = pBlockedSlots.includes(`${blockDate} ${t}`);
+                      return (
+                        <span
+                          key={t}
+                          className={`px-2 py-1 rounded text-xs font-medium border ${
+                            isBlocked
+                              ? 'bg-red-50 border-red-200 text-red-600 line-through'
+                              : 'bg-gray-50 border-gray-200 text-gray-600'
+                          }`}
+                        >
+                          {t}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              {pBlockedSlots.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-100">
+              {/* Plages bloquées, regroupées par jour */}
+              {blockedRanges.length > 0 && (
+                <div className="mt-5 pt-4 border-t border-gray-100">
                   <p className="text-sm font-medium text-gray-600 mb-2">
-                    {isArabic ? `الخانات المحجوزة (${pBlockedSlots.length})` : `Créneaux bloqués (${pBlockedSlots.length})`}
+                    {isArabic ? 'الفترات المحجوزة' : 'Plages réservées'}
                   </p>
-                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                    {pBlockedSlots.map((s) => (
-                      <span key={s} className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 text-sm px-3 py-1 rounded-full">
-                        {s}
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                    {blockedRanges.map((r) => (
+                      <div
+                        key={`${r.date}-${r.from}`}
+                        className="flex items-start justify-between gap-3 bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium">
+                            {r.date} · {r.from} – {r.toEnd}
+                          </p>
+                          {r.patientName || r.patientPhone || r.patientEmail || r.note ? (
+                            <p className="text-xs text-red-600/90 mt-0.5 break-words">
+                              {[r.patientName, r.patientPhone, r.patientEmail, r.note].filter(Boolean).join(' · ')}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-red-600/60 mt-0.5">
+                              {isArabic ? 'محجوز لك' : 'Réservé pour vous'}
+                            </p>
+                          )}
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setPBlockedSlots((prev) => prev.filter((x) => x !== s))}
-                          className="hover:text-red-900"
-                          aria-label="retirer"
+                          onClick={() =>
+                            setPBlockedSlots((prev) => prev.filter((e) => !r.keys.includes(blockedKey(e))))
+                          }
+                          className="hover:text-red-900 font-medium flex-shrink-0"
+                          aria-label={isArabic ? 'إلغاء' : 'Débloquer'}
                         >
                           ×
                         </button>
-                      </span>
+                      </div>
                     ))}
                   </div>
                 </div>

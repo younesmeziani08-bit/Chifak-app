@@ -1190,7 +1190,9 @@ app.post('/api/appointments', async (req, res) => {
     }
 
     // Créneau réservé par le médecin (patient habitué, urgence, etc.)
-    const blocked = parseJson(doctor.blocked_slots, []);
+    const blocked = parseJson(doctor.blocked_slots, [])
+      .map((e) => (typeof e === 'string' ? e : e && e.slot))
+      .filter(Boolean);
     if (blocked.includes(`${appointmentDate} ${appointmentTime}`)) {
       return res.status(409).json({ error: 'Ce créneau n\'est pas disponible.' });
     }
@@ -1413,15 +1415,31 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
       ? JSON.stringify(offDays.filter((d) => isValidDate(d)).slice(0, 400))
       : (current.off_days || '[]');
 
-    // Créneaux bloqués : format « AAAA-MM-JJ HH:MM » (max 2000 entrées)
+    // Créneaux bloqués. Deux formats acceptés :
+    //  - « AAAA-MM-JJ HH:MM » (simple)
+    //  - { slot, patientName, patientPhone, patientEmail, note } (réservé à un patient)
     const newBlocked = Array.isArray(blockedSlots)
       ? JSON.stringify(
           blockedSlots
-            .filter((s) => {
-              if (typeof s !== 'string') return false;
-              const [d, t] = s.split(' ');
-              return isValidDate(d) && isValidTime(t);
+            .map((entry) => {
+              const raw = typeof entry === 'string' ? entry : entry && entry.slot;
+              if (typeof raw !== 'string') return null;
+              const [d, t] = raw.split(' ');
+              if (!isValidDate(d) || !isValidTime(t)) return null;
+              if (typeof entry === 'string') return raw;
+
+              const cleaned = { slot: raw };
+              const name = cleanString(entry.patientName, 120);
+              const phone = cleanString(entry.patientPhone, 20);
+              const email = normalizeEmail(entry.patientEmail);
+              const note = cleanString(entry.note, 500);
+              if (name) cleaned.patientName = name;
+              if (phone && isValidPhone(phone)) cleaned.patientPhone = phone;
+              if (email && isValidEmail(email)) cleaned.patientEmail = email;
+              if (note) cleaned.note = note;
+              return cleaned;
             })
+            .filter(Boolean)
             .slice(0, 2000)
         )
       : (current.blocked_slots || '[]');

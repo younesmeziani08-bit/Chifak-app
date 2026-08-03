@@ -1,5 +1,6 @@
 import { Doctor } from '../App';
 import { API_URL } from '../config';
+import type { BlockedSlotEntry } from '../utils/slots';
 
 const DEMO_APPOINTMENTS_KEY = 'chifak_demo_appointments';
 
@@ -415,8 +416,8 @@ export interface DoctorProfile {
   bio: string;
   slotDuration: number;
   offDays: string[];
-  /** Créneaux réservés par le médecin, format « AAAA-MM-JJ HH:MM » */
-  blockedSlots?: string[];
+  /** Créneaux réservés par le médecin (chaîne ou objet avec le patient) */
+  blockedSlots?: BlockedSlotEntry[];
   availableSlots?: string[];
   workingDays?: number[];
 }
@@ -428,7 +429,7 @@ export const doctorAPI = {
     return await response.json();
   },
 
-  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[]; blockedSlots?: string[] }) => {
+  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[]; blockedSlots?: BlockedSlotEntry[] }) => {
     const response = await fetch(`${API_URL}/doctor/profile`, {
       method: 'PUT',
       headers: doctorHeaders(),

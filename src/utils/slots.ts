@@ -24,13 +24,33 @@ export function expandSlots(slots: string[], duration?: number): string[] {
   return [...out].sort();
 }
 
+/**
+ * Créneau réservé par le médecin. Deux formes acceptées :
+ * - une chaîne « AAAA-MM-JJ HH:MM » (ancien format, toujours supporté)
+ * - un objet avec le créneau et, si le médecin l'a précisé, le patient concerné
+ */
+export interface BlockedSlot {
+  slot: string;
+  patientName?: string;
+  patientPhone?: string;
+  patientEmail?: string;
+  note?: string;
+}
+
+export type BlockedSlotEntry = string | BlockedSlot;
+
+/** Renvoie la clé « AAAA-MM-JJ HH:MM » d'une entrée, quel que soit son format. */
+export function blockedKey(entry: BlockedSlotEntry): string {
+  return typeof entry === 'string' ? entry : entry.slot;
+}
+
 interface SlotSource {
   availableSlots?: string[];
   slotDuration?: number;
   workingDays?: number[];
   offDays?: string[];
-  /** Créneaux réservés par le médecin, au format « AAAA-MM-JJ HH:MM » */
-  blockedSlots?: string[];
+  /** Créneaux réservés par le médecin */
+  blockedSlots?: BlockedSlotEntry[];
 }
 
 /** Nombre de jours ouverts à la réservation à l'avance (un an). */
@@ -73,6 +93,6 @@ export function isWorkingDate(doctor: SlotSource, iso: string): boolean {
 export function slotsForDay(doctor: SlotSource, iso: string): string[] {
   if (!isWorkingDate(doctor, iso)) return [];
   const all = expandSlots(doctor.availableSlots || [], doctor.slotDuration);
-  const blocked = new Set(doctor.blockedSlots || []);
+  const blocked = new Set((doctor.blockedSlots || []).map(blockedKey));
   return all.filter((t) => !blocked.has(`${iso} ${t}`));
 }
