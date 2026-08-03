@@ -78,35 +78,25 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Rien ne peut dépasser la largeur de l'écran */
-*, *::before, *::after { min-width: 0; }
-img, svg, video, canvas { max-width: 100%; height: auto; }
+/* IMPORTANT : ces règles sont placées dans @layer base pour que les classes
+   utilitaires de Tailwind (min-w-…, max-w-…, h-…) gardent la priorité.
+   Hors « layer », elles écraseraient toutes les utilitaires et casseraient
+   les mises en page (cartes écrasées, hauteurs forcées, etc.). */
+@layer base {
+  /* Les médias ne dépassent pas la largeur de leur conteneur */
+  img, video, canvas { max-width: 100%; height: auto; }
 
-/* Les mots très longs (e-mails, adresses) passent à la ligne au lieu de déborder */
-p, h1, h2, h3, h4, span, a, li, td { overflow-wrap: break-word; }
+  /* Les mots très longs (e-mails, adresses) passent à la ligne au lieu de déborder */
+  p, h1, h2, h3, h4, li, td { overflow-wrap: break-word; }
 
-/* ── Confort tactile (mobile) ── */
-@media (max-width: 640px) {
-  /* iOS agrandit automatiquement la page si un champ fait moins de 16px :
-     on impose 16px pour éviter ce zoom intempestif à la saisie. */
-  input, select, textarea {
-    font-size: 16px !important;
-  }
+  /* ── Confort tactile (mobile) ── */
+  @media (max-width: 640px) {
+    /* iOS agrandit automatiquement la page si un champ fait moins de 16px :
+       on impose 16px pour éviter ce zoom intempestif à la saisie. */
+    input, select, textarea { font-size: 16px; }
 
-  /* Cibles tactiles confortables (recommandation : 44px minimum) */
-  button, a[role="button"], .btn-primary, .btn-secondary {
-    min-height: 44px;
-  }
-
-  /* Titres un peu plus compacts pour éviter les débordements */
-  h1 { line-height: 1.15; }
-}
-
-/* Encoche iPhone en paysage : on décale le contenu, pas les fonds pleine largeur */
-@supports (padding: max(0px)) {
-  .max-w-7xl, .max-w-5xl, .max-w-4xl {
-    padding-left: max(0px, env(safe-area-inset-left));
-    padding-right: max(0px, env(safe-area-inset-right));
+    /* Titres un peu plus compacts pour éviter les débordements */
+    h1 { line-height: 1.15; }
   }
 }
 

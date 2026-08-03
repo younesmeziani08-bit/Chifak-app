@@ -33,6 +33,7 @@ export interface Doctor {
   slotDuration?: number;
   workingDays?: number[];
   offDays?: string[];
+  blockedSlots?: string[];
   description?: string;
   bio?: string;
   latitude?: number;

@@ -4,7 +4,7 @@ import Header from './Header';
 import FloatingShapes from './FloatingShapes';
 import DoctorAvatar from './DoctorAvatar';
 import { useLanguage } from '../contexts/LanguageContext';
-import { slotsForDay, isWorkingDate as isWorkingDateShared } from '../utils/slots';
+import { slotsForDay, isWorkingDate as isWorkingDateShared, todayIso, maxBookingIso } from '../utils/slots';
 
 const IconStar = ({ className = '' }: { className?: string }) => (
   <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -89,16 +89,43 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
     }
   }, []);
 
+  // Fenêtre de 7 jours que l'on peut faire glisser librement jusqu'à un an à l'avance.
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const isoOf = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const todayStr = todayIso();
+  const maxStr = maxBookingIso();
+
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
-    d.setDate(d.getDate() + i);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + weekOffset * 7 + i);
+    const full = isoOf(d);
     return {
-      label: i === 0 ? (isArabic ? 'اليوم' : "Auj.") : (isArabic ? DAYS_AR[d.getDay()] : DAYS_FR[d.getDay()]),
+      label: full === todayStr ? (isArabic ? 'اليوم' : "Auj.") : (isArabic ? DAYS_AR[d.getDay()] : DAYS_FR[d.getDay()]),
       dayNum: d.getDate(),
       month: isArabic ? MONTHS_AR[d.getMonth()] : MONTHS_FR[d.getMonth()],
-      full: d.toISOString().split('T')[0],
+      monthIndex: d.getMonth(),
+      year: d.getFullYear(),
+      full,
+      isPast: full < todayStr,
+      beyondHorizon: full > maxStr,
     };
   });
+
+  // Intitulé du mois affiché (ex. « Août 2026 »)
+  const MONTHS_FULL_FR = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  const periodLabel = (() => {
+    const first = days[0], last = days[6];
+    const nameOf = (m: number) => (isArabic ? MONTHS_AR[m] : MONTHS_FULL_FR[m]);
+    if (first.monthIndex === last.monthIndex) return `${nameOf(first.monthIndex)} ${first.year}`;
+    return `${nameOf(first.monthIndex)} – ${nameOf(last.monthIndex)} ${last.year}`;
+  })();
+
+  const canGoBack = weekOffset > 0;
+  const canGoForward = !days[6].beyondHorizon;
 
   // Même logique que la liste des résultats et l'espace patient (module partagé) :
   // les créneaux découlent toujours de la durée de consultation du médecin.
@@ -181,13 +208,62 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
               <div className="space-y-6 animate-fadeInUp">
                 {/* Sélecteur de date */}
                 <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">
-                  <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-3">
-                    <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">1</span>
-                    {isArabic ? 'اختر التاريخ' : 'Date de visite'}
-                  </h3>
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-bold text-gray-900 flex items-center gap-3">
+                      <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">1</span>
+                      {isArabic ? 'اختر التاريخ' : 'Date de visite'}
+                    </h3>
+                    {/* Aller directement à une date précise (jusqu'à un an) */}
+                    <input
+                      type="date"
+                      min={todayStr}
+                      max={maxStr}
+                      value={selectedDate}
+                      onChange={(e) => {
+                        const iso = e.target.value;
+                        if (!iso) return;
+                        const diff = Math.floor(
+                          (new Date(`${iso}T00:00:00`).getTime() - new Date(`${todayStr}T00:00:00`).getTime()) / 86400000
+                        );
+                        setWeekOffset(Math.max(0, Math.floor(diff / 7)));
+                        setSelectedDate(iso);
+                        setSelectedTime('');
+                      }}
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 outline-none"
+                    />
+                  </div>
+
+                  {/* Navigation semaine par semaine + mois affiché */}
+                  <div className="flex items-center justify-between mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setWeekOffset((w) => Math.max(0, w - 1))}
+                      disabled={!canGoBack}
+                      aria-label={isArabic ? 'الأسبوع السابق' : 'Semaine précédente'}
+                      className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d={isArabic ? 'M9 5l7 7-7 7' : 'M15 19l-7-7 7-7'} />
+                      </svg>
+                    </button>
+                    <span className="text-sm font-semibold text-gray-700 capitalize">{periodLabel}</span>
+                    <button
+                      type="button"
+                      onClick={() => setWeekOffset((w) => w + 1)}
+                      disabled={!canGoForward}
+                      aria-label={isArabic ? 'الأسبوع التالي' : 'Semaine suivante'}
+                      className="w-9 h-9 rounded-lg border border-gray-200 flex items-center justify-center text-gray-600 hover:border-blue-300 hover:text-blue-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <path d={isArabic ? 'M15 19l-7-7 7-7' : 'M9 5l7 7-7 7'} />
+                      </svg>
+                    </button>
+                  </div>
+
                   <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar">
                     {days.map(d => {
-                      const working = isWorkingDate(d.full);
+                      const working = isWorkingDate(d.full) && !d.isPast && !d.beyondHorizon
+                        && slotsForDay(doctor, d.full).length > 0;
                       const active = selectedDate === d.full;
                       return (
                         <button

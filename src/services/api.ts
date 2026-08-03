@@ -415,6 +415,10 @@ export interface DoctorProfile {
   bio: string;
   slotDuration: number;
   offDays: string[];
+  /** Créneaux réservés par le médecin, format « AAAA-MM-JJ HH:MM » */
+  blockedSlots?: string[];
+  availableSlots?: string[];
+  workingDays?: number[];
 }
 
 export const doctorAPI = {
@@ -424,7 +428,7 @@ export const doctorAPI = {
     return await response.json();
   },
 
-  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[] }) => {
+  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[]; blockedSlots?: string[] }) => {
     const response = await fetch(`${API_URL}/doctor/profile`, {
       method: 'PUT',
       headers: doctorHeaders(),

@@ -180,6 +180,8 @@ export async function initDatabase() {
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS off_days TEXT DEFAULT '[]'");
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS password TEXT");
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS must_change_password INTEGER DEFAULT 0");
+  // Créneaux bloqués individuellement par le médecin : ["2026-09-14 10:30", ...]
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS blocked_slots TEXT DEFAULT '[]'");
   await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS doctor_notes TEXT");
 
   // Index : indispensables pour éviter les balayages complets de table sous charge

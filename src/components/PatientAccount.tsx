@@ -42,6 +42,7 @@ interface Appointment {
   available_slots?: string | string[];
   working_days?: string | number[];
   off_days?: string | string[];
+  blocked_slots?: string | string[];
 }
 
 interface PatientAccountProps {
@@ -129,6 +130,7 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
         slotDuration: Number(a.slot_duration) || 30,
         workingDays: parseJson<number[]>(a.working_days, [1, 2, 3, 4, 5]),
         offDays: parseJson<string[]>(a.off_days, []),
+        blockedSlots: parseJson<string[]>(a.blocked_slots, []),
       },
       iso
     );

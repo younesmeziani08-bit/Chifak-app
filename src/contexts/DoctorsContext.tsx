@@ -45,6 +45,7 @@ const normalizeDoctor = (doctor: any): Doctor => ({
   slotDuration: Number(doctor.slotDuration ?? doctor.slot_duration ?? 30),
   workingDays: doctor.workingDays || (doctor.working_days ? JSON.parse(doctor.working_days) : [1, 2, 3, 4, 5]),
   offDays: doctor.offDays || (doctor.off_days ? JSON.parse(doctor.off_days) : []),
+  blockedSlots: doctor.blockedSlots || (doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : []),
   description: doctor.description || '',
   bio: doctor.bio || '',
   latitude: doctor.latitude,

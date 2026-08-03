@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import VideoCall from './VideoCall';
-import { slotsForDay } from '../utils/slots';
+import { slotsForDay, todayIso, maxBookingIso } from '../utils/slots';
 import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, AppointmentCreate } from '../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
@@ -34,6 +34,9 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [pDuration, setPDuration] = useState(30);
   const [pOffDays, setPOffDays] = useState<string[]>([]);
   const [pOffInput, setPOffInput] = useState('');
+  // Créneaux réservés par le médecin (« AAAA-MM-JJ HH:MM ») + date en cours d'édition
+  const [pBlockedSlots, setPBlockedSlots] = useState<string[]>([]);
+  const [blockDate, setBlockDate] = useState('');
   const [pSaving, setPSaving] = useState(false);
   const [pSaved, setPSaved] = useState(false);
   const [docProfile, setDocProfile] = useState<any>(null);
@@ -160,6 +163,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       setPBio(p.bio || '');
       setPDuration(p.slotDuration || 30);
       setPOffDays(p.offDays || []);
+      setPBlockedSlots(p.blockedSlots || []);
     } catch (err) {
       console.error('Erreur chargement profil médecin:', err);
     }
@@ -182,7 +186,13 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
     setPSaving(true);
     setPSaved(false);
     try {
-      await doctorAPI.updateProfile({ description: pDesc, bio: pBio, slotDuration: pDuration, offDays: pOffDays });
+      await doctorAPI.updateProfile({
+        description: pDesc,
+        bio: pBio,
+        slotDuration: pDuration,
+        offDays: pOffDays,
+        blockedSlots: pBlockedSlots,
+      });
       setPSaved(true);
     } catch (err: any) {
       setError(err.message || 'Erreur');
@@ -198,6 +208,20 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
     }
   };
   const removeOffDay = (d: string) => setPOffDays(pOffDays.filter((x) => x !== d));
+
+  // Créneaux du jour choisi pour le blocage (on affiche TOUS les créneaux,
+  // y compris ceux déjà bloqués, afin de pouvoir les débloquer).
+  const slotsOfBlockDate = blockDate
+    ? slotsForDay(
+        {
+          availableSlots: docProfile?.availableSlots || [],
+          slotDuration: pDuration,
+          workingDays: docProfile?.workingDays || [1, 2, 3, 4, 5],
+          offDays: pOffDays,
+        },
+        blockDate
+      )
+    : [];
 
   const saveNote = async (id: number) => {
     try {
@@ -641,6 +665,90 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* ── Réserver des créneaux précis (patients habitués, urgences…) ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sm:p-6">
+              <h3 className="font-bold text-gray-900 mb-1">
+                {isArabic ? 'حجز خانات معيّنة' : 'Bloquer des créneaux précis'}
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {isArabic
+                  ? 'اختر تاريخًا ثم انقر على الخانات التي تريد الاحتفاظ بها. لن تظهر للمرضى.'
+                  : 'Choisissez une date, puis cliquez sur les créneaux à réserver. Ils disparaîtront pour les patients.'}
+              </p>
+
+              <input
+                type="date"
+                value={blockDate}
+                min={todayIso()}
+                max={maxBookingIso()}
+                onChange={(e) => setBlockDate(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+
+              {blockDate && (
+                <div className="mt-4">
+                  {slotsOfBlockDate.length === 0 ? (
+                    <p className="text-sm text-gray-400">
+                      {isArabic ? 'لا تعمل في هذا اليوم.' : 'Vous ne consultez pas ce jour-là.'}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                        {slotsOfBlockDate.map((t) => {
+                          const key = `${blockDate} ${t}`;
+                          const isBlocked = pBlockedSlots.includes(key);
+                          return (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() =>
+                                setPBlockedSlots((prev) =>
+                                  isBlocked ? prev.filter((x) => x !== key) : [...prev, key].sort()
+                                )
+                              }
+                              className={`py-2.5 rounded-lg text-sm font-semibold border transition ${
+                                isBlocked
+                                  ? 'bg-red-50 border-red-200 text-red-600 line-through'
+                                  : 'bg-white border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
+                              }`}
+                            >
+                              {t}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">
+                        {isArabic ? 'الخانات الحمراء محجوزة لك.' : 'Les créneaux en rouge vous sont réservés.'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {pBlockedSlots.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm font-medium text-gray-600 mb-2">
+                    {isArabic ? `الخانات المحجوزة (${pBlockedSlots.length})` : `Créneaux bloqués (${pBlockedSlots.length})`}
+                  </p>
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                    {pBlockedSlots.map((s) => (
+                      <span key={s} className="inline-flex items-center gap-1.5 bg-red-50 text-red-700 text-sm px-3 py-1 rounded-full">
+                        {s}
+                        <button
+                          type="button"
+                          onClick={() => setPBlockedSlots((prev) => prev.filter((x) => x !== s))}
+                          className="hover:text-red-900"
+                          aria-label="retirer"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {pSaved && <p className="text-green-600 text-sm font-medium">✓ {isArabic ? 'تم حفظ التغييرات' : 'Modifications enregistrées'}</p>}

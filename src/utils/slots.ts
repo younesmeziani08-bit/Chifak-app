@@ -29,6 +29,24 @@ interface SlotSource {
   slotDuration?: number;
   workingDays?: number[];
   offDays?: string[];
+  /** Créneaux réservés par le médecin, au format « AAAA-MM-JJ HH:MM » */
+  blockedSlots?: string[];
+}
+
+/** Nombre de jours ouverts à la réservation à l'avance (un an). */
+export const BOOKING_HORIZON_DAYS = 365;
+
+/** Date du jour au format AAAA-MM-JJ (heure locale, sans décalage UTC). */
+export function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Dernière date réservable (aujourd'hui + un an). */
+export function maxBookingIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + BOOKING_HORIZON_DAYS);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function workingDaysOf(doctor: SlotSource): number[] {
@@ -48,8 +66,13 @@ export function isWorkingDate(doctor: SlotSource, iso: string): boolean {
   return true;
 }
 
-/** Créneaux proposés par le médecin pour une date donnée (vide s'il ne travaille pas). */
+/**
+ * Créneaux proposés par le médecin pour une date donnée.
+ * Vide s'il ne travaille pas ; les créneaux qu'il a bloqués sont retirés.
+ */
 export function slotsForDay(doctor: SlotSource, iso: string): string[] {
   if (!isWorkingDate(doctor, iso)) return [];
-  return expandSlots(doctor.availableSlots || [], doctor.slotDuration);
+  const all = expandSlots(doctor.availableSlots || [], doctor.slotDuration);
+  const blocked = new Set(doctor.blockedSlots || []);
+  return all.filter((t) => !blocked.has(`${iso} ${t}`));
 }

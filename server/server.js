@@ -781,6 +781,7 @@ app.get('/api/doctors', async (req, res) => {
       description: doctor.description || '',
       bio: doctor.bio || '',
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
+      blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
     }));
 
     res.json(doctorsWithParsedSlots);
@@ -810,6 +811,7 @@ app.get('/api/doctors/:id', async (req, res) => {
       description: doctor.description || '',
       bio: doctor.bio || '',
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
+      blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
     };
 
     res.json(doctorWithParsedSlots);
@@ -1187,6 +1189,12 @@ app.post('/api/appointments', async (req, res) => {
       return res.status(400).json({ error: 'Créneau horaire non proposé par ce médecin.' });
     }
 
+    // Créneau réservé par le médecin (patient habitué, urgence, etc.)
+    const blocked = parseJson(doctor.blocked_slots, []);
+    if (blocked.includes(`${appointmentDate} ${appointmentTime}`)) {
+      return res.status(409).json({ error: 'Ce créneau n\'est pas disponible.' });
+    }
+
     // Anti-spam : un même e-mail ne peut pas réserver en masse
     const recent = await db.prepare(`
       SELECT COUNT(*)::int AS count FROM appointments
@@ -1259,7 +1267,7 @@ app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) 
   try {
     const appointments = await db.prepare(`
       SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days
+             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
       WHERE a.patient_email = ?
@@ -1290,7 +1298,7 @@ app.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, asyn
     await db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?").run(id);
     const updated = await db.prepare(`
       SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days
+             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
       FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
     `).get(id);
     res.json(updated);
@@ -1330,7 +1338,7 @@ app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, 
       .run(appointmentDate, appointmentTime, id);
     const updated = await db.prepare(`
       SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days
+             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
       FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
     `).get(id);
     res.json(updated);
@@ -1345,7 +1353,7 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
   try {
     const appointments = await db.prepare(`
       SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days
+             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
@@ -1378,6 +1386,9 @@ app.get('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
       bio: d.bio || '',
       slotDuration: d.slot_duration || 30,
       offDays: d.off_days ? JSON.parse(d.off_days) : [],
+      blockedSlots: d.blocked_slots ? JSON.parse(d.blocked_slots) : [],
+      availableSlots: d.available_slots ? JSON.parse(d.available_slots) : [],
+      workingDays: d.working_days ? JSON.parse(d.working_days) : [1, 2, 3, 4, 5],
     });
   } catch (error) {
     console.error('Erreur profil médecin:', error);
@@ -1391,15 +1402,32 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
     const current = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
     if (!current) return res.status(404).json({ error: 'Médecin non trouvé' });
 
-    const { description, bio, slotDuration, offDays } = req.body;
+    const { description, bio, slotDuration, offDays, blockedSlots } = req.body;
     const dur = Number(slotDuration);
     const newDescription = typeof description === 'string' ? description : (current.description || null);
     const newBio = typeof bio === 'string' ? bio : (current.bio || null);
     const newDuration = dur >= 5 && dur <= 120 ? dur : (current.slot_duration || 30);
-    const newOff = Array.isArray(offDays) ? JSON.stringify(offDays) : (current.off_days || '[]');
 
-    await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(newDescription, newBio, newDuration, newOff, req.user.id);
+    // Jours d'indisponibilité : uniquement des dates valides (max 400 entrées)
+    const newOff = Array.isArray(offDays)
+      ? JSON.stringify(offDays.filter((d) => isValidDate(d)).slice(0, 400))
+      : (current.off_days || '[]');
+
+    // Créneaux bloqués : format « AAAA-MM-JJ HH:MM » (max 2000 entrées)
+    const newBlocked = Array.isArray(blockedSlots)
+      ? JSON.stringify(
+          blockedSlots
+            .filter((s) => {
+              if (typeof s !== 'string') return false;
+              const [d, t] = s.split(' ');
+              return isValidDate(d) && isValidTime(t);
+            })
+            .slice(0, 2000)
+        )
+      : (current.blocked_slots || '[]');
+
+    await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, blocked_slots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(newDescription, newBio, newDuration, newOff, newBlocked, req.user.id);
 
     const d = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
     res.json({
@@ -1407,6 +1435,9 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
       bio: d.bio || '',
       slotDuration: d.slot_duration || 30,
       offDays: d.off_days ? JSON.parse(d.off_days) : [],
+      blockedSlots: d.blocked_slots ? JSON.parse(d.blocked_slots) : [],
+      availableSlots: d.available_slots ? JSON.parse(d.available_slots) : [],
+      workingDays: d.working_days ? JSON.parse(d.working_days) : [1, 2, 3, 4, 5],
     });
   } catch (error) {
     console.error('Erreur mise à jour profil médecin:', error);
