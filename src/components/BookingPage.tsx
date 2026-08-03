@@ -5,6 +5,7 @@ import FloatingShapes from './FloatingShapes';
 import GoogleMapsView from './GoogleMapsView';
 import DoctorAvatar from './DoctorAvatar';
 import { useLanguage } from '../contexts/LanguageContext';
+import { slotsForDay, isWorkingDate as isWorkingDateShared } from '../utils/slots';
 
 const IconStar = ({ className = '' }: { className?: string }) => (
   <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -100,16 +101,10 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
     };
   });
 
-  const workingDays = doctor.workingDays && doctor.workingDays.length > 0
-    ? doctor.workingDays
-    : [1, 2, 3, 4, 5];
-
-  const isWorkingDate = (dateIso: string) => {
-    const day = new Date(dateIso + 'T00:00:00').getDay();
-    if (!workingDays.includes(day)) return false;
-    if (doctor.offDays && doctor.offDays.includes(dateIso)) return false; // jour d'indisponibilité
-    return true;
-  };
+  // Même logique que la liste des résultats et l'espace patient (module partagé) :
+  // les créneaux découlent toujours de la durée de consultation du médecin.
+  const isWorkingDate = (dateIso: string) => isWorkingDateShared(doctor, dateIso);
+  const daySlots = selectedDate ? slotsForDay(doctor, selectedDate) : [];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,7 +226,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                       {isArabic ? 'اختر الوقت' : 'Créneau horaire'}
                     </h3>
                     <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-                      {(doctor.availableSlots || []).map(slot => (
+                      {daySlots.map(slot => (
                         <button
                           key={slot}
                           onClick={() => setSelectedTime(slot)}

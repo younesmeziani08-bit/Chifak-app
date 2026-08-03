@@ -5,6 +5,7 @@ import Header from './Header';
 import { useLanguage } from '../contexts/LanguageContext';
 import { useDoctors } from '../contexts/DoctorsContext';
 import { appointmentsAPI } from '../services/api';
+import { slotsForDay } from '../utils/slots';
 
 const NAVY = '#00264c';
 
@@ -67,38 +68,6 @@ function buildDays(count: number, isArabic: boolean): DayInfo[] {
       isToday: i === 0,
     };
   });
-}
-
-function weekdayOf(iso: string): number {
-  return new Date(`${iso}T00:00:00`).getDay();
-}
-
-function workingDaysOf(doctor: Doctor): number[] {
-  return doctor.workingDays && doctor.workingDays.length ? doctor.workingDays : [1, 2, 3, 4, 5];
-}
-
-// Génère les créneaux selon la DURÉE de consultation du médecin.
-// Ex. plage 08:00 avec durée 30 min -> 08:00, 08:30 ; durée 20 min -> 08:00, 08:20, 08:40.
-function expandSlots(slots: string[], duration?: number): string[] {
-  const step = duration && duration > 0 ? duration : 30;
-  const out = new Set<string>();
-  for (const s of slots) {
-    const [h, m] = s.split(':').map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) {
-      out.add(s);
-      continue;
-    }
-    for (let min = m; min < 60; min += step) {
-      out.add(`${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`);
-    }
-  }
-  return [...out].sort();
-}
-
-function slotsForDay(doctor: Doctor, iso: string): string[] {
-  if (!workingDaysOf(doctor).includes(weekdayOf(iso))) return [];
-  if (doctor.offDays && doctor.offDays.includes(iso)) return []; // jour d'indisponibilité posé par le médecin
-  return expandSlots(doctor.availableSlots || [], doctor.slotDuration);
 }
 
 /* Next day (within the strip window) where the doctor has availability */

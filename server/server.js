@@ -1258,7 +1258,8 @@ app.get('/api/booked-slots', async (req, res) => {
 app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) => {
   try {
     const appointments = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
+      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
+             d.slot_duration, d.available_slots, d.working_days, d.off_days
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
       WHERE a.patient_email = ?
@@ -1288,7 +1289,8 @@ app.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, asyn
     }
     await db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?").run(id);
     const updated = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
+      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
+             d.slot_duration, d.available_slots, d.working_days, d.off_days
       FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
     `).get(id);
     res.json(updated);
@@ -1327,7 +1329,8 @@ app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, 
     await db.prepare("UPDATE appointments SET appointment_date = ?, appointment_time = ?, status = 'confirmed' WHERE id = ?")
       .run(appointmentDate, appointmentTime, id);
     const updated = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
+      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
+             d.slot_duration, d.available_slots, d.working_days, d.off_days
       FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
     `).get(id);
     res.json(updated);
@@ -1341,7 +1344,8 @@ app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, 
 app.get('/api/appointments', authenticateToken, async (req, res) => {
   try {
     const appointments = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city
+      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
+             d.slot_duration, d.available_slots, d.working_days, d.off_days
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
       ORDER BY a.appointment_date DESC, a.appointment_time DESC

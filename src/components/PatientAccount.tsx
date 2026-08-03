@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import Header from './Header';
 import VideoCall from './VideoCall';
 import { useLanguage } from '../contexts/LanguageContext';
+import { slotsForDay } from '../utils/slots';
 import { appointmentsAPI, patientAPI, reviewsAPI } from '../services/api';
 
 const NAVY = '#00264c';
@@ -36,6 +37,11 @@ interface Appointment {
   appointment_date: string;
   appointment_time: string;
   status: string;
+  // Paramètres du médecin, renvoyés par l'API pour recalculer les créneaux
+  slot_duration?: number;
+  available_slots?: string | string[];
+  working_days?: string | number[];
+  off_days?: string | string[];
 }
 
 interface PatientAccountProps {
@@ -106,8 +112,27 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
     new Date(`${a.appointment_date}T${a.appointment_time || '00:00'}`).getTime() < Date.now();
 
   const todayISO = new Date().toISOString().split('T')[0];
-  const timeOptions: string[] = [];
-  for (let h = 8; h <= 17; h++) timeOptions.push(`${String(h).padStart(2, '0')}:00`, `${String(h).padStart(2, '0')}:30`);
+
+  // Créneaux réellement proposés par le médecin de ce rendez-vous, pour la date choisie.
+  // Même calcul que la liste des résultats et la page de réservation (module partagé).
+  const parseJson = <T,>(raw: unknown, fallback: T): T => {
+    if (Array.isArray(raw)) return raw as unknown as T;
+    if (typeof raw !== 'string') return fallback;
+    try { return JSON.parse(raw) as T; } catch { return fallback; }
+  };
+
+  const slotsFor = (a: Appointment, iso: string): string[] => {
+    if (!iso) return [];
+    return slotsForDay(
+      {
+        availableSlots: parseJson<string[]>(a.available_slots, []),
+        slotDuration: Number(a.slot_duration) || 30,
+        workingDays: parseJson<number[]>(a.working_days, [1, 2, 3, 4, 5]),
+        offDays: parseJson<string[]>(a.off_days, []),
+      },
+      iso
+    );
+  };
 
   const [rescheduleId, setRescheduleId] = useState<number | null>(null);
   const [rDate, setRDate] = useState('');
@@ -346,8 +371,13 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
                             <div>
                               <label className="block text-xs text-gray-500 mb-1">{isArabic ? 'الساعة' : 'Nouvelle heure'}</label>
                               <select value={rTime} onChange={(e) => setRTime(e.target.value)}
-                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                                {timeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                                disabled={slotsFor(a, rDate).length === 0}
+                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-400">
+                                {slotsFor(a, rDate).length === 0 ? (
+                                  <option value="">{isArabic ? 'الطبيب لا يعمل' : 'Le médecin ne consulte pas'}</option>
+                                ) : (
+                                  slotsFor(a, rDate).map((t) => <option key={t} value={t}>{t}</option>)
+                                )}
                               </select>
                             </div>
                             <button onClick={() => handleReschedule(a.id)} disabled={busyId === a.id}
