@@ -28,24 +28,12 @@ const SPECIALTY_KEYS: Record<string, string> = {
 };
 
 const LANGS: { id: AssistantLang; label: string; hint: string }[] = [
-  { id: 'derja', label: 'الدارجة', hint: 'Derja algérienne' },
-  { id: 'ar', label: 'العربية', hint: 'Arabe' },
   { id: 'fr', label: 'Français', hint: 'Français' },
+  { id: 'ar', label: 'العربية', hint: 'Arabe' },
 ];
 
 /** Textes de l'interface, par langue de conversation. */
 const UI = {
-  derja: {
-    welcome: 'أهلا! قولّي واش راك تحس — وين يوجعك، من وقتاش، وشحال قوية — ونوجّهك للطبيب اللي يلزمك.',
-    placeholder: 'اكتب هنا…',
-    send: 'إرسال',
-    suggestions: ['راني عندي وجيعة راس من يومين', 'وجيعة في سنيني', 'ما نيش عارف لمن نروح'],
-    orientation: 'التوجيه المقترح',
-    cta: 'شوف الأطباء المتاحين',
-    change: 'تقدر تبدّل التخصص من نموذج البحث.',
-    disclaimer: 'ماشي تشخيص طبي. للطوارئ عيّط لـ 14 ولا 115.',
-    restart: 'ابدا من جديد',
-  },
   ar: {
     welcome: 'مرحباً! صف لي ما تشعر به — أين الألم، منذ متى، وما شدته — لأوجّهك إلى التخصص المناسب.',
     placeholder: 'اكتب هنا…',
@@ -88,10 +76,12 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [orientation, setOrientation] = useState<string | null>(null);
+  /** Réponses rapides du tour en cours. Le patient clique plutôt que d'écrire. */
+  const [options, setOptions] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const ui = UI[lang ?? (isArabic ? 'derja' : 'fr')];
-  const rtl = lang === 'derja' || lang === 'ar';
+  const ui = UI[lang ?? (isArabic ? 'ar' : 'fr')];
+  const rtl = lang === 'ar';
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -104,10 +94,12 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
     const next: AssistantMessage[] = [...messages, { role: 'user', content }];
     setMessages(next);
     setInput('');
+    setOptions([]);
     setLoading(true);
     try {
-      const { reply, orientation: found } = await assistantAPI.chat(next, lang);
+      const { reply, orientation: found, options: opts } = await assistantAPI.chat(next, lang);
       setMessages([...next, { role: 'assistant', content: reply }]);
+      setOptions(opts);
       // Première orientation retenue seulement : on ne la remplace pas en
       // cours de route, pour ne pas faire bouger le formulaire sous le patient.
       if (found && !orientation) setOrientation(found);
@@ -125,6 +117,7 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
   const reset = () => {
     setMessages([]);
     setOrientation(null);
+    setOptions([]);
     setError('');
     setInput('');
   };
@@ -303,15 +296,18 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
           </div>
         )}
 
-        {messages.length === 0 && !loading && (
+        {/* Réponses à choisir : suggestions de départ, puis options du tour
+            en cours. Le patient clique, il n'a normalement rien à écrire —
+            le champ de saisie reste là pour les cas non couverts. */}
+        {!loading && !orientation && (messages.length === 0 || options.length > 0) && (
           <div className="flex flex-wrap gap-2 pt-1">
-            {ui.suggestions.map((s) => (
+            {(messages.length === 0 ? [...ui.suggestions] : options).map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => send(s)}
-                className="text-xs px-3 py-1.5 rounded-full transition-colors"
-                style={{ background: 'var(--bg)', border: '1px solid var(--tint-10)', color: 'var(--ink-2)' }}
+                className="text-sm px-3.5 py-2 rounded-full transition-colors"
+                style={{ background: 'var(--bg)', border: '1.5px solid var(--tint-20)', color: 'var(--accent)' }}
               >
                 {s}
               </button>

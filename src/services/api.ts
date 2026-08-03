@@ -26,12 +26,14 @@ export interface AssistantMessage {
 }
 
 /** Langue de conversation choisie par le patient au démarrage. */
-export type AssistantLang = 'derja' | 'ar' | 'fr';
+export type AssistantLang = 'ar' | 'fr';
 
 export interface AssistantReply {
   reply: string;
   /** Spécialité suggérée, ou null tant que l'assistant n'a pas assez d'éléments. */
   orientation: string | null;
+  /** Réponses rapides à proposer au patient. Vide une fois l'orientation donnée. */
+  options: string[];
 }
 
 /** Levée quand la session patient manque ou a expiré (HTTP 401 / 403). */
@@ -63,7 +65,11 @@ export const assistantAPI = {
       // Le backend renvoie souvent un champ "reply" lisible même en cas d'erreur
       throw new Error(data.reply || data.error || 'Erreur de l\'assistant');
     }
-    return { reply: data.reply || '', orientation: data.orientation ?? null };
+    return {
+      reply: data.reply || '',
+      orientation: data.orientation ?? null,
+      options: Array.isArray(data.options) ? data.options : [],
+    };
   },
 };
 
