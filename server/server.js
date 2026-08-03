@@ -1589,10 +1589,14 @@ const ORIENTATION_SPECIALTIES = [
 
 /**
  * Consignes de langue. Elles sont placées EN DERNIER dans le prompt système et
- * sont les seules à parler de langue : le prompt de base n'impose plus la derja
- * par défaut, sans quoi le modèle suivait cette consigne-là plutôt que le choix
- * du patient. La règle est exclusive et répétée, y compris pour les messages
- * écrits dans une autre langue que celle retenue.
+ * sont les seules à parler de langue : le prompt de base n'en impose aucune,
+ * sans quoi le modèle suivait cette consigne-là plutôt que le choix du patient.
+ * La règle est exclusive et répétée, y compris pour les messages écrits dans
+ * une autre langue que celle retenue.
+ *
+ * Deux langues seulement : français et arabe littéraire. Le dialecte algérien
+ * a été retiré, et chaque consigne en interdit explicitement les tournures —
+ * un modèle entraîné sur du contenu maghrébin y glisse sinon spontanément.
  */
 const LANGUAGE_INSTRUCTIONS = {
   ar: `RÈGLE DE LANGUE — ABSOLUE, PRIME SUR TOUT LE RESTE :

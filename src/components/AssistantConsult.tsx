@@ -130,11 +130,11 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
         style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.16)' }}
       >
         <p className="text-base mb-1.5" style={{ color: '#FFFFFF', fontFamily: 'var(--font-display)' }}>
-          {isArabic ? 'ما تعرفش لمن تروح؟' : 'Vous ne savez pas qui consulter ?'}
+          {isArabic ? 'لا تعرف أي طبيب تستشير؟' : 'Vous ne savez pas qui consulter ?'}
         </p>
         <p className="text-sm leading-relaxed mb-4" style={{ color: 'rgba(255,255,255,0.66)' }}>
           {isArabic
-            ? 'احكيلي واش راك تحس، ونقترح عليك التخصص المناسب. ماشي تشخيص طبي.'
+            ? 'صف لنا ما تشعر به، ويقترح عليك المساعد التخصص المناسب. ليس تشخيصاً طبياً.'
             : 'Décrivez ce que vous ressentez, l’assistant vous suggère une spécialité. Ce n’est pas un diagnostic.'}
         </p>
         <button
@@ -171,13 +171,13 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
       <div className="rounded-2xl p-6 sm:p-7" style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-lg)' }}>
         <div className="flex items-start justify-between gap-3 mb-2">
           <h3 className="text-lg" style={{ color: 'var(--ink)' }}>
-            {isArabic ? 'سجّل الدخول باش تهدر مع المساعد' : 'Connectez-vous pour discuter avec l’assistant'}
+            {isArabic ? 'سجّل الدخول للتحدّث مع المساعد' : 'Connectez-vous pour discuter avec l’assistant'}
           </h3>
           {closeButton}
         </div>
         <p className="text-sm leading-relaxed mb-5" style={{ color: 'var(--ink-2)' }}>
           {isArabic
-            ? 'الحديث يخص أعراضك، وهذي معطيات صحية. باش نحافظو عليها، لازم تكون داخل لحسابك.'
+            ? 'تتناول المحادثة أعراضك، وهي معطيات صحية. لا تُعالَج إلا في إطار حسابك.'
             : 'La conversation porte sur vos symptômes, donc sur des données de santé. Elles ne sont traitées que dans le cadre de votre compte.'}
         </p>
         <button type="button" onClick={onOpenLogin} className="btn-primary" style={{ height: '46px', padding: '0 1.4rem' }}>
@@ -193,12 +193,12 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
       <div className="rounded-2xl p-6 sm:p-7" style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-lg)' }}>
         <div className="flex items-start justify-between gap-3 mb-1.5">
           <h3 className="text-lg" style={{ color: 'var(--ink)' }}>
-            {isArabic ? 'بأي لغة تحب نهدرو؟' : 'Dans quelle langue préférez-vous discuter ?'}
+            {isArabic ? 'بأي لغة تفضّل التحدّث؟' : 'Dans quelle langue préférez-vous discuter ?'}
           </h3>
           {closeButton}
         </div>
         <p className="text-sm mb-5" style={{ color: 'var(--ink-2)' }}>
-          {isArabic ? 'تقدر تبدّلها في أي وقت.' : 'Vous pourrez en changer à tout moment.'}
+          {isArabic ? 'يمكنك تغييرها في أي وقت.' : 'Vous pourrez en changer à tout moment.'}
         </p>
         <div className="flex flex-wrap gap-2.5">
           {LANGS.map((l) => (
