@@ -417,7 +417,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                 style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.1)' }}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                {isArabic ? 'قريبًا · 2026' : 'Bientôt · 2026'}
+                {isArabic ? 'متوفّر الآن' : 'Disponible'}
               </span>
               <h2
                 className="font-extrabold tracking-tight leading-tight mb-5"
@@ -432,13 +432,20 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
               </p>
               <button
                 type="button"
-                onClick={onOpenProfessional}
+                onClick={patientUser ? onOpenAccount : onOpenLogin}
                 className="btn-primary"
                 style={{ background: '#FFFFFF', color: 'var(--accent)', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
               >
-                {isArabic ? 'أبلغني عند الإطلاق' : 'Être informé du lancement'}
+                {patientUser
+                  ? (isArabic ? 'من مواعيدي' : 'Depuis mes rendez-vous')
+                  : (isArabic ? 'سجّل الدخول للبدء' : 'Se connecter pour commencer')}
                 <Icon name="arrow" className="w-4 h-4" strokeWidth={2} />
               </button>
+              <p className="text-sm mt-4" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                {isArabic
+                  ? 'انضم للفيديو من موعد مؤكّد، من صفحة « مواعيدي ».'
+                  : 'Rejoignez la visio depuis un rendez-vous confirmé, dans « Mes rendez-vous ».'}
+              </p>
             </div>
             <div
               className="hidden md:flex items-center justify-center p-10"

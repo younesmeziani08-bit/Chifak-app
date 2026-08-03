@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
+import VideoCall from './VideoCall';
 import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, AppointmentCreate } from '../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
@@ -23,6 +24,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
 
   // Espace médecin — profil éditable + rendez-vous + remarques
   const [docAppointments, setDocAppointments] = useState<any[]>([]);
+  const [videoRoom, setVideoRoom] = useState<string | null>(null);
   const [apptSearch, setApptSearch] = useState('');
   const [noteEdits, setNoteEdits] = useState<Record<number, string>>({});
   const [noteSavedId, setNoteSavedId] = useState<number | null>(null);
@@ -543,6 +545,16 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                     </div>
                   </div>
                   <div className="mt-4 pt-4 border-t border-gray-100">
+                    {a.status !== 'cancelled' && (
+                      <button
+                        type="button"
+                        onClick={() => setVideoRoom(`chifak-rdv-${a.id}`)}
+                        className="mb-3 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition inline-flex items-center gap-1.5"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
+                        {isArabic ? 'انضم للفيديو' : 'Rejoindre la visio'}
+                      </button>
+                    )}
                     <label className="block text-xs font-medium text-gray-500 mb-1">
                       {isArabic ? 'ملاحظاتي (للزيارة القادمة)' : 'Mes remarques (pour la prochaine visite)'}
                     </label>
@@ -892,6 +904,15 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           </div>
         )}
       </div>
+
+      {videoRoom && (
+        <VideoCall
+          room={videoRoom}
+          displayName={doctorInfo?.name}
+          isArabic={isArabic}
+          onClose={() => setVideoRoom(null)}
+        />
+      )}
     </div>
   );
 }

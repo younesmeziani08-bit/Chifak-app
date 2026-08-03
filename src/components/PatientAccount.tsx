@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import Header from './Header';
+import VideoCall from './VideoCall';
 import { useLanguage } from '../contexts/LanguageContext';
 import { appointmentsAPI, patientAPI, reviewsAPI } from '../services/api';
 
@@ -58,6 +59,7 @@ function formatDate(iso: string, isArabic: boolean): string {
 export default function PatientAccount({ patientUser, onBackToHome, onOpenProfessional, onDoctorClick, onLogout, onProfileUpdated }: PatientAccountProps) {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
+  const [videoRoom, setVideoRoom] = useState<string | null>(null);
   const [tab, setTab] = useState<'appointments' | 'settings'>('appointments');
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -361,6 +363,11 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
                           <div className="flex flex-wrap gap-2">
                             {!isPast(a) && (
                               <>
+                                <button onClick={() => setVideoRoom(`chifak-rdv-${a.id}`)}
+                                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors inline-flex items-center gap-1.5">
+                                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
+                                  {isArabic ? 'انضم للفيديو' : 'Rejoindre la visio'}
+                                </button>
                                 <button onClick={() => openReschedule(a)}
                                   className="px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors">
                                   {isArabic ? 'تغيير الموعد' : 'Reprogrammer'}
@@ -464,6 +471,15 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
           </form>
         )}
       </div>
+
+      {videoRoom && (
+        <VideoCall
+          room={videoRoom}
+          displayName={patientUser.name}
+          isArabic={isArabic}
+          onClose={() => setVideoRoom(null)}
+        />
+      )}
     </div>
   );
 }
