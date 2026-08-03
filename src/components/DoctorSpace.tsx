@@ -301,7 +301,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   if (mustChange) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" dir={isArabic ? 'rtl' : 'ltr'}>
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-5 sm:p-8">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-100 rounded-full mb-4">
               <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -378,7 +378,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4" dir={isArabic ? 'rtl' : 'ltr'}>
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-5 sm:p-8">
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
               <span className="text-3xl">🩺</span>
@@ -481,7 +481,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
         <div className="flex bg-white rounded-xl p-1 shadow-sm mb-8">
           <button
             onClick={() => setActiveTab('appointments')}
-            className={`flex-1 py-3 text-sm font-bold rounded-lg transition ${
+            className={`flex-1 py-3 px-1 text-xs sm:text-sm font-bold rounded-lg transition ${
               activeTab === 'appointments' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
@@ -489,7 +489,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           </button>
           <button
             onClick={() => setActiveTab('profile')}
-            className={`flex-1 py-3 text-sm font-bold rounded-lg transition ${
+            className={`flex-1 py-3 px-1 text-xs sm:text-sm font-bold rounded-lg transition ${
               activeTab === 'profile' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
@@ -497,7 +497,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           </button>
           <button
             onClick={() => setActiveTab('reviews')}
-            className={`flex-1 py-3 text-sm font-bold rounded-lg transition ${
+            className={`flex-1 py-3 px-1 text-xs sm:text-sm font-bold rounded-lg transition ${
               activeTab === 'reviews' ? 'bg-blue-600 text-white shadow' : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
@@ -516,12 +516,12 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
             {docAppointments.length === 0 ? (
-              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
+              <div className="bg-white rounded-2xl p-8 sm:p-12 text-center shadow-sm border border-gray-100">
                 <span className="text-5xl block mb-4">📅</span>
                 <p className="text-gray-500 font-medium">{isArabic ? 'لا مواعيد محجوزة' : 'Aucun rendez-vous réservé'}</p>
               </div>
             ) : filteredAppointments.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center shadow-sm border border-gray-100">
+              <div className="bg-white rounded-2xl p-5 sm:p-8 text-center shadow-sm border border-gray-100">
                 <p className="text-gray-500 font-medium">{isArabic ? 'لا يوجد مريض مطابق' : 'Aucun patient trouvé'}</p>
               </div>
             ) : (
@@ -829,7 +829,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           /* Avis des patients */
           <div className="space-y-4">
             {reviews.length === 0 ? (
-              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
+              <div className="bg-white rounded-2xl p-8 sm:p-12 text-center shadow-sm border border-gray-100">
                 <span className="text-5xl block mb-4">⭐</span>
                 <p className="text-gray-500 font-medium">
                   {isArabic ? 'لا توجد تقييمات بعد' : 'Aucun avis pour le moment'}
@@ -858,7 +858,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           /* Liste historique */
           <div className="space-y-4">
             {consultations.length === 0 ? (
-              <div className="bg-white rounded-2xl p-12 text-center shadow-sm border border-gray-100">
+              <div className="bg-white rounded-2xl p-8 sm:p-12 text-center shadow-sm border border-gray-100">
                 <span className="text-5xl block mb-4">📋</span>
                 <p className="text-gray-500 font-medium">
                   {isArabic ? 'لا توجد معاينات سابقة بعد' : 'Aucune consultation enregistrée pour le moment'}

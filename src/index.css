@@ -57,7 +57,12 @@
 }
 
 /* ── Base ── */
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  /* Empêche iOS d'agrandir le texte en mode paysage */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 
 body {
   font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -65,6 +70,44 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: #FFFFFF;
   color: #1D1D1F;
+  /* Aucun défilement horizontal : élimine la « page qui glisse » sur mobile.
+     « clip » plutôt que « hidden » : n'crée pas de conteneur de défilement,
+     donc l'en-tête collant (position: sticky) continue de fonctionner. */
+  overflow-x: clip;
+  /* Retire le flash gris au toucher sur iOS */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Rien ne peut dépasser la largeur de l'écran */
+*, *::before, *::after { min-width: 0; }
+img, svg, video, canvas { max-width: 100%; height: auto; }
+
+/* Les mots très longs (e-mails, adresses) passent à la ligne au lieu de déborder */
+p, h1, h2, h3, h4, span, a, li, td { overflow-wrap: break-word; }
+
+/* ── Confort tactile (mobile) ── */
+@media (max-width: 640px) {
+  /* iOS agrandit automatiquement la page si un champ fait moins de 16px :
+     on impose 16px pour éviter ce zoom intempestif à la saisie. */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
+  /* Cibles tactiles confortables (recommandation : 44px minimum) */
+  button, a[role="button"], .btn-primary, .btn-secondary {
+    min-height: 44px;
+  }
+
+  /* Titres un peu plus compacts pour éviter les débordements */
+  h1 { line-height: 1.15; }
+}
+
+/* Encoche iPhone en paysage : on décale le contenu, pas les fonds pleine largeur */
+@supports (padding: max(0px)) {
+  .max-w-7xl, .max-w-5xl, .max-w-4xl {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
 }
 
 h1, h2, h3, h4, h5, h6 {

@@ -66,8 +66,60 @@ export default function DoctorsList() {
         />
       </div>
 
-      {/* Doctors Table */}
-      <div className="overflow-x-auto">
+      {/* ── Vue mobile : cartes (le tableau est illisible sur téléphone) ── */}
+      <div className="md:hidden space-y-3">
+        {filteredDoctors.length === 0 ? (
+          <p className="text-center text-gray-500 py-10">
+            {isArabic ? 'لم يتم العثور على أطباء' : 'Aucun médecin trouvé'}
+          </p>
+        ) : (
+          filteredDoctors.map((doctor) => (
+            <div key={doctor.id} className="bg-white border border-gray-200 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 truncate">{doctor.name}</p>
+                  <p className="text-sm text-blue-600 mt-0.5">{doctor.specialty}</p>
+                  <p className="text-sm text-gray-500 mt-1 break-words">{doctor.city}</p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => handleResetPassword(doctor.id, doctor.name)}
+                    title={isArabic ? 'إعادة تعيين كلمة المرور' : 'Réinitialiser le mot de passe'}
+                    className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => handleDelete(doctor.id, doctor.name)}
+                    title={isArabic ? 'حذف' : 'Supprimer'}
+                    className="w-10 h-10 flex items-center justify-center rounded-lg text-red-600 hover:bg-red-50 transition"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-gray-100 text-sm">
+                <span className="font-mono font-semibold text-blue-600">{doctor.doctorCode || '-'}</span>
+                <span className={doctor.hasPassword ? 'text-green-600' : 'text-gray-400'}>
+                  {doctor.hasPassword
+                    ? (isArabic ? '• كلمة مرور مُعيّنة' : '• Mot de passe défini')
+                    : (isArabic ? '• بدون كلمة مرور' : '• Sans mot de passe')}
+                </span>
+                <span className="text-gray-500 ms-auto">
+                  ★ {doctor.rating} ({doctor.reviewCount})
+                </span>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* ── Vue bureau : tableau ── */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>

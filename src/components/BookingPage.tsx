@@ -161,7 +161,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
           {/* ── Colonne principale ── */}
           <div className="lg:col-span-2 space-y-6">
             {/* Carte médecin */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-8">
               <div className="flex flex-col sm:flex-row gap-6 items-center sm:items-start text-center sm:text-left">
                 <DoctorAvatar doctor={doctor} className="w-24 h-24 sm:w-28 sm:h-28 shadow-sm ring-1 ring-gray-100" rounded="rounded-2xl" />
                 <div className="flex-1">
@@ -188,7 +188,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
             {step === 1 && (
               <div className="space-y-6 animate-fadeInUp">
                 {/* Sélecteur de date */}
-                <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-100">
+                <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">
                   <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-3">
                     <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">1</span>
                     {isArabic ? 'اختر التاريخ' : 'Date de visite'}
@@ -225,7 +225,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
 
                 {/* Sélecteur d'heure */}
                 {selectedDate && isWorkingDate(selectedDate) && (
-                  <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-100 animate-fadeInUp">
+                  <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100 animate-fadeInUp">
                     <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-3">
                       <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">2</span>
                       {isArabic ? 'اختر الوقت' : 'Créneau horaire'}
@@ -260,7 +260,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
 
             {/* Étape 2 : formulaire patient */}
             {step === 2 && (
-              <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-100 animate-fadeInUp">
+              <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100 animate-fadeInUp">
                 <div className="flex items-center gap-3 mb-8">
                   <button type="button" onClick={() => setStep(1)} className="group w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center text-gray-500 hover:bg-blue-50 hover:text-blue-600 transition-all">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">

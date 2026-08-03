@@ -152,7 +152,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
           <div className="hero-orb hero-orb-3" />
         </div>
 
-        <div className="relative max-w-7xl mx-auto px-5 sm:px-8 py-14 sm:py-20 lg:py-24">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-8 py-14 sm:py-20 lg:py-24">
           <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
 
             {/* Left */}
@@ -313,7 +313,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
       <HealthArticles />
 
       {/* ── QUICK SPECIALTIES ── */}
-      <section className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20">
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 py-12 sm:py-20">
         <div className="mb-10">
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
             {isArabic ? 'التخصصات' : 'Spécialités'}
@@ -352,7 +352,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
 
       {/* ── HOW IT WORKS ── */}
       <section style={{ background: 'var(--bg-2)' }}>
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-12 sm:py-20">
           <div className="max-w-xl mb-12">
             <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
               {isArabic ? 'كيف يعمل شفاك' : 'Comment ça marche'}
@@ -408,10 +408,10 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
       </section>
 
       {/* ── TELECONSULTATION ── */}
-      <section id="teleconsult-section" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20 scroll-mt-20">
+      <section id="teleconsult-section" className="max-w-7xl mx-auto px-4 sm:px-8 py-12 sm:py-20 scroll-mt-20">
         <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--ink)' }}>
           <div className="grid md:grid-cols-2">
-            <div className="p-10 md:p-14">
+            <div className="p-6 sm:p-10 md:p-14">
               <span
                 className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded-full px-3 py-1.5 mb-6"
                 style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.1)' }}
@@ -465,9 +465,9 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
       </section>
 
       {/* ── FOR PROFESSIONALS ── */}
-      <section className="max-w-7xl mx-auto px-5 sm:px-8 pb-16 sm:pb-20">
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 pb-16 sm:pb-20">
         <div
-          className="rounded-3xl p-10 md:p-14"
+          className="rounded-3xl p-6 sm:p-10 md:p-14"
           style={{ background: 'var(--accent-bg)', border: '1px solid rgba(0,102,204,0.1)' }}
         >
           <div className="grid md:grid-cols-2 gap-10 items-center">
@@ -522,7 +522,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
 
       {/* ── FOOTER ── */}
       <footer style={{ background: '#111113', color: 'rgba(255,255,255,0.45)' }}>
-        <div className="max-w-7xl mx-auto px-5 sm:px-8 pt-16 pb-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 pt-16 pb-10">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-12 mb-14">
             <div className="lg:col-span-2 max-w-xs">
               <div className="flex items-center gap-2.5 mb-5">

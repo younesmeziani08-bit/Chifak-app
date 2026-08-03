@@ -57,7 +57,7 @@ export default function ConfirmationPage({ booking, onBackToHome, onOpenProfessi
               </svg>
             </div>
           </div>
-          <h1 className="text-4xl sm:text-6xl font-black text-gray-900 tracking-tight mb-4">
+          <h1 className="text-3xl sm:text-6xl font-black text-gray-900 tracking-tight mb-4">
             {isArabic ? 'تم تأكيد موعدك! 🎉' : 'C\'est confirmé ! 🎉'}
           </h1>
           <p className="text-gray-500 text-lg font-medium">
@@ -69,13 +69,13 @@ export default function ConfirmationPage({ booking, onBackToHome, onOpenProfessi
 
         {/* Details Card - Pro Max */}
         <div className="glass-card-pro rounded-4xl overflow-hidden mb-8 animate-fadeInUp delay-100">
-          <div className="bg-gray-900 p-8 sm:p-10">
+          <div className="bg-gray-900 p-5 sm:p-10">
             <h2 className="text-white font-black text-xl tracking-tight flex items-center gap-3">
               <span className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-xs">📋</span>
               {isArabic ? 'تفاصيل موعدك' : 'Récapitulatif complet'}
             </h2>
           </div>
-          <div className="p-8 sm:p-10 grid grid-cols-1 sm:grid-cols-2 gap-8 divide-y sm:divide-y-0 divide-gray-100">
+          <div className="p-5 sm:p-10 grid grid-cols-1 sm:grid-cols-2 gap-8 divide-y sm:divide-y-0 divide-gray-100">
             {details.map((d, i) => (
               <div key={i} className="flex items-start gap-4 pt-4 sm:pt-0">
                 <span className="text-2xl w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center border border-gray-100">{d.icon}</span>
@@ -89,7 +89,7 @@ export default function ConfirmationPage({ booking, onBackToHome, onOpenProfessi
         </div>
 
         {/* Reminders - Pro Max Unified */}
-        <div className="bg-blue-50 border border-blue-100 rounded-3xl p-8 mb-10 animate-fadeInUp delay-200">
+        <div className="bg-blue-50 border border-blue-100 rounded-3xl p-5 sm:p-8 mb-10 animate-fadeInUp delay-200">
           <h3 className="font-black text-blue-900 mb-6 flex items-center gap-3 uppercase tracking-widest text-xs">
             <span className="text-lg">💡</span> {isArabic ? 'تذكيرات مهمة' : 'À ne pas oublier'}
           </h3>

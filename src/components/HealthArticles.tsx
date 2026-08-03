@@ -55,7 +55,7 @@ export default function HealthArticles() {
       style={{ background: 'var(--bg)', borderTop: '1px solid rgba(0,0,0,0.06)', borderBottom: '1px solid rgba(0,0,0,0.06)' }}
       dir={isArabic ? 'rtl' : 'ltr'}
     >
-      <div className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-20">
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-12 sm:py-20">
         <div className="mb-8">
           <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent)' }}>
             {isArabic ? 'توثيق' : 'Documentation'}

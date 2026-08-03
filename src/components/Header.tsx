@@ -71,7 +71,7 @@ export default function Header({
         transition: 'background-color 0.2s, border-color 0.2s',
       }}
     >
-      <div className="max-w-7xl mx-auto px-5 sm:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-8">
         <div className="flex items-center justify-between" style={{ height: '56px' }}>
 
           {/* Retour + Logo */}

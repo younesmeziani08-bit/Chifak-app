@@ -73,15 +73,15 @@ export default function ProfessionalModal({ isOpen, onClose }: ProfessionalModal
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-12 text-center relative z-10">
               <div>
-                <div className="text-5xl font-black text-cyan-400 mb-3 tracking-tighter">300K+</div>
+                <div className="text-3xl sm:text-5xl font-black text-cyan-400 mb-3 tracking-tighter">300K+</div>
                 <div className="text-gray-400 text-xs font-black uppercase tracking-widest">{t('pro.professionals')}</div>
               </div>
               <div>
-                <div className="text-5xl font-black text-cyan-400 mb-3 tracking-tighter">95%</div>
+                <div className="text-3xl sm:text-5xl font-black text-cyan-400 mb-3 tracking-tighter">95%</div>
                 <div className="text-gray-400 text-xs font-black uppercase tracking-widest">{t('pro.satisfaction')}</div>
               </div>
               <div>
-                <div className="text-5xl font-black text-cyan-400 mb-3 tracking-tighter">-60%</div>
+                <div className="text-3xl sm:text-5xl font-black text-cyan-400 mb-3 tracking-tighter">-60%</div>
                 <div className="text-gray-400 text-xs font-black uppercase tracking-widest">{t('pro.absences')}</div>
               </div>
             </div>

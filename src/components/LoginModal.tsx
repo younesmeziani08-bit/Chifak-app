@@ -49,10 +49,10 @@ export default function LoginModal({ isOpen, onClose, onOpenSignup, onLoginSucce
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
       
-      <div className="relative w-full max-w-md bg-white rounded-4xl shadow-3xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
+      <div className="relative w-full max-w-md bg-white rounded-4xl shadow-3xl overflow-y-auto max-h-[90vh] animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 to-cyan-400" />
-        
-        <div className="p-8 sm:p-10">
+
+        <div className="p-6 sm:p-10">
           <div className="flex justify-between items-center mb-10">
             <div>
               <h2 className="text-3xl font-black text-gray-900 tracking-tight">{isArabic ? 'تسجيل الدخول' : 'Connexion'}</h2>
