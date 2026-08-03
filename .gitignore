@@ -32,3 +32,15 @@ Thumbs.db
 .fuse_hidden*
 server/.fuse_hidden*
 .claude/
+
+# Environnements Python et modèles d'IA locaux.
+# .venv contenait PyTorch : un seul fichier de 428 Mo, très au-dessus de la
+# limite de 100 Mo de GitHub, qui bloquait tous les push.
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Dépôt ideogram4 cloné localement : code tiers + poids de modèle.
+# Il n'a pas sa place dans l'historique de chifak.
+ideogram4/

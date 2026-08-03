@@ -113,7 +113,7 @@ export default function AlgeriaMap({
                 <path
                   key={s.name}
                   d={s.d}
-                  fill={isSel ? '#0e75c4' : '#dbe7f2'}
+                  fill={isSel ? '#07008F' : '#C9DEFB'}
                   stroke={isSel ? '#00264c' : '#9db8d0'}
                   strokeWidth={isSel ? 1.4 : 0.6}
                   vectorEffect="non-scaling-stroke"

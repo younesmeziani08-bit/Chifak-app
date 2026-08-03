@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Doctor } from '../App';
-import { getDoctorPhoto, doctorInitials } from '../utils/doctorPhoto';
+import { getDoctorPhoto, doctorInitials, doctorMonogramColors } from '../utils/doctorPhoto';
 
 interface Props {
   doctor: Pick<Doctor, 'id' | 'name' | 'image'>;
@@ -8,19 +8,39 @@ interface Props {
   rounded?: string;
 }
 
-/** Photo du médecin avec repli sur les initiales si l'image ne charge pas. */
+/**
+ * Photo du praticien si elle existe réellement, sinon monogramme déterministe.
+ * Le monogramme sert aussi de repli si l'image ne charge pas.
+ */
 export default function DoctorAvatar({ doctor, className = 'w-24 h-24', rounded = 'rounded-2xl' }: Props) {
   const [failed, setFailed] = useState(false);
   const src = getDoctorPhoto(doctor);
 
-  if (failed) {
+  if (!src || failed) {
+    const { bg, fg } = doctorMonogramColors(doctor);
     return (
-      <div
-        className={`${className} ${rounded} flex items-center justify-center bg-blue-50 text-blue-700 font-semibold select-none`}
-        style={{ fontSize: '1.4rem' }}
+      // SVG : les initiales se redimensionnent avec la boîte, quelle que soit sa taille
+      <svg
+        className={`${className} ${rounded} select-none`}
+        viewBox="0 0 100 100"
+        role="img"
+        aria-label={doctor.name}
       >
-        {doctorInitials(doctor.name)}
-      </div>
+        <rect width="100" height="100" fill={bg} />
+        <text
+          x="50"
+          y="50"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill={fg}
+          fontSize="38"
+          fontWeight="600"
+          fontFamily='"Source Serif 4", "Iowan Old Style", Georgia, serif'
+          letterSpacing="0.5"
+        >
+          {doctorInitials(doctor.name)}
+        </text>
+      </svg>
     );
   }
 

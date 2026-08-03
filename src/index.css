@@ -1,19 +1,66 @@
 /* ═══════════════════════════════════════════════════
-   CHIFAK · Design System 2.0 — Apple-Inspired
-   Signature: Islamic interlocking-circles pattern
+   CHIFAK · Système de design
+   Marque    : #07008F · #FFFFFF · #E2EFFF · #6574F8 · #0C0E45
+   Typo      : Source Serif 4 (titres) + Source Sans 3 (texte)
+   Signature : motif de cercles entrelacés
    ═══════════════════════════════════════════════════ */
 
 :root {
-  --ink:       #1D1D1F;
-  --ink-2:     #6E6E73;
-  --ink-3:     #86868B;
+  /* ══ Palette de marque — cinq couleurs, pas une de plus ══
+       #07008F  outremer   action, identité
+       #FFFFFF  blanc      fond
+       #E2EFFF  azur clair aplats et surfaces teintées
+       #6574F8  barbeau    accent lumineux
+       #0C0E45  nuit       encre et surfaces sombres          */
+
+  --bleu:      #07008F;
+  --azur:      #E2EFFF;
+  --barbeau:   #6574F8;
+  --nuit:      #0C0E45;
+
+  /* Encres, toutes dérivées du bleu nuit pour une cohérence totale */
+  --ink:       #0C0E45;   /* 18,04:1 sur blanc */
+  --ink-2:     #454A73;   /*  8,47:1 sur blanc */
+  --ink-3:     #6B7096;   /*  4,79:1 sur blanc */
   --bg:        #FFFFFF;
-  --bg-2:      #F5F5F7;
-  --bg-3:      #E8E8ED;
-  --accent:    #0066CC;
-  --accent-dk: #004FA3;
-  --accent-bg: #EFF5FF;
-  --success:   #34C759;
+  --bg-2:      #F3F6FD;
+  --bg-3:      #DDE5F5;
+
+  /* Rôles */
+  --accent:    #07008F;   /* 14,94:1 sur blanc */
+  --accent-dk: #0C0E45;   /* survol et surfaces sombres */
+  --accent-bg: #E2EFFF;
+
+  /* ATTENTION — le barbeau ne mesure que 3,88:1 sur blanc : il ne passe pas
+     le seuil AA pour du texte courant. Il est réservé aux grands titres, aux
+     icônes, aux bordures et au texte posé sur fond sombre (4,64:1 sur nuit). */
+  --accent-lum: #6574F8;
+
+  /* ── Couleurs fonctionnelles ──
+     Hors marque, volontairement : un patient doit distinguer d'un coup d'œil
+     une confirmation d'une erreur, et cette distinction ne peut pas reposer
+     sur des nuances de bleu. Usage strictement sémantique. */
+  --success:   #1F7A4D;
+  --danger:    #B42318;
+
+  /* ── Typographie ──
+     Appairage serif / sans-serif : le serif porte la voix (titres, chiffres
+     mis en avant), le sans-serif porte l'information (corps, interface).
+     Deux graisses par police, pas davantage : la hiérarchie se fait par
+     l'échelle, pas par l'empilement de graisses intermédiaires. */
+  --font-display: "Source Serif 4", "Iowan Old Style", Georgia, serif;
+  --font-text:    "Source Sans 3", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-arabic:  "Noto Naskh Arabic", serif;
+
+  /* ── Teintes du bleu nuit ──
+     Valeurs nommées plutôt que des rgba() improvisés au fil des composants :
+     une bordure discrète s'écrit var(--tint-20), pas rgba(12,14,69,0.14). */
+  --tint-05: rgba(12, 14, 69, 0.04);
+  --tint-10: rgba(12, 14, 69, 0.08);
+  --tint-20: rgba(12, 14, 69, 0.14);
+  --tint-30: rgba(12, 14, 69, 0.22);
+  --tint-50: rgba(12, 14, 69, 0.42);
+
   --r-sm:  8px;
   --r-md:  12px;
   --r-lg:  18px;
@@ -27,33 +74,63 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
 
-  /* Apple-style gray scale */
-  --color-gray-50:  #F5F5F7;
-  --color-gray-100: #E8E8ED;
-  --color-gray-200: #D1D1D6;
-  --color-gray-300: #C7C7CC;
-  --color-gray-400: #AEAEB2;
-  --color-gray-500: #8E8E93;
-  --color-gray-600: #6E6E73;
-  --color-gray-700: #48484A;
-  --color-gray-800: #3A3A3C;
-  --color-gray-900: #1D1D1F;
-  --color-gray-950: #111113;
+  /* Il n'y a pas de gris dans cette identité : les « gris » sont des bleus
+     très désaturés, tous tirés vers #0C0E45. L'interface reste dans une
+     seule famille chromatique, ce qui la rend visiblement intentionnelle. */
+  --color-gray-50:  #F3F6FD;
+  --color-gray-100: #DDE5F5;
+  --color-gray-200: #C6D1E8;
+  --color-gray-300: #AAB5D3;
+  --color-gray-400: #8D93B5;
+  --color-gray-500: #6B7096;
+  --color-gray-600: #454A73;
+  --color-gray-700: #313663;
+  --color-gray-800: #1D2155;
+  --color-gray-900: #0C0E45;
+  --color-gray-950: #070830;
 
-  /* Brand blue (replaces Tailwind default) */
-  --color-blue-50:  #EFF5FF;
-  --color-blue-100: #DDE8FF;
-  --color-blue-200: #BAD4FF;
-  --color-blue-500: #3389E0;
-  --color-blue-600: #0066CC;
-  --color-blue-700: #004FA3;
-  --color-blue-800: #003A7A;
+  /* L'échelle « blue » de Tailwind est remappée sur la palette de marque.
+     Un seul point de changement : tous les bg-blue-600 / text-blue-700 déjà
+     présents dans l'application suivent automatiquement.
+     Les quatre couleurs fournies occupent les crans 50, 400, 600 et 800 ;
+     les crans intermédiaires sont interpolés entre elles. */
+  --color-blue-50:  #E2EFFF;
+  --color-blue-100: #C9DEFB;
+  --color-blue-200: #AAC0F9;
+  --color-blue-300: #879BF9;
+  --color-blue-400: #6574F8;
+  --color-blue-500: #3A3AC6;
+  --color-blue-600: #07008F;
+  --color-blue-700: #0A0A6B;
+  --color-blue-800: #0C0E45;
+  --color-blue-900: #070830;
 
-  /* Apple green for success/availability */
-  --color-green-500: #34C759;
-  --color-green-600: #28A248;
+  /* Vert de confirmation — fonctionnel, hors marque */
+  --color-green-500: #268C5A;
+  --color-green-600: #1F7A4D;
+
+  /* Ambre — réservé aux étoiles de notation et aux avertissements */
+  --color-amber-50:  #FDF3E3;
+  --color-amber-400: #E0A32B;
+  --color-amber-600: #9A6410;
+
+  /* ── Discipline de graisses ──
+     L'application accumulait cinq graisses (medium, semibold, bold,
+     extrabold, black) réparties sur près de 300 déclarations. On les
+     rabat sur deux valeurs au niveau du thème : régulier et gras.
+     Résultat : les classes existantes restent valides, mais elles ne
+     peuvent plus produire qu'une des deux graisses réellement chargées.
+     La hiérarchie se joue alors sur l'échelle et la couleur. */
+  --font-weight-light:     400;
+  --font-weight-normal:    400;
+  --font-weight-medium:    400;
+  --font-weight-semibold:  600;
+  --font-weight-bold:      600;
+  --font-weight-extrabold: 600;
+  --font-weight-black:     600;
 }
 
 /* ── Base ── */
@@ -65,11 +142,11 @@ html {
 }
 
 body {
-  font-family: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family: var(--font-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: #FFFFFF;
-  color: #1D1D1F;
+  color: #0C0E45;
   /* Aucun défilement horizontal : élimine la « page qui glisse » sur mobile.
      « clip » plutôt que « hidden » : n'crée pas de conteneur de défilement,
      donc l'en-tête collant (position: sticky) continue de fonctionner. */
@@ -100,16 +177,41 @@ body {
   }
 }
 
+/* Les titres passent au serif : c'est le geste typographique qui distingue
+   le plus l'interface. Graisse 600 par défaut, 300 pour les titres d'affiche. */
 h1, h2, h3, h4, h5, h6 {
-  font-family: "Plus Jakarta Sans", ui-sans-serif, sans-serif;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
+/* Titre d'affiche : très grande échelle en graisse légère.
+   Le contraste d'échelle fait la hiérarchie, pas la graisse. */
+.display-light {
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.04;
+}
+
+/* Utilitaires typographiques — à préférer aux style={{fontFamily}} en ligne */
+.font-display { font-family: var(--font-display); }
+.font-text    { font-family: var(--font-text); }
+
+/* Chiffres alignés en colonne (horaires, tarifs, dates) */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* En arabe, le naskh prime sur tout — y compris sur le serif latin. */
 [dir="rtl"] body,
 [dir="rtl"] h1,
 [dir="rtl"] h2,
 [dir="rtl"] h3,
-[dir="rtl"] p {
-  font-family: "Noto Naskh Arabic", "Plus Jakarta Sans", ui-sans-serif, sans-serif;
+[dir="rtl"] h4,
+[dir="rtl"] p,
+[dir="rtl"] .font-display,
+[dir="rtl"] .display-light {
+  font-family: var(--font-arabic);
+  letter-spacing: normal;
 }
 
 /* ── Scrollbar hide ── */
@@ -119,9 +221,9 @@ h1, h2, h3, h4, h5, h6 {
 /* ── Hero background: Islamic interlocking circles (tracé continu)
    Barely visible — the signature element of Chifak's visual identity. ── */
 .hero-pattern {
-  background-color: #F5F5F7;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Ccircle cx='40' cy='40' r='38' fill='none' stroke='%230066CC' stroke-width='0.7' opacity='0.09'/%3E%3Ccircle cx='0' cy='0' r='38' fill='none' stroke='%230066CC' stroke-width='0.7' opacity='0.09'/%3E%3Ccircle cx='80' cy='0' r='38' fill='none' stroke='%230066CC' stroke-width='0.7' opacity='0.09'/%3E%3Ccircle cx='0' cy='80' r='38' fill='none' stroke='%230066CC' stroke-width='0.7' opacity='0.09'/%3E%3Ccircle cx='80' cy='80' r='38' fill='none' stroke='%230066CC' stroke-width='0.7' opacity='0.09'/%3E%3C/svg%3E");
-  background-size: 80px 80px;
+  background-color: #F7FAFF;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='none' stroke='%2307008F' stroke-width='0.6' opacity='0.13'%3E%3Ccircle cx='36' cy='36' r='34'/%3E%3Ccircle cx='0' cy='0' r='34'/%3E%3Ccircle cx='72' cy='0' r='34'/%3E%3Ccircle cx='0' cy='72' r='34'/%3E%3Ccircle cx='72' cy='72' r='34'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 72px 72px;
 }
 
 /* ── Input/select fields ── */
@@ -133,7 +235,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0.75rem 1rem;
   font-size: 0.9375rem;
   color: var(--ink);
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-text);
   transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
   appearance: none;
@@ -153,7 +255,7 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0.75rem 1rem;
   font-size: 0.9375rem;
   color: var(--ink);
-  font-family: "Inter", sans-serif;
+  font-family: var(--font-text);
   transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
 }
@@ -173,7 +275,7 @@ h1, h2, h3, h4, h5, h6 {
   height: 44px;
   background: var(--accent);
   color: #FFFFFF;
-  font-family: "Plus Jakarta Sans", sans-serif;
+  font-family: var(--font-text);
   font-weight: 600;
   font-size: 0.9375rem;
   border-radius: var(--r-md);
@@ -185,7 +287,7 @@ h1, h2, h3, h4, h5, h6 {
 .btn-primary:hover:not(:disabled) {
   background: var(--accent-dk);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0,102,204,0.28);
+  box-shadow: 0 4px 16px var(--tint-30);
 }
 .btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
 .btn-primary:disabled { background: var(--bg-3); color: var(--ink-3); cursor: not-allowed; }
@@ -200,8 +302,8 @@ h1, h2, h3, h4, h5, h6 {
   height: 36px;
   background: transparent;
   color: var(--ink-2);
-  font-family: "Plus Jakarta Sans", sans-serif;
-  font-weight: 500;
+  font-family: var(--font-text);
+  font-weight: 600;
   font-size: 0.875rem;
   border-radius: var(--r-md);
   border: 1.5px solid var(--bg-3);
@@ -224,13 +326,13 @@ h1, h2, h3, h4, h5, h6 {
 /* ── Specialty card hover ── */
 .specialty-card {
   background: var(--bg);
-  border: 1.5px solid rgba(0,0,0,0.07);
+  border: 1.5px solid var(--tint-10);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-xs);
   transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s;
 }
 .specialty-card:hover {
-  border-color: rgba(0,102,204,0.28);
+  border-color: var(--tint-30);
   box-shadow: var(--shadow-sm);
   transform: translateY(-2px);
 }
@@ -238,7 +340,7 @@ h1, h2, h3, h4, h5, h6 {
 /* ── Nav link ── */
 .nav-link {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink-2);
   transition: color 0.15s;
   cursor: pointer;
@@ -247,47 +349,6 @@ h1, h2, h3, h4, h5, h6 {
   padding: 0;
 }
 .nav-link:hover { color: var(--ink); }
-
-/* ── Hero animated gradient orbs ── */
-@keyframes orb-drift-1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33%       { transform: translate(50px, -35px) scale(1.07); }
-  66%       { transform: translate(-30px, 20px) scale(0.95); }
-}
-@keyframes orb-drift-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33%       { transform: translate(-40px, 25px) scale(1.05); }
-  66%       { transform: translate(35px, -15px) scale(0.97); }
-}
-@keyframes orb-drift-3 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50%       { transform: translate(25px, 30px) scale(1.10); }
-}
-
-.hero-orb {
-  position: absolute;
-  border-radius: 50%;
-  pointer-events: none;
-  will-change: transform;
-}
-.hero-orb-1 {
-  width: 720px; height: 720px;
-  top: -240px; right: -180px;
-  background: radial-gradient(circle at 40% 40%, rgba(0,102,204,0.22) 0%, rgba(0,102,204,0.06) 45%, transparent 72%);
-  animation: orb-drift-1 16s ease-in-out infinite;
-}
-.hero-orb-2 {
-  width: 520px; height: 520px;
-  bottom: -120px; left: -80px;
-  background: radial-gradient(circle at 55% 55%, rgba(35,166,160,0.18) 0%, rgba(35,166,160,0.05) 45%, transparent 70%);
-  animation: orb-drift-2 20s ease-in-out infinite;
-}
-.hero-orb-3 {
-  width: 380px; height: 380px;
-  top: 35%; left: 32%;
-  background: radial-gradient(circle at 50% 50%, rgba(0,160,255,0.12) 0%, transparent 65%);
-  animation: orb-drift-3 26s ease-in-out infinite;
-}
 
 /* ── Radius / shadow extensions ── */
 .rounded-4xl { border-radius: 2rem; }

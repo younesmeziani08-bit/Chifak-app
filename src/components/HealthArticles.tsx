@@ -62,7 +62,7 @@ export default function HealthArticles() {
           </p>
           <h2
             className="text-3xl sm:text-4xl font-extrabold tracking-tight"
-            style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}
+            style={{ color: 'var(--ink)' }}
           >
             {isArabic ? 'الصحة والوقاية' : 'Santé & Prévention'}
           </h2>
@@ -162,7 +162,7 @@ export default function HealthArticles() {
             </div>
 
             <div className="px-6 sm:px-8 py-6">
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2" style={{ color: 'var(--ink)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-2" style={{ color: 'var(--ink)' }}>
                 {isArabic ? active.titleAr : active.title}
               </h1>
               <p className="text-sm mb-6" style={{ color: 'var(--ink-3, #94a3b8)' }}>

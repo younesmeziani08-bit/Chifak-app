@@ -7,7 +7,7 @@ export default function LogoMark({ className = 'w-9 h-9', pulseColor = '#0e86c4'
     <svg viewBox="0 0 96 96" fill="none" className={className} role="img" aria-label="chifak">
       <defs>
         <linearGradient id={id} x1="12" y1="16" x2="84" y2="84" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#23a6a0" />
+          <stop stopColor="#6574F8" />
           <stop offset="0.55" stopColor="#0e86c4" />
           <stop offset="1" stopColor="#0a5a9c" />
         </linearGradient>

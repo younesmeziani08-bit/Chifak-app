@@ -1527,12 +1527,8 @@ const AI_API_KEY = process.env.AI_API_KEY || '';
 
 const ASSISTANT_SYSTEM_PROMPT = `Tu es « l'Assistant Santé chifak », un assistant d'orientation médicale pour une plateforme de prise de rendez-vous en Algérie. Tu parles au patient avec bienveillance, clarté et simplicité.
 
-RÈGLES DE LANGUE (TRÈS IMPORTANT) :
-- Ton patient est algérien. Par défaut, parle en DERJA ALGÉRIENNE (arabe algérien parlé), écrite en lettres arabes, avec les mots français courants que les Algériens utilisent naturellement (ex : « rendez-vous », « docteur », « normal »).
-- Adapte-toi à la langue du patient : s'il écrit en français, réponds en français ; s'il écrit en arabe ou en derja (même en lettres latines / arabizi), réponds en derja algérienne.
-- Utilise un ton chaleureux et proche, comme un Algérien qui parle à un proche. Exemples de tournures derja : « أهلا خويا / أختي »، « واش راك تحس؟ »، « وين يوجعك؟ »، « من وقتاش؟ »، « ماتخافش »، « لازم تشوف طبيب »، « نصحك تروح لـ... »، « الله يشافيك ».
-- Évite l'arabe standard (fusha) trop formel ; reste dans le parler quotidien algérien.
-- Phrases courtes et simples. Pas de jargon médical compliqué.
+Phrases courtes et simples. Pas de jargon médical compliqué.
+(Les règles de langue figurent en fin de consigne : elles priment sur tout le reste.)
 
 TON RÔLE :
 1. Demander au patient de décrire ses symptômes : où il a mal, depuis quand, l'intensité, les signes associés (fièvre, nausées, etc.). Pose 1 à 2 questions à la fois, sans le submerger.
@@ -1555,16 +1551,83 @@ COMMENT PRENDRE RENDEZ-VOUS SUR CHIFAK (à expliquer si demandé) :
 3. Sélectionner une date et un créneau horaire disponibles.
 4. Remplir ses informations et confirmer. Une confirmation est envoyée par e-mail.
 
-FORMAT : réponses concises (quelques phrases), chaleureuses. Quand tu orientes vers une spécialité, dis-le clairement (ex : « Je vous conseille de consulter un Dermatologue »).`;
+FORMAT : réponses concises (quelques phrases), chaleureuses. Quand tu orientes vers une spécialité, dis-le clairement (ex : « Je vous conseille de consulter un Dermatologue »).
+
+MARQUEUR D'ORIENTATION (technique, très important) :
+Dès que tu as assez d'éléments pour recommander une spécialité, termine ta réponse par une dernière ligne au format exact :
+[[ORIENTATION:Nom de la spécialité]]
+Le nom doit être copié à l'identique depuis la liste autorisée ci-dessus, sans traduction ni variante.
+Cette ligne est retirée avant affichage : ne la commente pas, ne l'annonce pas, et n'en parle jamais au patient.
+N'émets ce marqueur qu'une seule fois, et seulement après avoir posé au moins une question de précision.
+En cas d'urgence vitale, n'émets AUCUN marqueur : le patient doit appeler les secours, pas prendre rendez-vous.`;
+
+/** Spécialités vers lesquelles l'assistant peut orienter. Toute valeur hors de
+ *  cette liste est rejetée : le modèle ne décide pas seul du vocabulaire. */
+const ORIENTATION_SPECIALTIES = [
+  'Médecin généraliste', 'Dentiste', 'Ophtalmologue', 'Dermatologue',
+  'Cardiologue', 'Pédiatre', 'Gynécologue', 'ORL', 'Kinésithérapeute',
+  'Psychologue', 'Ostéopathe', 'Sage-femme',
+];
+
+/**
+ * Consignes de langue. Elles sont placées EN DERNIER dans le prompt système et
+ * sont les seules à parler de langue : le prompt de base n'impose plus la derja
+ * par défaut, sans quoi le modèle suivait cette consigne-là plutôt que le choix
+ * du patient. La règle est exclusive et répétée, y compris pour les messages
+ * écrits dans une autre langue que celle retenue.
+ */
+const LANGUAGE_INSTRUCTIONS = {
+  derja: `RÈGLE DE LANGUE — ABSOLUE, PRIME SUR TOUT LE RESTE :
+Le patient a explicitement choisi la DERJA ALGÉRIENNE.
+Réponds EXCLUSIVEMENT en derja algérienne écrite en lettres arabes, avec les mots français d'usage courant chez les Algériens (« rendez-vous », « docteur », « normal »).
+Ton chaleureux et proche : « أهلا خويا / أختي »، « واش راك تحس؟ »، « وين يوجعك؟ »، « من وقتاش؟ »، « ماتخافش »، « نصحك تروح لـ... ».
+N'utilise ni l'arabe standard (fusha) ni le français seul.
+Même si le patient écrit dans une autre langue, tu réponds en derja.`,
+
+  ar: `RÈGLE DE LANGUE — ABSOLUE, PRIME SUR TOUT LE RESTE :
+Le patient a explicitement choisi l'ARABE LITTÉRAIRE (فصحى).
+Réponds EXCLUSIVEMENT en arabe standard moderne, clair et accessible.
+N'emploie AUCUNE tournure de derja algérienne (pas de « واش راك »، « وين »، « ماتخافش »، « كيفاش »).
+N'emploie pas le français, sauf pour un terme médical sans équivalent courant.
+Même si le patient écrit en derja ou en français, tu réponds en arabe littéraire.`,
+
+  fr: `RÈGLE DE LANGUE — ABSOLUE, PRIME SUR TOUT LE RESTE :
+Le patient a explicitement choisi le FRANÇAIS.
+Réponds EXCLUSIVEMENT en français, dans une langue simple, chaleureuse et vouvoyée.
+N'écris AUCUN mot en arabe ni en derja, pas même une salutation.
+Même si le patient écrit en arabe ou en derja, tu réponds en français.`,
+};
+
+/**
+ * Extrait le marqueur d'orientation d'une réponse du modèle.
+ * Renvoie le texte nettoyé et, si elle est valide, la spécialité reconnue.
+ * La comparaison est insensible à la casse et aux accents pour tolérer les
+ * approximations du modèle, mais la valeur renvoyée est toujours celle de la
+ * liste autorisée — jamais celle produite par le modèle.
+ */
+function extractOrientation(text) {
+  const match = /\[\[\s*ORIENTATION\s*:\s*([^\]]+?)\s*\]\]/i.exec(text || '');
+  const reply = (text || '').replace(/\[\[\s*ORIENTATION\s*:[^\]]*\]\]/gi, '').trim();
+  if (!match) return { reply, orientation: null };
+
+  const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  const wanted = norm(match[1]);
+  const found = ORIENTATION_SPECIALTIES.find((s) => norm(s) === wanted) || null;
+  return { reply, orientation: found };
+}
 
 // POST /api/assistant/chat - Dialogue avec l'assistant santé
-app.post('/api/assistant/chat', async (req, res) => {
+// Réservé aux patients connectés : la conversation porte sur des symptômes,
+// donc sur des données de santé. On ne les traite pas pour un visiteur anonyme.
+app.post('/api/assistant/chat', authenticatePatientToken, async (req, res) => {
   try {
-    const { messages } = req.body;
+    const { messages, lang } = req.body;
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Messages requis' });
     }
+
+    const langKey = ['derja', 'ar', 'fr'].includes(lang) ? lang : 'derja';
 
     if (!AI_API_KEY) {
       return res.status(503).json({
@@ -1581,7 +1644,14 @@ app.post('/api/assistant/chat', async (req, res) => {
 
     const payload = {
       model: AI_MODEL,
-      messages: [{ role: 'system', content: ASSISTANT_SYSTEM_PROMPT }, ...trimmed],
+      messages: [
+        // La consigne de langue est rappelée deux fois : en fin de prompt
+        // système, puis en tout dernier message. Les modèles suivent mieux
+        // les instructions proches de la fin du contexte.
+        { role: 'system', content: `${ASSISTANT_SYSTEM_PROMPT}\n\n${LANGUAGE_INSTRUCTIONS[langKey]}` },
+        ...trimmed,
+        { role: 'system', content: LANGUAGE_INSTRUCTIONS[langKey] },
+      ],
       temperature: 0.4,
       max_tokens: 600,
     };
@@ -1611,8 +1681,16 @@ app.post('/api/assistant/chat', async (req, res) => {
     }
 
     const data = await aiRes.json();
-    const reply = data?.choices?.[0]?.message?.content?.trim() || "Je n'ai pas de réponse pour le moment.";
-    res.json({ reply });
+    const raw = data?.choices?.[0]?.message?.content?.trim() || "Je n'ai pas de réponse pour le moment.";
+
+    // Le marqueur est retiré du texte affiché et la spécialité est validée
+    // contre la liste autorisée avant d'être renvoyée au client.
+    const { reply, orientation } = extractOrientation(raw);
+
+    // `lang` est renvoyé pour pouvoir vérifier, depuis l'onglet réseau du
+    // navigateur, quelle consigne a réellement été appliquée. Si ce champ est
+    // absent de la réponse, le backend déployé est une version antérieure.
+    res.json({ reply, orientation, lang: langKey });
   } catch (error) {
     if (error.name === 'AbortError') {
       return res.status(504).json({ error: 'Délai dépassé', reply: 'La réponse a mis trop de temps. Réessayez.' });
@@ -1635,9 +1713,18 @@ app.post('/api/admin/daily-agendas', authenticateToken, async (req, res) => {
   }
 });
 
-// Route de test
+// Route de test / vérification de déploiement.
+// `features` permet de savoir en un coup d'œil quelle version tourne
+// réellement sur Render, sans avoir à lire les logs.
 app.get('/', async (req, res) => {
-  res.json({ message: 'API chifak fonctionne ! 🏥' });
+  res.json({
+    message: 'API chifak fonctionne ! 🏥',
+    features: {
+      assistantLangChoice: true,
+      assistantOrientation: true,
+      assistantRequiresPatientAuth: true,
+    },
+  });
 });
 
 // 404 pour les routes API inconnues

@@ -96,9 +96,7 @@ export default function Header({
             className="flex items-center gap-2.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded-lg"
           >
             <LogoMark className="h-8 w-8" />
-            <span style={{
-              fontFamily: '"Plus Jakarta Sans", sans-serif',
-              fontWeight: 700,
+            <span style={{              fontWeight: 700,
               fontSize: '17px',
               letterSpacing: '-0.01em',
               color: 'var(--ink)',
@@ -143,7 +141,7 @@ export default function Header({
                   title={isArabic ? 'حسابي' : 'Mon compte'}
                 >
                   <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                    style={{ background: 'var(--accent-bg)', color: 'var(--accent)', fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
+                    style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}>
                     {initialsOf(patientUser.name)}
                   </span>
                   <span className="hidden lg:inline text-sm font-medium" style={{ color: 'var(--ink)' }}>

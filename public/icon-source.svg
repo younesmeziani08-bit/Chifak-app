@@ -3,7 +3,7 @@
   <g transform="translate(96,96) scale(3.333)">
     <defs>
       <linearGradient id="g" x1="12" y1="16" x2="84" y2="84" gradientUnits="userSpaceOnUse">
-        <stop stop-color="#23a6a0"/><stop offset="0.55" stop-color="#0e86c4"/><stop offset="1" stop-color="#0a5a9c"/>
+        <stop stop-color="#6574F8"/><stop offset="0.55" stop-color="#3A3AC6"/><stop offset="1" stop-color="#07008F"/>
       </linearGradient>
     </defs>
     <path d="M48 84 C22 64 9 51 9 34.5 C9 23 18 15.5 27.5 15.5 C36 15.5 43.5 20.5 48 28 C52.5 20.5 60 15.5 68.5 15.5 C78 15.5 87 23 87 34.5 C87 51 74 64 48 84 Z" fill="url(#g)"/>
@@ -12,6 +12,6 @@
       <circle cx="41.5" cy="44.5" r="4.6"/><path d="M31.5 60.5 a10 10 0 0 1 20 0 Z"/>
       <circle cx="56.5" cy="47.5" r="3.6"/><path d="M49.5 60.5 a7.5 7.5 0 0 1 15 0 Z"/>
     </g>
-    <path d="M30 35 h4.5 l2.5 -6.5 3.8 12 2.6 -7 h5.1" stroke="#0e86c4" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M30 35 h4.5 l2.5 -6.5 3.8 12 2.6 -7 h5.1" stroke="#3A3AC6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
   </g>
 </svg>
