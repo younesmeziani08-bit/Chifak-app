@@ -120,7 +120,8 @@ export default function Header({
 
           {/* Right actions */}
           <div className="flex items-center gap-2">
-            <div className="hidden sm:block">
+            {/* Bascule de langue : visible aussi sur mobile */}
+            <div className="block">
               <LanguageToggle />
             </div>
 
@@ -216,6 +217,16 @@ export default function Header({
               </button>
             ))}
 
+            {onDoctorClick && !patientUser && (
+              <button
+                onClick={() => close(onDoctorClick)}
+                className="w-full text-start px-3 py-3 rounded-xl text-[15px] font-medium transition-colors hover:bg-gray-50"
+                style={{ color: 'var(--ink)' }}
+              >
+                {isArabic ? 'مساحة الطبيب' : 'Espace médecin'}
+              </button>
+            )}
+
             <div className="pt-3 space-y-2" style={{ borderTop: '1px solid rgba(0,0,0,0.06)', marginTop: '8px', paddingTop: '16px' }}>
               {patientUser ? (
                 <>
@@ -252,9 +263,6 @@ export default function Header({
                   </button>
                 </>
               )}
-              <div className="flex justify-center pt-2">
-                <LanguageToggle />
-              </div>
             </div>
           </div>
         </div>
