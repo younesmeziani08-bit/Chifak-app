@@ -60,11 +60,11 @@ export default function AssistantChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const welcome = isArabic
-    ? 'مرحبًا! أنا مساعد شفاك الصحي. صِف لي ما تشعر به (مكان الألم، منذ متى، شدّته) وسأوجّهك إلى التخصّص المناسب وأنصحك بما تفعله في انتظار الطبيب.'
+    ? 'أهلا! أنا مساعد شفاك. قولي واش راك تحس (وين يوجعك، من وقتاش، وشحال قوية) ونوجّهك للطبيب اللي يلزمك، ونعطيك نصائح باش تستنّى الموعد.'
     : "Bonjour ! Je suis l'assistant santé chifak. Décrivez-moi ce que vous ressentez (où, depuis quand, l'intensité) et je vous orienterai vers la bonne spécialité, avec des conseils en attendant le médecin.";
 
   const suggestions = isArabic
-    ? ['عندي صداع منذ يومين', 'ألم في الأسنان', 'كيف أحجز موعدًا؟']
+    ? ['راني عندي وجيعة راس من يومين', 'وجيعة في سنيني', 'كيفاش نحجز موعد؟']
     : ['J\'ai mal à la tête depuis 2 jours', 'Une douleur dentaire', 'Comment prendre rendez-vous ?'];
 
   useEffect(() => {
@@ -172,10 +172,10 @@ export default function AssistantChat() {
               </button>
               <button onClick={openChat} className="text-start">
                 <p className="text-sm font-semibold text-gray-800 leading-snug">
-                  {isArabic ? 'مرحبًا! هل لديك سؤال صحي؟' : 'Bonjour ! Une question de santé ?'}
+                  {isArabic ? 'أهلا! عندك سؤال على صحتك؟' : 'Bonjour ! Une question de santé ?'}
                 </p>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {isArabic ? 'لنتحدّث قبل أن تبدأ.' : 'Discutons-en avant de commencer.'}
+                  {isArabic ? 'نهدرو قبل ما تبدا.' : 'Discutons-en avant de commencer.'}
                 </p>
               </button>
             </div>
@@ -293,7 +293,7 @@ export default function AssistantChat() {
 
           {/* Avertissement */}
           <div className="px-4 py-1.5 text-[10px] text-center text-gray-400 border-t border-gray-100 bg-white">
-            {isArabic ? 'ليس تشخيصًا طبيًا. للطوارئ اتصل بـ 14 أو 115.' : 'Pas un diagnostic médical. Urgence : appelez le 14 ou 115.'}
+            {isArabic ? 'ماشي تشخيص طبي. للطوارئ عيّط لـ 14 ولا 115.' : 'Pas un diagnostic médical. Urgence : appelez le 14 ou 115.'}
           </div>
 
           {/* Saisie */}
