@@ -23,6 +23,7 @@ import {
   passwordStrengthError,
   isTooSimilar,
   assertStrongSecrets,
+  isValidDoctorImage,
 } from './security.js';
 import passport from './passport-config.js';
 import { generateVerificationCode, sendVerificationEmail, sendAppointmentConfirmation } from './emailService.js';
@@ -849,6 +850,12 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
   try {
     const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password } = req.body;
 
+    // La photo peut être une image téléversée (encodée) : on borne sa taille,
+    // sinon une requête forgée pourrait stocker plusieurs mégaoctets par fiche.
+    if (!isValidDoctorImage(image)) {
+      return res.status(400).json({ error: 'Photo invalide ou trop lourde (220 Ko maximum).' });
+    }
+
     if (!name || !specialty || !address || !city) {
       return res.status(400).json({ error: 'Champs requis manquants' });
     }
@@ -909,6 +916,12 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
 app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
   try {
     const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password, acceptsVideo } = req.body;
+
+    // La photo peut être une image téléversée (encodée) : on borne sa taille,
+    // sinon une requête forgée pourrait stocker plusieurs mégaoctets par fiche.
+    if (!isValidDoctorImage(image)) {
+      return res.status(400).json({ error: 'Photo invalide ou trop lourde (220 Ko maximum).' });
+    }
 
     const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 

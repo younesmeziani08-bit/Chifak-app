@@ -31,10 +31,16 @@ function hash(input: string): number {
   return Math.abs(h);
 }
 
-/** URL de photo réelle, ou null si le praticien n'en a pas fourni. */
+/**
+ * Photo réelle du praticien, ou null s'il n'en a pas.
+ * Trois formes acceptées : adresse web, chemin local du site, et image
+ * téléversée depuis l'administration (encodée en `data:image/…`).
+ */
 export function getDoctorPhoto(doctor: Pick<Doctor, 'id' | 'name' | 'image'>): string | null {
   const img = (doctor.image || '').trim();
-  if (/^(https?:)?\/\//.test(img) || img.startsWith('/')) return img;
+  if (/^(https?:)?\/\//.test(img)) return img;
+  if (img.startsWith('/')) return img;
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(img)) return img;
   return null;
 }
 

@@ -126,6 +126,28 @@ const WEAK_SECRETS = new Set([
   'chifak_session_secret', 'your_jwt_secret', 'test', 'dev',
 ]);
 
+/**
+ * Valide la photo d'un praticien.
+ *
+ * Trois formes acceptées : vide, adresse http(s), ou image encodée en `data:`.
+ * Le plafond de 220 Ko protège la base et l'annuaire : la photo est renvoyée
+ * dans chaque fiche, donc une image non compressée par un navigateur détourné
+ * alourdirait toutes les réponses. Le client réduit déjà à ~15 Ko ; cette borne
+ * n'est là que pour les appels qui ne passent pas par lui.
+ */
+export const DOCTOR_IMAGE_MAX = 220 * 1024;
+
+export function isValidDoctorImage(value) {
+  if (value === undefined || value === null || value === '') return true;
+  if (typeof value !== 'string') return false;
+  if (value.length > DOCTOR_IMAGE_MAX) return false;
+  if (/^https?:\/\/[^\s]+$/i.test(value)) return true;
+  if (/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value)) return true;
+  // Les anciennes fiches contiennent un émoji : on les laisse passer sans
+  // les casser, mais on borne leur longueur.
+  return value.length <= 16;
+}
+
 export function assertStrongSecrets() {
   const problems = [];
   const isProd = process.env.NODE_ENV === 'production';

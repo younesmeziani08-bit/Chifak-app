@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { useDoctors } from '../../contexts/DoctorsContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -6,6 +6,7 @@ import LanguageToggle from '../LanguageToggle';
 import AddDoctorForm from './AddDoctorForm';
 import DoctorsList from './DoctorsList';
 import AdminReviews from './AdminReviews';
+import { appointmentsAPI } from '../../services/api';
 
 type Tab = 'add' | 'list' | 'reviews';
 
@@ -20,6 +21,28 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<Tab>('add');
   const isArabic = language === 'ar';
 
+  /* Rendez-vous à venir : l'indicateur le plus parlant pour qui exploite la
+     plateforme au quotidien. Il remplace l'ancien compteur « Avec GPS », qui
+     n'appelait aucune décision. */
+  const [upcoming, setUpcoming] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const today = new Date().toISOString().slice(0, 10);
+    appointmentsAPI.getAll()
+      .then((rows: any[]) => {
+        if (!alive) return;
+        setUpcoming((rows || []).filter(
+          (a) => a.status !== 'cancelled' && String(a.appointment_date) >= today
+        ).length);
+      })
+      .catch(() => { if (alive) setUpcoming(null); });
+    return () => { alive = false; };
+  }, [doctors.length]);
+
+  /* Comptes sans mot de passe : ces praticiens ne peuvent pas se connecter à
+     leur espace. C'est une anomalie à corriger, pas une simple statistique. */
+  const withoutPassword = doctors.filter((d) => !d.hasPassword).length;
+
   const stats = [
     {
       label: isArabic ? 'مجموع الأطباء' : 'Médecins enregistrés',
@@ -27,27 +50,31 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
       icon: '👨‍⚕️',
       color: 'bg-blue-50 border-blue-200',
       textColor: 'text-blue-700',
+      hint: `${new Set(doctors.map((d) => d.specialty)).size} ${isArabic ? 'تخصصًا' : 'spécialités'} · ${new Set(doctors.map((d) => d.city.split(',')[0]?.trim())).size} ${isArabic ? 'مدينة' : 'villes'}`,
     },
     {
-      label: isArabic ? 'التخصصات' : 'Spécialités',
-      value: new Set(doctors.map(d => d.specialty)).size,
-      icon: '🏥',
+      label: isArabic ? 'مواعيد قادمة' : 'Rendez-vous à venir',
+      value: upcoming === null ? '—' : upcoming,
+      icon: '📅',
       color: 'bg-green-50 border-green-200',
       textColor: 'text-green-700',
+      hint: isArabic ? 'من اليوم فصاعدًا' : "À partir d'aujourd'hui",
     },
     {
-      label: isArabic ? 'المدن' : 'Villes',
-      value: new Set(doctors.map(d => d.city.split(',')[0]?.trim())).size,
-      icon: '📍',
+      label: isArabic ? 'استشارة عن بُعد' : 'En téléconsultation',
+      value: doctors.filter((d) => d.acceptsVideo).length,
+      icon: '🎥',
       color: 'bg-purple-50 border-purple-200',
       textColor: 'text-purple-700',
+      hint: isArabic ? 'أطباء فعّلوا الفيديو' : 'Praticiens ayant activé la vidéo',
     },
     {
-      label: isArabic ? 'بموقع GPS' : 'Avec GPS',
-      value: doctors.filter(d => d.latitude || d.mapsUrl).length,
-      icon: '🗺️',
-      color: 'bg-cyan-50 border-cyan-200',
-      textColor: 'text-cyan-700',
+      label: isArabic ? 'بدون كلمة مرور' : 'Sans mot de passe',
+      value: withoutPassword,
+      icon: withoutPassword > 0 ? '⚠️' : '✅',
+      color: withoutPassword > 0 ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200',
+      textColor: withoutPassword > 0 ? 'text-amber-700' : 'text-gray-500',
+      hint: isArabic ? 'لا يمكنهم الدخول لمساحتهم' : 'Ne peuvent pas accéder à leur espace',
     },
   ];
 
@@ -141,6 +168,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
               <div className="text-3xl mb-2">{s.icon}</div>
               <div className={`text-3xl font-extrabold mb-1 ${s.textColor}`}>{s.value}</div>
               <div className="text-sm text-gray-600 font-medium">{s.label}</div>
+              {s.hint && <div className="text-xs text-gray-400 mt-1 leading-snug">{s.hint}</div>}
             </div>
           ))}
         </div>

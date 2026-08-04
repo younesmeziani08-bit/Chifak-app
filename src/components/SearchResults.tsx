@@ -6,6 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useDoctors } from '../contexts/DoctorsContext';
 import { appointmentsAPI } from '../services/api';
 import { slotsForDay } from '../utils/slots';
+import DoctorAvatar from './DoctorAvatar';
 
 const NAVY = '#00264c';
 
@@ -81,11 +82,6 @@ function nextAvailableDay(doctor: Doctor, days: DayInfo[], fromISO: string): Day
     if (slotsForDay(doctor, days[i].full).length > 0) return days[i];
   }
   return null;
-}
-
-function initials(name: string): string {
-  const parts = name.replace(/^Dr\.?\s*/i, '').trim().split(/\s+/);
-  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || 'DR';
 }
 
 export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHome, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, onOpenAccount, patientUser, onLogout }: SearchResultsProps) {
@@ -359,22 +355,16 @@ function DoctorCard({
   onSelect: () => void;
   onPickDay: (iso: string) => void;
 }) {
-  const isUrl = typeof doctor.image === 'string' && doctor.image.startsWith('http');
   const mapsLink = doctor.mapsUrl
     || (doctor.latitude && doctor.longitude ? `https://www.google.com/maps?q=${doctor.latitude},${doctor.longitude}` : null);
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 p-5 sm:p-6 hover:border-blue-300 transition-colors">
       <div className="flex flex-col sm:flex-row gap-5">
-        {/* Avatar */}
+        {/* Avatar — logique unique partagée avec l'espace admin et la page de
+            réservation : photo si le praticien en a une, monogramme sinon. */}
         <div className="flex-shrink-0">
-          {isUrl ? (
-            <img src={doctor.image} alt={doctor.name} className="w-16 h-16 rounded-full object-cover border border-gray-100" />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center text-lg font-semibold">
-              {initials(doctor.name)}
-            </div>
-          )}
+          <DoctorAvatar doctor={doctor} className="w-16 h-16" rounded="rounded-full" />
         </div>
 
         {/* Info + slots */}

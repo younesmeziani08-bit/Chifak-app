@@ -1,27 +1,47 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Doctor } from '../../App';
 import { useDoctors } from '../../contexts/DoctorsContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import LocationSelector from '../LocationSelector';
+import DoctorAvatar from '../DoctorAvatar';
+import { preparerPhoto, poidsApproximatif, ImageTropLourdeError } from '../../utils/imageUpload';
 
-export default function AddDoctorForm() {
-  const { addDoctor } = useDoctors();
+interface AddDoctorFormProps {
+  /** Fiche à corriger. Absent = création. */
+  doctor?: Doctor;
+  /** Appelé après un enregistrement réussi en mode correction. */
+  onDone?: () => void;
+}
+
+export default function AddDoctorForm({ doctor, onDone }: AddDoctorFormProps = {}) {
+  const { addDoctor, updateDoctor } = useDoctors();
   const { t, language } = useLanguage();
+  const isEditing = !!doctor;
+
   const [formData, setFormData] = useState({
-    name: '',
-    specialty: '',
-    address: '',
-    city: '',
+    name: doctor?.name ?? '',
+    specialty: doctor?.specialty ?? '',
+    address: doctor?.address ?? '',
+    city: doctor?.city ?? '',
     phone: '',
     email: '',
-    doctorCode: '',
+    doctorCode: doctor?.doctorCode ?? '',
     password: '',
-    image: '👨‍⚕️',
-    slotDuration: '30',
-    workingDays: [1, 2, 3, 4, 5] as number[],
-    latitude: '',
-    longitude: '',
-    mapsUrl: ''
+    image: doctor?.image ?? '',
+    slotDuration: String(doctor?.slotDuration ?? 30),
+    workingDays: (doctor?.workingDays ?? [1, 2, 3, 4, 5]) as number[],
+    latitude: doctor?.latitude != null ? String(doctor.latitude) : '',
+    longitude: doctor?.longitude != null ? String(doctor.longitude) : '',
+    mapsUrl: doctor?.mapsUrl ?? ''
   });
+  /* La photo est tenue à part du reste : elle a son propre aperçu et sa propre
+     validation, et doit pouvoir être vidée sans repasser par un émoji. */
+  const [photoUrl, setPhotoUrl] = useState(
+    doctor?.image && /^(https?:\/\/|data:image\/)/i.test(doctor.image) ? doctor.image : ''
+  );
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [success, setSuccess] = useState(false);
 
   const isArabic = language === 'ar';
@@ -41,7 +61,6 @@ export default function AddDoctorForm() {
     'specialty.midwife',
   ];
 
-  const avatars = ['👨‍⚕️', '👩‍⚕️', '🧑‍⚕️'];
 
   const buildSlots = (durationMinutes: number): string[] => {
     const ranges = [
@@ -84,16 +103,23 @@ export default function AddDoctorForm() {
       const slotDuration = Number(formData.slotDuration) || 30;
       const generatedSlots = buildSlots(slotDuration);
 
-      const newDoctor = {
+      /* En correction, la spécialité est déjà un libellé traduit : la repasser
+         dans t() renverrait la clé brute. On ne traduit qu'à la création, où
+         le champ contient une clé du type « specialty.dentist ». */
+      const specialtyLabel = formData.specialty.startsWith('specialty.')
+        ? t(formData.specialty)
+        : formData.specialty;
+
+      const payload = {
         name: formData.name,
-        specialty: t(formData.specialty),
+        specialty: specialtyLabel,
         address: formData.address,
         city: formData.city,
         phone: formData.phone,
         email: formData.email,
         doctorCode: formData.doctorCode,
         password: formData.password || undefined,
-        image: formData.image,
+        image: photoUrl || '',
         latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
         longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
         mapsUrl: formData.mapsUrl || undefined,
@@ -103,9 +129,16 @@ export default function AddDoctorForm() {
         nextAvailable: isArabic ? 'متاح الآن' : 'Disponible maintenant'
       };
 
-      await addDoctor(newDoctor);
-      
-      // Reset form
+      if (isEditing && doctor) {
+        await updateDoctor(doctor.id, payload);
+        setSuccess(true);
+        onDone?.();
+        return;
+      }
+
+      await addDoctor(payload);
+
+      // Remise à zéro, création uniquement
       setFormData({
         name: '',
         specialty: '',
@@ -115,18 +148,19 @@ export default function AddDoctorForm() {
         email: '',
         doctorCode: '',
         password: '',
-        image: '👨‍⚕️',
+        image: '',
         slotDuration: '30',
         workingDays: [1, 2, 3, 4, 5],
         latitude: '',
         longitude: '',
         mapsUrl: ''
       });
+      setPhotoUrl('');
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
-      alert(isArabic ? 'خطأ في إضافة الطبيب' : 'Erreur lors de l\'ajout du médecin');
+      alert(isArabic ? 'خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
       console.error(error);
     }
   };
@@ -138,7 +172,9 @@ export default function AddDoctorForm() {
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          {isArabic ? 'تمت إضافة الطبيب بنجاح!' : 'Médecin ajouté avec succès !'}
+          {isEditing
+            ? (isArabic ? 'تم حفظ التعديلات!' : 'Modifications enregistrées !')
+            : (isArabic ? 'تمت إضافة الطبيب بنجاح!' : 'Médecin ajouté avec succès !')}
         </div>
       )}
 
@@ -441,58 +477,130 @@ export default function AddDoctorForm() {
           </div>
         </div>
 
-        {/* Avatar */}
+        {/* Photo du praticien — téléversée depuis l'ordinateur */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            {isArabic ? 'الصورة الرمزية' : 'Avatar'}
+            {isArabic ? 'صورة الطبيب' : 'Photo du praticien'}
           </label>
-          <div className="flex space-x-4">
-            {avatars.map((avatar) => (
-              <button
-                key={avatar}
-                type="button"
-                onClick={() => setFormData({ ...formData, image: avatar })}
-                className={`text-4xl p-4 rounded-lg border-2 transition ${
-                  formData.image === avatar
-                    ? 'border-blue-600 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-300'
-                }`}
-              >
-                {avatar}
-              </button>
-            ))}
+
+          <div className="flex items-start gap-4">
+            {/* Le bouton EST l'aperçu : on clique sur la vignette pour choisir
+                un fichier, et le « + » disparaît dès qu'une photo est en place. */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={photoLoading}
+              className="relative w-24 h-24 flex-shrink-0 rounded-2xl border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50/40 transition flex items-center justify-center overflow-hidden disabled:opacity-60"
+              title={isArabic ? 'اختر صورة' : 'Choisir une photo'}
+            >
+              {photoUrl ? (
+                <>
+                  <DoctorAvatar
+                    doctor={{ id: 0, name: formData.name || 'Dr', image: photoUrl }}
+                    className="absolute inset-0 w-full h-full"
+                    rounded="rounded-2xl"
+                  />
+                  <span className="absolute inset-x-0 bottom-0 bg-black/55 text-white text-[11px] py-1">
+                    {isArabic ? 'تغيير' : 'Changer'}
+                  </span>
+                </>
+              ) : photoLoading ? (
+                <span className="text-xs text-gray-500">{isArabic ? 'جارٍ…' : 'Traitement…'}</span>
+              ) : (
+                <span className="flex flex-col items-center gap-1 text-gray-400">
+                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  <span className="text-[11px] font-medium">{isArabic ? 'صورة' : 'Photo'}</span>
+                </span>
+              )}
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                // On vide tout de suite la valeur du champ : sans cela, choisir
+                // deux fois le même fichier ne déclencherait pas d'événement.
+                e.target.value = '';
+                if (!file) return;
+                setPhotoError('');
+                setPhotoLoading(true);
+                try {
+                  const dataUrl = await preparerPhoto(file);
+                  setPhotoUrl(dataUrl);
+                } catch (err) {
+                  setPhotoError(
+                    err instanceof ImageTropLourdeError
+                      ? (isArabic ? 'الصورة ثقيلة جدًا. جرّب صورة أصغر.' : 'Image trop lourde. Essayez une image plus petite.')
+                      : (isArabic ? 'ملف غير صالح. اختر صورة.' : 'Fichier invalide. Choisissez une image.')
+                  );
+                } finally {
+                  setPhotoLoading(false);
+                }
+              }}
+            />
+
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500 leading-relaxed">
+                {isArabic
+                  ? 'اضغط على المربّع لاختيار صورة من حاسوبك. تُقتطع مربّعة وتُصغَّر تلقائيًا إلى 256 بكسل.'
+                  : 'Cliquez sur le carré pour choisir une image depuis votre ordinateur. Elle est recadrée en carré et réduite automatiquement à 256 pixels.'}
+              </p>
+              {photoUrl && (
+                <div className="flex flex-wrap items-center gap-3 mt-2">
+                  <span className="text-xs text-gray-500">
+                    ≈ {Math.round(poidsApproximatif(photoUrl) / 1024)} Ko
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setPhotoUrl(''); setPhotoError(''); }}
+                    className="text-xs font-medium text-red-600 hover:underline"
+                  >
+                    {isArabic ? 'إزالة الصورة' : 'Retirer la photo'}
+                  </button>
+                </div>
+              )}
+              {!photoUrl && (
+                <p className="text-xs text-gray-400 mt-2">
+                  {isArabic ? 'بدون صورة، تظهر الأحرف الأولى من الاسم.' : 'Sans photo, les initiales du praticien sont affichées.'}
+                </p>
+              )}
+              {photoError && <p className="text-xs text-red-600 mt-2">{photoError}</p>}
+            </div>
           </div>
         </div>
 
-        {/* Submit Button */}
-        <div className="flex justify-end space-x-4">
+        {/* Actions — en correction, « Réinitialiser » viderait la fiche existante :
+            on le remplace par « Annuler », qui referme sans rien changer. */}
+        <div className="flex flex-wrap justify-end gap-3">
           <button
             type="button"
-            onClick={() => setFormData({
-              name: '',
-              specialty: '',
-              address: '',
-              city: '',
-              phone: '',
-              email: '',
-              doctorCode: '',
-              password: '',
-              image: '👨‍⚕️',
-              slotDuration: '30',
-              workingDays: [1, 2, 3, 4, 5],
-              latitude: '',
-              longitude: '',
-              mapsUrl: ''
-            })}
+            onClick={() => {
+              if (isEditing) { onDone?.(); return; }
+              setFormData({
+                name: '', specialty: '', address: '', city: '', phone: '', email: '',
+                doctorCode: '', password: '', image: '', slotDuration: '30',
+                workingDays: [1, 2, 3, 4, 5], latitude: '', longitude: '', mapsUrl: '',
+              });
+              setPhotoUrl('');
+            }}
             className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition"
           >
-            {isArabic ? 'إعادة تعيين' : 'Réinitialiser'}
+            {isEditing
+              ? (isArabic ? 'إلغاء' : 'Annuler')
+              : (isArabic ? 'إعادة تعيين' : 'Réinitialiser')}
           </button>
           <button
             type="submit"
             className="px-6 py-3 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700 transition shadow-lg"
           >
-            {isArabic ? 'إضافة الطبيب' : 'Ajouter le médecin'}
+            {isEditing
+              ? (isArabic ? 'حفظ التعديلات' : 'Enregistrer les modifications')
+              : (isArabic ? 'إضافة الطبيب' : 'Ajouter le médecin')}
           </button>
         </div>
       </form>

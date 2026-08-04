@@ -1,11 +1,40 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Doctor } from '../../App';
 import { useDoctors } from '../../contexts/DoctorsContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { appointmentsAPI } from '../../services/api';
+import DoctorAvatar from '../DoctorAvatar';
+import AddDoctorForm from './AddDoctorForm';
 
 export default function DoctorsList() {
   const { doctors, deleteDoctor, updateDoctor } = useDoctors();
   const { language } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
+  const [specialtyFilter, setSpecialtyFilter] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'specialty' | 'city'>('name');
+  /** Fiche en cours de correction, null si aucune. */
+  const [editing, setEditing] = useState<Doctor | null>(null);
+
+  /* Rendez-vous à venir par praticien : sert à prévenir avant une suppression
+     qui laisserait des patients avec une consultation dans le vide. */
+  const [upcomingByDoctor, setUpcomingByDoctor] = useState<Record<number, number>>({});
+  useEffect(() => {
+    let alive = true;
+    const today = new Date().toISOString().slice(0, 10);
+    appointmentsAPI.getAll()
+      .then((rows: any[]) => {
+        if (!alive) return;
+        const counts: Record<number, number> = {};
+        for (const a of rows || []) {
+          if (a.status === 'cancelled') continue;
+          if (String(a.appointment_date) < today) continue;
+          counts[a.doctor_id] = (counts[a.doctor_id] || 0) + 1;
+        }
+        setUpcomingByDoctor(counts);
+      })
+      .catch(() => { /* l'avertissement est un confort, pas un bloquant */ });
+    return () => { alive = false; };
+  }, [doctors.length]);
 
   const isArabic = language === 'ar';
 
@@ -45,16 +74,41 @@ export default function DoctorsList() {
     }
   };
 
-  const filteredDoctors = doctors.filter(doctor =>
-    doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    doctor.specialty.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    doctor.city.toLowerCase().includes(searchTerm.toLowerCase())
+  /** Spécialités réellement présentes, pour ne proposer que des filtres utiles. */
+  const specialties = useMemo(
+    () => [...new Set(doctors.map((d) => d.specialty).filter(Boolean))].sort(),
+    [doctors]
   );
 
+  const filteredDoctors = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    return doctors
+      .filter((doctor) => {
+        const matchesQuery = !q
+          || doctor.name.toLowerCase().includes(q)
+          || doctor.specialty.toLowerCase().includes(q)
+          || doctor.city.toLowerCase().includes(q)
+          || (doctor.doctorCode || '').toLowerCase().includes(q);
+        const matchesSpecialty = !specialtyFilter || doctor.specialty === specialtyFilter;
+        return matchesQuery && matchesSpecialty;
+      })
+      .sort((a, b) => (a[sortBy] || '').localeCompare(b[sortBy] || '', 'fr'));
+  }, [doctors, searchTerm, specialtyFilter, sortBy]);
+
   const handleDelete = async (id: number, name: string) => {
-    if (window.confirm(isArabic 
-      ? `هل أنت متأكد من حذف ${name}؟` 
-      : `Êtes-vous sûr de vouloir supprimer ${name} ?`
+    const upcoming = upcomingByDoctor[id] || 0;
+    /* Un praticien supprimé alors qu'il a des rendez-vous à venir laisse des
+       patients avec une consultation qui n'aura pas lieu, et sans personne à
+       prévenir. On l'annonce explicitement plutôt que de supprimer en silence. */
+    const warning = upcoming > 0
+      ? (isArabic
+        ? `\n\n⚠️ لدى هذا الطبيب ${upcoming} موعدًا قادمًا. سيفقد هؤلاء المرضى استشارتهم.`
+        : `\n\n⚠️ Ce praticien a ${upcoming} rendez-vous à venir. Ces patients perdront leur consultation.`)
+      : '';
+
+    if (window.confirm((isArabic
+      ? `هل أنت متأكد من حذف ${name}؟`
+      : `Êtes-vous sûr de vouloir supprimer ${name} ?`) + warning
     )) {
       try {
         await deleteDoctor(id);
@@ -65,18 +119,70 @@ export default function DoctorsList() {
     }
   };
 
+  /* Écran de correction : on remplace la liste plutôt que d'ouvrir une fenêtre
+     modale. Le formulaire est long, une modale imposerait un défilement dans
+     le défilement — pénible surtout sur téléphone. */
+  if (editing) {
+    return (
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-gray-200">
+          <div className="flex items-center gap-3 min-w-0">
+            <DoctorAvatar doctor={editing} className="w-12 h-12 flex-shrink-0" rounded="rounded-xl" />
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">{isArabic ? 'تعديل الملف' : 'Modification de la fiche'}</p>
+              <p className="font-semibold text-gray-900 truncate">{editing.name}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditing(null)}
+            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 transition"
+          >
+            {isArabic ? 'العودة للقائمة' : 'Retour à la liste'}
+          </button>
+        </div>
+        <AddDoctorForm doctor={editing} onDone={() => setEditing(null)} />
+      </div>
+    );
+  }
+
   return (
     <div>
-      {/* Search */}
-      <div className="mb-6">
+      {/* Recherche, filtre par spécialité et tri */}
+      <div className="mb-6 grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <input
           type="text"
-          placeholder={isArabic ? 'البحث عن طبيب...' : 'Rechercher un médecin...'}
+          placeholder={isArabic ? 'اسم، تخصص، مدينة أو رمز…' : 'Nom, spécialité, ville ou code…'}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
         />
+        <select
+          value={specialtyFilter}
+          onChange={(e) => setSpecialtyFilter(e.target.value)}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">{isArabic ? 'كل التخصصات' : 'Toutes les spécialités'}</option>
+          {specialties.map((sp) => <option key={sp} value={sp}>{sp}</option>)}
+        </select>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="name">{isArabic ? 'ترتيب بالاسم' : 'Trier par nom'}</option>
+          <option value="specialty">{isArabic ? 'ترتيب بالتخصص' : 'Trier par spécialité'}</option>
+          <option value="city">{isArabic ? 'ترتيب بالمدينة' : 'Trier par ville'}</option>
+        </select>
       </div>
+
+      <p className="text-sm text-gray-500 mb-4">
+        {filteredDoctors.length === doctors.length
+          ? (isArabic ? `${doctors.length} طبيبًا` : `${doctors.length} praticien${doctors.length > 1 ? 's' : ''}`)
+          : (isArabic
+            ? `${filteredDoctors.length} من ${doctors.length}`
+            : `${filteredDoctors.length} sur ${doctors.length} praticiens`)}
+      </p>
 
       {/* ── Vue mobile : cartes (le tableau est illisible sur téléphone) ── */}
       <div className="md:hidden space-y-3">
@@ -88,12 +194,29 @@ export default function DoctorsList() {
           filteredDoctors.map((doctor) => (
             <div key={doctor.id} className="bg-white border border-gray-200 rounded-xl p-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-900 truncate">{doctor.name}</p>
-                  <p className="text-sm text-blue-600 mt-0.5">{doctor.specialty}</p>
-                  <p className="text-sm text-gray-500 mt-1 break-words">{doctor.city}</p>
+                <div className="flex items-start gap-3 min-w-0">
+                  <DoctorAvatar doctor={doctor} className="w-12 h-12 flex-shrink-0" rounded="rounded-xl" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 truncate">{doctor.name}</p>
+                    <p className="text-sm text-blue-600 mt-0.5">{doctor.specialty}</p>
+                    <p className="text-sm text-gray-500 mt-1 break-words">{doctor.city}</p>
+                    {(upcomingByDoctor[doctor.id] || 0) > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {isArabic
+                          ? `${upcomingByDoctor[doctor.id]} موعد قادم`
+                          : `${upcomingByDoctor[doctor.id]} RDV à venir`}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => setEditing(doctor)}
+                    title={isArabic ? 'تعديل' : 'Modifier'}
+                    className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                  </button>
                   {/* Bascule téléconsultation */}
                   <button
                     onClick={() => toggleVideo(doctor.id, !!doctor.acceptsVideo)}
@@ -180,7 +303,7 @@ export default function DoctorsList() {
                 <tr key={doctor.id} className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="text-3xl mr-3">{doctor.image}</div>
+                      <DoctorAvatar doctor={doctor} className="w-11 h-11 mr-3 flex-shrink-0" rounded="rounded-xl" />
                       <div>
                         <div className="text-sm font-medium text-gray-900">{doctor.name}</div>
                         <div className="text-sm text-gray-500">{doctor.address}</div>
@@ -224,6 +347,13 @@ export default function DoctorsList() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end gap-3">
+                      <button
+                        onClick={() => setEditing(doctor)}
+                        title={isArabic ? 'تعديل' : 'Modifier'}
+                        className="text-gray-500 hover:text-blue-600 transition"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                      </button>
                       {/* Bascule téléconsultation */}
                       <button
                         onClick={() => toggleVideo(doctor.id, !!doctor.acceptsVideo)}
