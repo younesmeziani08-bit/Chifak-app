@@ -211,6 +211,9 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
     e.preventDefault();
     setPSaving(true);
     setPSaved(false);
+    // Sans cette remise à zéro, une erreur d'une opération précédente restait
+    // affichée à côté du bouton et faisait croire à un échec.
+    setError('');
     try {
       await doctorAPI.updateProfile({
         description: pDesc,
@@ -1087,10 +1090,31 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
               )}
             </div>
 
-            {pSaved && <p className="text-green-600 text-sm font-medium">✓ {isArabic ? 'تم حفظ التغييرات' : 'Modifications enregistrées'}</p>}
-            <button type="submit" disabled={pSaving} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold shadow hover:bg-blue-700 disabled:opacity-50 transition">
-              {pSaving ? (isArabic ? 'جاري الحفظ…' : 'Enregistrement…') : (isArabic ? 'حفظ' : 'Enregistrer')}
-            </button>
+            {/* Barre d'enregistrement collante : le formulaire est long, et le
+                bouton en bas de page passait inaperçu — on cochait la visio,
+                on choisissait ses heures, et on quittait sans enregistrer.
+                L'erreur éventuelle s'affiche ici, à côté du bouton, et non en
+                haut de page où elle restait invisible. */}
+            <div
+              className="sticky bottom-0 -mx-4 sm:mx-0 px-4 sm:px-5 py-3 bg-white/95 backdrop-blur border-t border-gray-200 sm:rounded-xl sm:border sm:shadow-lg flex flex-wrap items-center gap-3 z-20"
+            >
+              <button type="submit" disabled={pSaving} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold shadow hover:bg-blue-700 disabled:opacity-50 transition">
+                {pSaving ? (isArabic ? 'جاري الحفظ…' : 'Enregistrement…') : (isArabic ? 'حفظ' : 'Enregistrer')}
+              </button>
+              {pSaved && (
+                <p className="text-green-600 text-sm font-medium">
+                  ✓ {isArabic ? 'تم حفظ التغييرات' : 'Modifications enregistrées'}
+                </p>
+              )}
+              {error && (
+                <p className="text-sm font-medium text-red-600">{error}</p>
+              )}
+              {!pSaved && !error && (
+                <p className="text-xs text-gray-500">
+                  {isArabic ? 'التغييرات لا تُحفظ إلا بعد الضغط هنا.' : 'Les modifications ne sont enregistrées qu’après avoir cliqué ici.'}
+                </p>
+              )}
+            </div>
           </form>
         ) : activeTab === 'consultation' ? (
           <form onSubmit={handleConsultationSubmit} className="space-y-8">
