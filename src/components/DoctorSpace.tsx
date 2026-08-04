@@ -32,6 +32,8 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [pDesc, setPDesc] = useState('');
   const [pBio, setPBio] = useState('');
   const [pDuration, setPDuration] = useState(30);
+  /** Le praticien accepte-t-il les téléconsultations ? Désactivé par défaut. */
+  const [pAcceptsVideo, setPAcceptsVideo] = useState(false);
   const [pOffDays, setPOffDays] = useState<string[]>([]);
   const [pOffInput, setPOffInput] = useState('');
   // Créneaux réservés par le médecin (« AAAA-MM-JJ HH:MM ») + date en cours d'édition
@@ -167,6 +169,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       setPDuration(p.slotDuration || 30);
       setPOffDays(p.offDays || []);
       setPBlockedSlots(p.blockedSlots || []);
+      setPAcceptsVideo(!!p.acceptsVideo);
 
       // Les plages horaires et jours travaillés ne sont pas toujours renvoyés par le profil :
       // on complète depuis la fiche publique du médecin pour toujours avoir des créneaux.
@@ -212,6 +215,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
         slotDuration: pDuration,
         offDays: pOffDays,
         blockedSlots: pBlockedSlots,
+        acceptsVideo: pAcceptsVideo,
       });
       setPSaved(true);
     } catch (err: any) {
@@ -700,10 +704,12 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                     </div>
                   </div>
                   <div className="mt-4 pt-4 border-t border-gray-100">
-                    {a.status !== 'cancelled' && (
+                    {/* Visio proposée uniquement si le patient a choisi ce mode.
+                        La salle vient du serveur, jamais de l'identifiant du RDV. */}
+                    {a.status !== 'cancelled' && a.consultation_type === 'video' && a.video_room && (
                       <button
                         type="button"
-                        onClick={() => setVideoRoom(`chifak-rdv-${a.id}`)}
+                        onClick={() => setVideoRoom(a.video_room!)}
                         className="mb-3 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition inline-flex items-center gap-1.5"
                       >
                         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
@@ -775,6 +781,30 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                   {[15, 20, 30, 45, 60].map((m) => <option key={m} value={m}>{m} min</option>)}
                 </select>
               </div>
+
+              {/* Téléconsultation : c'est le praticien qui décide. Tant que la
+                  case est décochée, l'option n'apparaît pas aux patients. */}
+              <div className="pt-1">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={pAcceptsVideo}
+                    onChange={(e) => setPAcceptsVideo(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-blue-600 flex-shrink-0"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-gray-700">
+                      {isArabic ? 'أقبل الاستشارات عن بُعد' : 'J’accepte les téléconsultations'}
+                    </span>
+                    <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">
+                      {isArabic
+                        ? 'إذا فُعّلت، يمكن للمريض اختيار موعد بالفيديو. يظهر رابط الاتصال لك وللمريض فقط.'
+                        : 'Si activé, le patient pourra choisir un rendez-vous en vidéo. Le lien d’appel n’apparaît que pour vous et lui.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">{isArabic ? 'أيام عدم التوفر' : "Jours d'indisponibilité"}</label>
                 <div className="flex gap-2">

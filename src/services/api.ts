@@ -259,6 +259,9 @@ export interface AppointmentCreate {
   appointmentDate: string;
   appointmentTime: string;
   reason?: string;
+  /** 'cabinet' (défaut) ou 'video'. Le serveur refuse 'video' si le
+   *  praticien n'a pas activé la téléconsultation sur son compte. */
+  consultationType?: 'cabinet' | 'video';
 }
 
 export const appointmentsAPI = {
@@ -449,6 +452,8 @@ export interface DoctorProfile {
   offDays: string[];
   /** Créneaux réservés par le médecin (chaîne ou objet avec le patient) */
   blockedSlots?: BlockedSlotEntry[];
+  /** Le praticien accepte-t-il les téléconsultations ? */
+  acceptsVideo?: boolean;
   availableSlots?: string[];
   workingDays?: number[];
 }
@@ -460,7 +465,7 @@ export const doctorAPI = {
     return await response.json();
   },
 
-  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[]; blockedSlots?: BlockedSlotEntry[] }) => {
+  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[]; blockedSlots?: BlockedSlotEntry[]; acceptsVideo?: boolean }) => {
     const response = await fetch(`${API_URL}/doctor/profile`, {
       method: 'PUT',
       headers: doctorHeaders(),

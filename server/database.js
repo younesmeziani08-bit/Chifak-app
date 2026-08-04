@@ -184,6 +184,19 @@ export async function initDatabase() {
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS blocked_slots TEXT DEFAULT '[]'");
   await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS doctor_notes TEXT");
 
+  // Le médecin déclare s'il accepte les téléconsultations. Défaut : non —
+  // on n'active pas une modalité de soin à la place du praticien.
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS accepts_video INTEGER DEFAULT 0");
+
+  // Mode choisi par le patient : 'cabinet' (défaut) ou 'video'.
+  await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_type TEXT DEFAULT 'cabinet'");
+
+  // Nom de la salle de visioconférence, tiré au sort à la réservation.
+  // Il ne dérive PAS de l'identifiant du rendez-vous : une salle nommée
+  // « chifak-rdv-42 » serait devinable, et n'importe qui pourrait entrer
+  // dans la consultation d'un autre patient en incrémentant un nombre.
+  await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS video_room TEXT");
+
   // Index : indispensables pour éviter les balayages complets de table sous charge
   const indexes = [
     "CREATE INDEX IF NOT EXISTS idx_doctors_specialty ON doctors (specialty)",

@@ -289,9 +289,13 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
             <span class="detail-value">${escapeHtml(appointmentDetails.time)}</span>
           </div>
           <div class="detail-row">
+            <span class="detail-label">نوع الاستشارة:</span>
+            <span class="detail-value">${appointmentDetails.consultationType === 'video' ? 'عن بُعد بالفيديو' : 'في العيادة'}</span>
+          </div>
+          ${appointmentDetails.consultationType === 'video' ? '' : `<div class="detail-row">
             <span class="detail-label">العنوان:</span>
             <span class="detail-value">${escapeHtml(appointmentDetails.address)}</span>
-          </div>
+          </div>`}
         </div>
         
         <p class="message"><strong>تذكيرات مهمة:</strong></p>
@@ -353,9 +357,13 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
             <span class="detail-value">${escapeHtml(appointmentDetails.time)}</span>
           </div>
           <div class="detail-row">
+            <span class="detail-label">Type de consultation :</span>
+            <span class="detail-value">${appointmentDetails.consultationType === 'video' ? 'Téléconsultation vidéo' : 'Au cabinet'}</span>
+          </div>
+          ${appointmentDetails.consultationType === 'video' ? '' : `<div class="detail-row">
             <span class="detail-label">Adresse :</span>
             <span class="detail-value">${escapeHtml(appointmentDetails.address)}</span>
-          </div>
+          </div>`}
         </div>
         
         <p class="message"><strong>Rappels importants :</strong></p>

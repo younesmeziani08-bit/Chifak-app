@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import cron from 'node-cron';
+import crypto from 'node:crypto';
 import db, { initDatabase } from './database.js';
 import { sendDailyAgendas } from './dailyAgenda.js';
 import {
@@ -782,6 +783,7 @@ app.get('/api/doctors', async (req, res) => {
       bio: doctor.bio || '',
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
       blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
+      acceptsVideo: !!doctor.accepts_video,
     }));
 
     res.json(doctorsWithParsedSlots);
@@ -812,6 +814,7 @@ app.get('/api/doctors/:id', async (req, res) => {
       bio: doctor.bio || '',
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
       blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
+      acceptsVideo: !!doctor.accepts_video,
     };
 
     res.json(doctorWithParsedSlots);
@@ -1216,10 +1219,26 @@ app.post('/api/appointments', async (req, res) => {
       return res.status(409).json({ error: 'Ce créneau vient d\'être réservé. Choisissez-en un autre.' });
     }
 
+    // ── Mode de consultation ──
+    // La visioconsultation n'est possible que si le médecin l'a activée sur
+    // son compte. On ne fait pas confiance au client : un patient pourrait
+    // envoyer « video » pour un praticien qui ne la pratique pas.
+    const wantsVideo = req.body.consultationType === 'video';
+    if (wantsVideo && !doctor.accepts_video) {
+      return res.status(400).json({ error: 'Ce praticien ne propose pas la téléconsultation.' });
+    }
+    const consultationType = wantsVideo ? 'video' : 'cabinet';
+
+    // Salle tirée au sort, jamais dérivée de l'identifiant du rendez-vous :
+    // 24 octets aléatoires, donc impossible à deviner ou à énumérer.
+    const videoRoom = consultationType === 'video'
+      ? `chifak-${crypto.randomBytes(24).toString('base64url')}`
+      : null;
+
     const result = await db.prepare(`
-      INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(doctorId, patientName, patientEmail, patientPhone, appointmentDate, appointmentTime, reason || null);
+      INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, consultation_type, video_room)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(doctorId, patientName, patientEmail, patientPhone, appointmentDate, appointmentTime, reason || null, consultationType, videoRoom);
 
     const appointment = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid);
 
@@ -1231,7 +1250,8 @@ app.post('/api/appointments', async (req, res) => {
         specialty: doctor.specialty,
         date: appointmentDate,
         time: appointmentTime,
-        address: `${doctor.address}, ${doctor.city}`
+        address: `${doctor.address}, ${doctor.city}`,
+        consultationType,
       }, language || 'fr');
     } catch (emailError) {
       console.error('Erreur envoi email confirmation:', emailError);
@@ -1361,7 +1381,9 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
     `).all();
 
-    res.json(appointments);
+    // L'administration voit qu'un rendez-vous est en visio, mais jamais le nom
+    // de la salle : seuls le patient concerné et son médecin peuvent y entrer.
+    res.json(appointments.map(({ video_room, ...rest }) => rest));
   } catch (error) {
     console.error('Erreur récupération rendez-vous:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -1389,6 +1411,7 @@ app.get('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
       slotDuration: d.slot_duration || 30,
       offDays: d.off_days ? JSON.parse(d.off_days) : [],
       blockedSlots: d.blocked_slots ? JSON.parse(d.blocked_slots) : [],
+      acceptsVideo: !!d.accepts_video,
       availableSlots: d.available_slots ? JSON.parse(d.available_slots) : [],
       workingDays: d.working_days ? JSON.parse(d.working_days) : [1, 2, 3, 4, 5],
     });
@@ -1404,7 +1427,7 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
     const current = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
     if (!current) return res.status(404).json({ error: 'Médecin non trouvé' });
 
-    const { description, bio, slotDuration, offDays, blockedSlots } = req.body;
+    const { description, bio, slotDuration, offDays, blockedSlots, acceptsVideo } = req.body;
     const dur = Number(slotDuration);
     const newDescription = typeof description === 'string' ? description : (current.description || null);
     const newBio = typeof bio === 'string' ? bio : (current.bio || null);
@@ -1444,8 +1467,8 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
         )
       : (current.blocked_slots || '[]');
 
-    await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, blocked_slots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(newDescription, newBio, newDuration, newOff, newBlocked, req.user.id);
+    await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, blocked_slots = ?, accepts_video = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(newDescription, newBio, newDuration, newOff, newBlocked, acceptsVideo ? 1 : 0, req.user.id);
 
     const d = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
     res.json({
@@ -1454,6 +1477,7 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
       slotDuration: d.slot_duration || 30,
       offDays: d.off_days ? JSON.parse(d.off_days) : [],
       blockedSlots: d.blocked_slots ? JSON.parse(d.blocked_slots) : [],
+      acceptsVideo: !!d.accepts_video,
       availableSlots: d.available_slots ? JSON.parse(d.available_slots) : [],
       workingDays: d.working_days ? JSON.parse(d.working_days) : [1, 2, 3, 4, 5],
     });
@@ -1467,7 +1491,8 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
 app.get('/api/doctor/appointments', authenticateDoctorToken, async (req, res) => {
   try {
     const rows = await db.prepare(`
-      SELECT id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, status, doctor_notes
+      SELECT id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, status, doctor_notes,
+             consultation_type, video_room
       FROM appointments
       WHERE doctor_id = ?
       ORDER BY appointment_date DESC, appointment_time DESC

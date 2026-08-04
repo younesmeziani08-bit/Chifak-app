@@ -132,6 +132,10 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
   const isWorkingDate = (dateIso: string) => isWorkingDateShared(doctor, dateIso);
   const daySlots = selectedDate ? slotsForDay(doctor, selectedDate) : [];
 
+  /* Mode de consultation. Reste sur « cabinet » si le praticien n'a pas activé
+     la téléconsultation : le choix ne s'affiche même pas dans ce cas. */
+  const [consultationType, setConsultationType] = useState<'cabinet' | 'video'>('cabinet');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.phone) return;
@@ -143,6 +147,8 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
       patientEmail: form.email,
       patientPhone: form.phone,
       reason: form.reason,
+      // Garde-fou côté client, doublé d'une vérification serveur.
+      consultationType: doctor.acceptsVideo ? consultationType : 'cabinet',
     });
   };
 
@@ -340,6 +346,55 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                     {isArabic ? 'معلوماتك الشخصية' : 'Vos informations'}
                   </h3>
                 </div>
+
+                {/* Mode de consultation — affiché seulement si le praticien
+                    a activé la téléconsultation sur son compte. */}
+                {doctor.acceptsVideo && (
+                  <fieldset className="mb-6">
+                    <legend className="block text-sm font-medium text-gray-600 mb-2">
+                      {isArabic ? 'نوع الاستشارة' : 'Type de consultation'}
+                    </legend>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {([
+                        {
+                          value: 'cabinet' as const,
+                          title: isArabic ? 'في العيادة' : 'Au cabinet',
+                          desc: `${doctor.address}, ${doctor.city}`,
+                        },
+                        {
+                          value: 'video' as const,
+                          title: isArabic ? 'عن بُعد بالفيديو' : 'En visioconférence',
+                          desc: isArabic
+                            ? 'رابط الاتصال يظهر لك وللطبيب فقط'
+                            : 'Le lien d’appel n’apparaît que pour vous et le praticien',
+                        },
+                      ]).map((opt) => {
+                        const active = consultationType === opt.value;
+                        return (
+                          <label
+                            key={opt.value}
+                            className={`flex gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${
+                              active ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="consultationType"
+                              value={opt.value}
+                              checked={active}
+                              onChange={() => setConsultationType(opt.value)}
+                              className="mt-0.5 w-4 h-4 accent-blue-600 flex-shrink-0"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold text-gray-800">{opt.title}</span>
+                              <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">{opt.desc}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   {[

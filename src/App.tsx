@@ -33,6 +33,8 @@ export interface Doctor {
   workingDays?: number[];
   offDays?: string[];
   blockedSlots?: string[];
+  /** Le praticien accepte-t-il les téléconsultations ? */
+  acceptsVideo?: boolean;
   description?: string;
   bio?: string;
   latitude?: number;
@@ -48,6 +50,8 @@ export interface Booking {
   patientEmail: string;
   patientPhone: string;
   reason: string;
+  /** Mode retenu par le patient. 'cabinet' si le praticien ne fait pas de visio. */
+  consultationType: 'cabinet' | 'video';
 }
 
 function isOAuthCallbackPath() {
@@ -171,6 +175,7 @@ export default function App() {
         appointmentDate: bookingData.date,
         appointmentTime: bookingData.time,
         reason: bookingData.reason,
+        consultationType: bookingData.consultationType,
       });
 
       setBooking(bookingData);

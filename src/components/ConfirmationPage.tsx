@@ -22,12 +22,22 @@ export default function ConfirmationPage({ booking, onBackToHome, onOpenProfessi
     { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }
   );
 
+  const isVideo = booking.consultationType === 'video';
+
+  /* En visio, l'adresse du cabinet n'a plus lieu d'être : on la remplace par
+     le rappel que le lien d'appel se trouve dans « Mes rendez-vous ». */
   const details = [
     { icon: '👨‍⚕️', label: isArabic ? 'الطبيب' : 'Médecin', value: booking.doctor.name },
     { icon: '🏥', label: isArabic ? 'التخصص' : 'Spécialité', value: booking.doctor.specialty },
     { icon: '📅', label: isArabic ? 'التاريخ' : 'Date', value: formattedDate },
     { icon: '⏰', label: isArabic ? 'الوقت' : 'Heure', value: booking.time },
-    { icon: '📍', label: isArabic ? 'العنوان' : 'Adresse', value: `${booking.doctor.address}, ${booking.doctor.city}` },
+    {
+      icon: isVideo ? '🎥' : '📍',
+      label: isArabic ? (isVideo ? 'نوع الاستشارة' : 'العنوان') : (isVideo ? 'Type de consultation' : 'Adresse'),
+      value: isVideo
+        ? (isArabic ? 'عن بُعد بالفيديو' : 'En visioconférence')
+        : `${booking.doctor.address}, ${booking.doctor.city}`,
+    },
     { icon: '👤', label: isArabic ? 'المريض' : 'Patient', value: booking.patientName },
   ];
 
@@ -87,6 +97,22 @@ export default function ConfirmationPage({ booking, onBackToHome, onOpenProfessi
             ))}
           </div>
         </div>
+
+        {/* En visio, on dit où trouver le lien — il n'est pas affiché ici,
+            ni envoyé par email : uniquement dans l'espace du patient. */}
+        {isVideo && (
+          <div className="bg-white border border-gray-200 rounded-3xl p-5 sm:p-8 mb-6 animate-fadeInUp">
+            <h3 className="font-bold text-gray-900 mb-2 flex items-center gap-2">
+              <span className="text-lg">🎥</span>
+              {isArabic ? 'كيف تنضم للاستشارة' : 'Comment rejoindre la consultation'}
+            </h3>
+            <p className="text-sm text-gray-600 leading-relaxed">
+              {isArabic
+                ? 'يوم الموعد، افتح « مواعيدي » واضغط على « انضم للفيديو ». الرابط متاح لك وللطبيب فقط، ولا يُرسل بالبريد الإلكتروني.'
+                : 'Le jour du rendez-vous, ouvrez « Mes rendez-vous » et cliquez sur « Rejoindre la visio ». Le lien n’est accessible qu’à vous et au praticien, et n’est pas envoyé par email.'}
+            </p>
+          </div>
+        )}
 
         {/* Reminders - Pro Max Unified */}
         <div className="bg-blue-50 border border-blue-100 rounded-3xl p-5 sm:p-8 mb-10 animate-fadeInUp delay-200">
