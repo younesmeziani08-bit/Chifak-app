@@ -784,6 +784,7 @@ app.get('/api/doctors', async (req, res) => {
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
       blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
       acceptsVideo: !!doctor.accepts_video,
+      videoSlots: doctor.video_slots ? JSON.parse(doctor.video_slots) : [],
     }));
 
     res.json(doctorsWithParsedSlots);
@@ -815,6 +816,7 @@ app.get('/api/doctors/:id', async (req, res) => {
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
       blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
       acceptsVideo: !!doctor.accepts_video,
+      videoSlots: doctor.video_slots ? JSON.parse(doctor.video_slots) : [],
     };
 
     res.json(doctorWithParsedSlots);
@@ -888,7 +890,7 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
 // PUT /api/doctors/:id - Modifier un médecin (authentification requise)
 app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
   try {
-    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password } = req.body;
+    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password, acceptsVideo } = req.body;
 
     const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
 
@@ -913,7 +915,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
     await db.prepare(`
       UPDATE doctors
       SET name = ?, specialty = ?, address = ?, city = ?, phone = ?, email = ?, doctor_code = ?,
-          image = ?, available_slots = ?, next_available = ?, slot_duration = ?, working_days = ?, latitude = ?, longitude = ?, maps_url = ?, password = ?, must_change_password = ?, updated_at = CURRENT_TIMESTAMP
+          image = ?, available_slots = ?, next_available = ?, slot_duration = ?, working_days = ?, latitude = ?, longitude = ?, maps_url = ?, password = ?, must_change_password = ?, accepts_video = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       name || doctor.name,
@@ -933,6 +935,8 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
       mapsUrl !== undefined ? mapsUrl : doctor.maps_url,
       newHashed,
       mustChange,
+      // Champ non transmis = on ne touche pas au réglage choisi par le praticien.
+      acceptsVideo === undefined ? (doctor.accepts_video || 0) : (acceptsVideo ? 1 : 0),
       req.params.id
     );
 
@@ -1227,6 +1231,15 @@ app.post('/api/appointments', async (req, res) => {
     if (wantsVideo && !doctor.accepts_video) {
       return res.status(400).json({ error: 'Ce praticien ne propose pas la téléconsultation.' });
     }
+    // L'horaire demandé doit figurer parmi les heures que le praticien a
+    // explicitement ouvertes à la vidéo. Sans ce contrôle, un patient pourrait
+    // forcer une téléconsultation sur un créneau réservé au cabinet.
+    if (wantsVideo) {
+      const videoHours = parseJson(doctor.video_slots, []);
+      if (!videoHours.includes(appointmentTime)) {
+        return res.status(400).json({ error: 'Ce créneau n\'est pas ouvert à la téléconsultation.' });
+      }
+    }
     const consultationType = wantsVideo ? 'video' : 'cabinet';
 
     // Salle tirée au sort, jamais dérivée de l'identifiant du rendez-vous :
@@ -1412,6 +1425,7 @@ app.get('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
       offDays: d.off_days ? JSON.parse(d.off_days) : [],
       blockedSlots: d.blocked_slots ? JSON.parse(d.blocked_slots) : [],
       acceptsVideo: !!d.accepts_video,
+      videoSlots: d.video_slots ? JSON.parse(d.video_slots) : [],
       availableSlots: d.available_slots ? JSON.parse(d.available_slots) : [],
       workingDays: d.working_days ? JSON.parse(d.working_days) : [1, 2, 3, 4, 5],
     });
@@ -1427,7 +1441,7 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
     const current = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
     if (!current) return res.status(404).json({ error: 'Médecin non trouvé' });
 
-    const { description, bio, slotDuration, offDays, blockedSlots, acceptsVideo } = req.body;
+    const { description, bio, slotDuration, offDays, blockedSlots, acceptsVideo, videoSlots } = req.body;
     const dur = Number(slotDuration);
     const newDescription = typeof description === 'string' ? description : (current.description || null);
     const newBio = typeof bio === 'string' ? bio : (current.bio || null);
@@ -1467,8 +1481,16 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
         )
       : (current.blocked_slots || '[]');
 
-    await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, blocked_slots = ?, accepts_video = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(newDescription, newBio, newDuration, newOff, newBlocked, acceptsVideo ? 1 : 0, req.user.id);
+    // Heures vidéo : on ne garde que des « HH:MM » valides, dédoublonnés et
+    // triés. Le client ne décide pas du format stocké.
+    const newVideoSlots = JSON.stringify(
+      Array.isArray(videoSlots)
+        ? [...new Set(videoSlots.filter((t) => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)))].sort().slice(0, 200)
+        : []
+    );
+
+    await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, blocked_slots = ?, accepts_video = ?, video_slots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(newDescription, newBio, newDuration, newOff, newBlocked, acceptsVideo ? 1 : 0, newVideoSlots, req.user.id);
 
     const d = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
     res.json({
@@ -1478,6 +1500,7 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
       offDays: d.off_days ? JSON.parse(d.off_days) : [],
       blockedSlots: d.blocked_slots ? JSON.parse(d.blocked_slots) : [],
       acceptsVideo: !!d.accepts_video,
+      videoSlots: d.video_slots ? JSON.parse(d.video_slots) : [],
       availableSlots: d.available_slots ? JSON.parse(d.available_slots) : [],
       workingDays: d.working_days ? JSON.parse(d.working_days) : [1, 2, 3, 4, 5],
     });

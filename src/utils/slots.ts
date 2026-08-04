@@ -51,7 +51,14 @@ interface SlotSource {
   offDays?: string[];
   /** Créneaux réservés par le médecin */
   blockedSlots?: BlockedSlotEntry[];
+  /** Le praticien pratique-t-il la téléconsultation ? */
+  acceptsVideo?: boolean;
+  /** Heures ouvertes à la vidéo, sous-ensemble de availableSlots. */
+  videoSlots?: string[];
 }
+
+/** Mode de consultation demandé. */
+export type ConsultationMode = 'cabinet' | 'video';
 
 /** Nombre de jours ouverts à la réservation à l'avance (un an). */
 export const BOOKING_HORIZON_DAYS = 365;
@@ -90,9 +97,24 @@ export function isWorkingDate(doctor: SlotSource, iso: string): boolean {
  * Créneaux proposés par le médecin pour une date donnée.
  * Vide s'il ne travaille pas ; les créneaux qu'il a bloqués sont retirés.
  */
-export function slotsForDay(doctor: SlotSource, iso: string): string[] {
+export function slotsForDay(doctor: SlotSource, iso: string, mode: ConsultationMode = 'cabinet'): string[] {
   if (!isWorkingDate(doctor, iso)) return [];
   const all = expandSlots(doctor.availableSlots || [], doctor.slotDuration);
   const blocked = new Set((doctor.blockedSlots || []).map(blockedKey));
-  return all.filter((t) => !blocked.has(`${iso} ${t}`));
+  const free = all.filter((t) => !blocked.has(`${iso} ${t}`));
+
+  if (mode !== 'video') return free;
+
+  // En vidéo, seules les heures explicitement ouvertes par le praticien.
+  // Une liste vide ne signifie pas « toutes » : elle signifie « aucune ».
+  // L'inverse ouvrirait la téléconsultation sur des créneaux que le médecin
+  // n'a jamais accepté d'y consacrer.
+  if (!doctor.acceptsVideo) return [];
+  const video = new Set(doctor.videoSlots || []);
+  return free.filter((t) => video.has(t));
+}
+
+/** Le praticien a-t-il au moins une heure ouverte à la vidéo ce jour-là ? */
+export function hasVideoSlots(doctor: SlotSource, iso: string): boolean {
+  return slotsForDay(doctor, iso, 'video').length > 0;
 }

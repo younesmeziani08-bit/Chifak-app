@@ -130,11 +130,16 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
   // Même logique que la liste des résultats et l'espace patient (module partagé) :
   // les créneaux découlent toujours de la durée de consultation du médecin.
   const isWorkingDate = (dateIso: string) => isWorkingDateShared(doctor, dateIso);
-  const daySlots = selectedDate ? slotsForDay(doctor, selectedDate) : [];
-
-  /* Mode de consultation. Reste sur « cabinet » si le praticien n'a pas activé
-     la téléconsultation : le choix ne s'affiche même pas dans ce cas. */
+  /* Mode de consultation. Il pilote la liste des créneaux : en vidéo, seules
+     les heures que le praticien a ouvertes à la téléconsultation. */
   const [consultationType, setConsultationType] = useState<'cabinet' | 'video'>('cabinet');
+
+  const daySlots = selectedDate ? slotsForDay(doctor, selectedDate, consultationType) : [];
+
+  /* Disponibilités par mode pour la date choisie : le patient doit pouvoir
+     comparer avant de basculer, sans découvrir une liste vide après coup. */
+  const cabinetCount = selectedDate ? slotsForDay(doctor, selectedDate, 'cabinet').length : 0;
+  const videoCount = selectedDate ? slotsForDay(doctor, selectedDate, 'video').length : 0;
 
   /* Le choix du mode occupe l'étape 1 lorsqu'il existe : les étapes suivantes
      se décalent d'un cran, sinon la numérotation afficherait deux « 1 ». */
@@ -233,6 +238,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                           value: 'cabinet' as const,
                           title: isArabic ? 'في العيادة' : 'Au cabinet',
                           desc: `${doctor.address}, ${doctor.city}`,
+                          count: cabinetCount,
                         },
                         {
                           value: 'video' as const,
@@ -240,6 +246,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                           desc: isArabic
                             ? 'رابط الاتصال يظهر لك وللطبيب فقط'
                             : 'Le lien d’appel n’apparaît que pour vous et le praticien',
+                          count: videoCount,
                         },
                       ]).map((opt) => {
                         const active = consultationType === opt.value;
@@ -255,12 +262,25 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                               name="consultationType"
                               value={opt.value}
                               checked={active}
-                              onChange={() => setConsultationType(opt.value)}
+                              onChange={() => {
+                                setConsultationType(opt.value);
+                                // L'horaire déjà coché peut ne pas exister dans
+                                // l'autre mode : on repart d'une sélection vide.
+                                setSelectedTime('');
+                              }}
                               className="mt-0.5 w-4 h-4 accent-blue-600 flex-shrink-0"
                             />
                             <span className="min-w-0">
                               <span className="block text-sm font-semibold text-gray-800">{opt.title}</span>
                               <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">{opt.desc}</span>
+                              {/* Le patient voit tout de suite si ce mode offre des horaires ce jour-là */}
+                              {selectedDate && (
+                                <span className={`block text-xs mt-1 font-medium ${opt.count > 0 ? 'text-blue-700' : 'text-amber-700'}`}>
+                                  {opt.count > 0
+                                    ? (isArabic ? `${opt.count} موعد متاح` : `${opt.count} créneau${opt.count > 1 ? 'x' : ''} ce jour-là`)
+                                    : (isArabic ? 'لا موعد في هذا اليوم' : 'Aucun créneau ce jour-là')}
+                                </span>
+                              )}
                             </span>
                           </label>
                         );
@@ -331,7 +351,9 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                   <div className="flex gap-2.5 overflow-x-auto pb-2 no-scrollbar">
                     {days.map(d => {
                       const working = isWorkingDate(d.full) && !d.isPast && !d.beyondHorizon
-                        && slotsForDay(doctor, d.full).length > 0;
+                        // Un jour sans créneau DANS LE MODE CHOISI est désactivé :
+                        // en vidéo, les jours purement « cabinet » deviennent gris.
+                        && slotsForDay(doctor, d.full, consultationType).length > 0;
                       const active = selectedDate === d.full;
                       return (
                         <button

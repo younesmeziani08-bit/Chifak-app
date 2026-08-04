@@ -188,6 +188,11 @@ export async function initDatabase() {
   // on n'active pas une modalité de soin à la place du praticien.
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS accepts_video INTEGER DEFAULT 0");
 
+  // Heures ouvertes à la téléconsultation, sous-ensemble des créneaux du
+  // praticien : ["14:00", "14:30", ...]. Vide = aucune plage vidéo, même si
+  // accepts_video vaut 1 — le médecin doit désigner explicitement ses heures.
+  await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS video_slots TEXT DEFAULT '[]'");
+
   // Mode choisi par le patient : 'cabinet' (défaut) ou 'video'.
   await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_type TEXT DEFAULT 'cabinet'");
 

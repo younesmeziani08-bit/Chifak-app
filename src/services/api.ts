@@ -173,6 +173,8 @@ export interface DoctorCreate {
   latitude?: number;
   longitude?: number;
   mapsUrl?: string;
+  /** Le praticien accepte-t-il les téléconsultations ? */
+  acceptsVideo?: boolean;
 }
 
 export const doctorsAPI = {
@@ -454,6 +456,8 @@ export interface DoctorProfile {
   blockedSlots?: BlockedSlotEntry[];
   /** Le praticien accepte-t-il les téléconsultations ? */
   acceptsVideo?: boolean;
+  /** Heures ouvertes à la vidéo, sous-ensemble de availableSlots. */
+  videoSlots?: string[];
   availableSlots?: string[];
   workingDays?: number[];
 }
@@ -465,7 +469,7 @@ export const doctorAPI = {
     return await response.json();
   },
 
-  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[]; blockedSlots?: BlockedSlotEntry[]; acceptsVideo?: boolean }) => {
+  updateProfile: async (data: { description?: string; bio?: string; slotDuration?: number; offDays?: string[]; blockedSlots?: BlockedSlotEntry[]; acceptsVideo?: boolean; videoSlots?: string[] }) => {
     const response = await fetch(`${API_URL}/doctor/profile`, {
       method: 'PUT',
       headers: doctorHeaders(),

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import VideoCall from './VideoCall';
-import { slotsForDay, todayIso, maxBookingIso, blockedKey, BlockedSlotEntry } from '../utils/slots';
+import { slotsForDay, expandSlots, todayIso, maxBookingIso, blockedKey, BlockedSlotEntry } from '../utils/slots';
 import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, AppointmentCreate } from '../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
@@ -34,6 +34,8 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [pDuration, setPDuration] = useState(30);
   /** Le praticien accepte-t-il les téléconsultations ? Désactivé par défaut. */
   const [pAcceptsVideo, setPAcceptsVideo] = useState(false);
+  /** Heures ouvertes à la téléconsultation, sous-ensemble des créneaux. */
+  const [pVideoSlots, setPVideoSlots] = useState<string[]>([]);
   const [pOffDays, setPOffDays] = useState<string[]>([]);
   const [pOffInput, setPOffInput] = useState('');
   // Créneaux réservés par le médecin (« AAAA-MM-JJ HH:MM ») + date en cours d'édition
@@ -170,6 +172,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       setPOffDays(p.offDays || []);
       setPBlockedSlots(p.blockedSlots || []);
       setPAcceptsVideo(!!p.acceptsVideo);
+      setPVideoSlots(p.videoSlots || []);
 
       // Les plages horaires et jours travaillés ne sont pas toujours renvoyés par le profil :
       // on complète depuis la fiche publique du médecin pour toujours avoir des créneaux.
@@ -216,6 +219,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
         offDays: pOffDays,
         blockedSlots: pBlockedSlots,
         acceptsVideo: pAcceptsVideo,
+        videoSlots: pVideoSlots,
       });
       setPSaved(true);
     } catch (err: any) {
@@ -243,6 +247,14 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       out.push(`${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
     }
     return out;
+  })();
+
+  /* Grille horaire de référence du praticien, indépendante d'une date : c'est
+     parmi ces heures qu'il désigne celles ouvertes à la téléconsultation.
+     Repli sur la grille de secours tant que le profil n'est pas chargé. */
+  const baseSlots = (() => {
+    const declared = expandSlots(docProfile?.availableSlots || [], pDuration);
+    return declared.length > 0 ? declared : fallbackTimeGrid;
   })();
 
   // Tous les créneaux du jour choisi (y compris ceux déjà bloqués, pour pouvoir les rouvrir)
@@ -803,6 +815,73 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                     </span>
                   </span>
                 </label>
+
+                {/* Heures ouvertes à la vidéo. Une sélection vide ne veut pas
+                    dire « toutes » : elle veut dire « aucune ». On le signale
+                    explicitement, sinon le praticien croit avoir tout ouvert. */}
+                {pAcceptsVideo && (
+                  <div className="mt-4 pl-7">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <p className="text-sm font-medium text-gray-700">
+                        {isArabic ? 'الساعات المفتوحة للفيديو' : 'Heures ouvertes à la vidéo'}
+                      </p>
+                      <div className="flex gap-2 text-xs">
+                        <button type="button" onClick={() => setPVideoSlots(baseSlots)}
+                          className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50">
+                          {isArabic ? 'الكل' : 'Tout'}
+                        </button>
+                        <button type="button" onClick={() => setPVideoSlots(baseSlots.filter((t) => Number(t.split(':')[0]) < 12))}
+                          className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50">
+                          {isArabic ? 'صباحًا' : 'Matin'}
+                        </button>
+                        <button type="button" onClick={() => setPVideoSlots(baseSlots.filter((t) => Number(t.split(':')[0]) >= 12))}
+                          className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50">
+                          {isArabic ? 'بعد الظهر' : 'Après-midi'}
+                        </button>
+                        <button type="button" onClick={() => setPVideoSlots([])}
+                          className="px-2 py-1 rounded border border-gray-300 hover:bg-gray-50">
+                          {isArabic ? 'لا شيء' : 'Aucune'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {baseSlots.length === 0 ? (
+                      <p className="text-xs text-gray-500">
+                        {isArabic ? 'لا توجد أوقات مسجّلة بعد.' : 'Aucun horaire enregistré pour le moment.'}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap gap-1.5">
+                          {baseSlots.map((t) => {
+                            const on = pVideoSlots.includes(t);
+                            return (
+                              <button
+                                key={t}
+                                type="button"
+                                aria-pressed={on}
+                                onClick={() => setPVideoSlots((prev) => (on ? prev.filter((x) => x !== t) : [...prev, t].sort()))}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${
+                                  on ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300'
+                                }`}
+                              >
+                                {t}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className={`text-xs mt-2 ${pVideoSlots.length === 0 ? 'text-amber-700' : 'text-gray-500'}`}>
+                          {pVideoSlots.length === 0
+                            ? (isArabic
+                              ? 'لم تختر أي ساعة: لن يتمكّن أي مريض من الحجز بالفيديو.'
+                              : 'Aucune heure sélectionnée : aucun patient ne pourra réserver en vidéo.')
+                            : (isArabic
+                              ? `${pVideoSlots.length} ساعة مفتوحة للفيديو. الباقي يبقى في العيادة.`
+                              : `${pVideoSlots.length} heure${pVideoSlots.length > 1 ? 's' : ''} ouverte${pVideoSlots.length > 1 ? 's' : ''} à la vidéo. Le reste demeure au cabinet.`)}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>

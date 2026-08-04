@@ -98,6 +98,8 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
   const initialDay = searchQuery.date && searchQuery.date >= todayISO ? searchQuery.date : todayISO;
   const [activeDay, setActiveDay] = useState(initialDay);
   const [sortBy, setSortBy] = useState<'availability' | 'rating'>('availability');
+  /** N'afficher que les praticiens qui acceptent la téléconsultation. */
+  const [videoOnly, setVideoOnly] = useState(false);
 
   const stripRef = useRef<HTMLDivElement>(null);
   const activeBtnRef = useRef<HTMLButtonElement>(null);
@@ -124,7 +126,14 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
   const freeSlotsFor = (doctor: Doctor) =>
     slotsForDay(doctor, activeDay).filter((t) => !bookedSet.has(`${doctor.id}|${t}`));
 
-  const allDoctors = getDoctorsBySpecialtyAndLocation(searchQuery.specialty, searchQuery.location);
+  const allDoctors = getDoctorsBySpecialtyAndLocation(searchQuery.specialty, searchQuery.location)
+    .filter((d) => (videoOnly ? d.acceptsVideo : true));
+
+  /* Nombre de praticiens proposant la visio, calculé avant filtrage :
+     sans ce chiffre, on afficherait un filtre qui vide la liste sans prévenir. */
+  const videoCount = getDoctorsBySpecialtyAndLocation(searchQuery.specialty, searchQuery.location)
+    .filter((d) => d.acceptsVideo).length;
+
   const doctors = [...allDoctors].sort((a, b) => {
     if (sortBy === 'rating') return b.rating - a.rating;
     const av = freeSlotsFor(a).length > 0 ? 0 : 1;
@@ -238,17 +247,40 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
               )}
             </p>
           </div>
-          <label className="flex items-center gap-2 text-sm text-gray-600">
-            {isArabic ? 'ترتيب' : 'Trier'}
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="availability">{isArabic ? 'التوفر' : 'Disponibilité'}</option>
-              <option value="rating">{isArabic ? 'التقييم' : 'Note'}</option>
-            </select>
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Filtre visio — masqué s'il n'existe aucun praticien concerné :
+                un filtre qui ne peut rien filtrer n'a pas à occuper l'écran. */}
+            {videoCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setVideoOnly((v) => !v)}
+                aria-pressed={videoOnly}
+                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  videoOnly
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400'
+                }`}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" />
+                </svg>
+                {isArabic ? 'عن بُعد فقط' : 'Téléconsultation'}
+                <span className={videoOnly ? 'text-white/80' : 'text-gray-400'}>({videoCount})</span>
+              </button>
+            )}
+
+            <label className="flex items-center gap-2 text-sm text-gray-600">
+              {isArabic ? 'ترتيب' : 'Trier'}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="availability">{isArabic ? 'التوفر' : 'Disponibilité'}</option>
+                <option value="rating">{isArabic ? 'التقييم' : 'Note'}</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         {doctors.length === 0 ? (
@@ -322,7 +354,18 @@ function DoctorCard({
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold" style={{ color: NAVY }}>{doctor.name}</h2>
-              <p className="text-blue-600 text-sm font-medium">{doctor.specialty}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-blue-600 text-sm font-medium">{doctor.specialty}</p>
+                {/* Le patient voit avant de cliquer si la visio est possible */}
+                {doctor.acceptsVideo && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-100">
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" />
+                    </svg>
+                    {isArabic ? 'عن بُعد' : 'Visio'}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-1 text-sm">
               <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

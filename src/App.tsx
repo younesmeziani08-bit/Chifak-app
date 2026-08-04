@@ -35,6 +35,8 @@ export interface Doctor {
   blockedSlots?: string[];
   /** Le praticien accepte-t-il les téléconsultations ? */
   acceptsVideo?: boolean;
+  /** Heures ouvertes à la vidéo, sous-ensemble de availableSlots. */
+  videoSlots?: string[];
   description?: string;
   bio?: string;
   latitude?: number;

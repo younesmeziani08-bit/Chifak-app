@@ -33,6 +33,18 @@ export default function DoctorsList() {
     }
   };
 
+  /* Bascule visio depuis l'administration : évite de se connecter au compte de
+     chaque praticien pour un seul réglage. Le médecin garde la main dessus
+     depuis son propre espace. */
+  const toggleVideo = async (id: number, current: boolean) => {
+    try {
+      await updateDoctor(id, { acceptsVideo: !current });
+    } catch (error) {
+      alert(isArabic ? 'خطأ أثناء التحديث' : 'Erreur lors de la mise à jour');
+      console.error(error);
+    }
+  };
+
   const filteredDoctors = doctors.filter(doctor =>
     doctor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     doctor.specialty.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -82,6 +94,19 @@ export default function DoctorsList() {
                   <p className="text-sm text-gray-500 mt-1 break-words">{doctor.city}</p>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* Bascule téléconsultation */}
+                  <button
+                    onClick={() => toggleVideo(doctor.id, !!doctor.acceptsVideo)}
+                    title={doctor.acceptsVideo
+                      ? (isArabic ? 'تعطيل الاستشارة عن بُعد' : 'Désactiver la téléconsultation')
+                      : (isArabic ? 'تفعيل الاستشارة عن بُعد' : 'Activer la téléconsultation')}
+                    aria-pressed={!!doctor.acceptsVideo}
+                    className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${
+                      doctor.acceptsVideo ? 'text-blue-600 bg-blue-50' : 'text-gray-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
+                  </button>
                   <button
                     onClick={() => handleResetPassword(doctor.id, doctor.name)}
                     title={isArabic ? 'إعادة تعيين كلمة المرور' : 'Réinitialiser le mot de passe'}
@@ -199,6 +224,17 @@ export default function DoctorsList() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end gap-3">
+                      {/* Bascule téléconsultation */}
+                      <button
+                        onClick={() => toggleVideo(doctor.id, !!doctor.acceptsVideo)}
+                        title={doctor.acceptsVideo
+                          ? (isArabic ? 'تعطيل الاستشارة عن بُعد' : 'Désactiver la téléconsultation')
+                          : (isArabic ? 'تفعيل الاستشارة عن بُعد' : 'Activer la téléconsultation')}
+                        aria-pressed={!!doctor.acceptsVideo}
+                        className={doctor.acceptsVideo ? 'text-blue-600' : 'text-gray-300 hover:text-gray-500'}
+                      >
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="M23 7l-7 5 7 5V7z" /><rect x="1" y="5" width="15" height="14" rx="2" /></svg>
+                      </button>
                       <button
                         onClick={() => handleResetPassword(doctor.id, doctor.name)}
                         title={isArabic ? 'إعادة تعيين كلمة المرور' : 'Réinitialiser le mot de passe'}
