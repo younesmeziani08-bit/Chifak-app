@@ -323,18 +323,26 @@ h1, h2, h3, h4, h5, h6 {
 .btn-pro:active:not(:disabled) { transform: translateY(0); }
 .btn-pro::after { display: none; }
 
-/* ── Specialty card hover ── */
+/* ── Carte de spécialité (photographie de fond) ──
+   Le fond sombre sert de couleur de repli tant que l'image n'est pas chargée :
+   le libellé blanc reste lisible dès le premier rendu, sans clignotement. */
 .specialty-card {
-  background: var(--bg);
-  border: 1.5px solid var(--tint-10);
+  background: var(--nuit);
+  border: none;
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-xs);
-  transition: border-color 0.18s, box-shadow 0.18s, transform 0.18s;
+  cursor: pointer;
+  padding: 0;
+  transition: box-shadow 0.18s, transform 0.18s;
 }
 .specialty-card:hover {
-  border-color: var(--tint-30);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   transform: translateY(-2px);
+}
+/* L'anneau de focus doit rester visible par-dessus la photo */
+.specialty-card:focus-visible {
+  outline: 3px solid var(--barbeau);
+  outline-offset: 2px;
 }
 
 /* ── Nav link ── */

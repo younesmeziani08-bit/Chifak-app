@@ -6,7 +6,7 @@ import LogoMark from './LogoMark';
 import HealthArticles from './HealthArticles';
 import AssistantConsult from './AssistantConsult';
 import { useLanguage } from '../contexts/LanguageContext';
-import { PHOTOS, photoUrl, photoSrcSet, type PhotoKey } from '../data/photos';
+import { PHOTOS, SPECIALTY_PHOTOS, photoUrl, photoSrcSet, type PhotoKey } from '../data/photos';
 
 /**
  * Les trois entrées du hero. Chacune a sa photo, son discours et son action :
@@ -153,20 +153,10 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
     { key: 'specialty.osteopath' }, { key: 'specialty.midwife' },
   ];
 
-  const quickSpecialties = [
-    { key: 'specialty.generalDoctor', icon: 'user' },
-    { key: 'specialty.dentist', icon: 'smile' },
-    { key: 'specialty.ophthalmologist', icon: 'eye' },
-    { key: 'specialty.dermatologist', icon: 'sun' },
-    { key: 'specialty.cardiologist', icon: 'heart' },
-    { key: 'specialty.pediatrician', icon: 'users' },
-    { key: 'specialty.gynecologist', icon: 'venus' },
-    { key: 'specialty.ent', icon: 'ear' },
-    { key: 'specialty.physiotherapist', icon: 'activity' },
-    { key: 'specialty.psychologist', icon: 'message' },
-    { key: 'specialty.osteopath', icon: 'bone' },
-    { key: 'specialty.midwife', icon: 'baby' },
-  ];
+  /* Les cartes de spécialité sont désormais des photographies : plus d'icônes
+     à associer, seulement la clé de traduction et le visuel correspondant
+     dans SPECIALTY_PHOTOS. */
+  const quickSpecialties = specialties;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -564,28 +554,61 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
           </p>
         </div>
 
+        {/* Chaque carte est une photographie du sujet de la spécialité.
+            Le voile bleu nuit est identique partout : c'est lui qui fait tenir
+            douze photos très différentes comme une seule grille cohérente,
+            et qui garantit la lisibilité du libellé quelle que soit l'image. */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {quickSpecialties.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => {
-                setSpecialty(s.key);
-                document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }}
-              className="specialty-card flex items-center gap-3 p-4 text-start"
-            >
-              <span
-                className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{ background: 'var(--accent-bg)', color: 'var(--accent)' }}
+          {quickSpecialties.map((s) => {
+            const photo = SPECIALTY_PHOTOS[s.key];
+            return (
+              <button
+                key={s.key}
+                onClick={() => {
+                  setSpecialty(s.key);
+                  document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                className="specialty-card group relative overflow-hidden text-start"
+                style={{ aspectRatio: '4 / 3' }}
               >
-                <Icon name={s.icon} className="w-5 h-5" />
-              </span>
-              <span className="text-sm font-semibold leading-tight" style={{ color: 'var(--ink)' }}>
-                {t(s.key)}
-              </span>
-            </button>
-          ))}
+                {photo && (
+                  <img
+                    src={photoUrl(photo, 500, 60)}
+                    /* Les fichiers locaux n'ont pas de variantes de taille :
+                       photoSrcSet renvoie une chaîne vide, on omet l'attribut. */
+                    {...(photoSrcSet(photo, [400, 600, 900])
+                      ? {
+                          srcSet: photoSrcSet(photo, [400, 600, 900]),
+                          sizes: '(max-width: 640px) 45vw, (max-width: 1024px) 30vw, 22vw',
+                        }
+                      : {})}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                )}
+                <span
+                  className="absolute inset-0 transition-opacity duration-300 group-hover:opacity-90"
+                  style={{
+                    background:
+                      'linear-gradient(to top, rgba(12,14,69,0.92) 0%, rgba(12,14,69,0.62) 45%, rgba(12,14,69,0.28) 100%)',
+                  }}
+                />
+                <span
+                  className="absolute inset-x-0 bottom-0 p-3.5 text-[15px] leading-tight"
+                  style={{ color: '#FFFFFF', fontFamily: 'var(--font-display)', fontWeight: 600 }}
+                >
+                  {t(s.key)}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        <p className="text-xs mt-4" style={{ color: 'var(--ink-3)' }}>
+          {isArabic ? 'الصور: Unsplash وأرشيف شفاك' : 'Photographies : Unsplash et fonds propre'}
+        </p>
       </section>
 
       {/* ── TELECONSULTATION ── */}

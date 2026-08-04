@@ -1768,6 +1768,13 @@ app.get('/', async (req, res) => {
       assistantOrientation: true,
       assistantRequiresPatientAuth: true,
     },
+    // Diagnostic : en production, une liste blanche CORS vide fait rejeter
+    // TOUTES les requêtes du navigateur — connexion comprise. On expose
+    // seulement le nombre d'origines, jamais leurs valeurs.
+    cors: {
+      production: process.env.NODE_ENV === 'production',
+      allowedOriginsCount: allowedOrigins.length,
+    },
   });
 });
 
