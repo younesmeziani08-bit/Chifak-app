@@ -143,7 +143,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
 
   /* Le choix du mode occupe l'étape 1 lorsqu'il existe : les étapes suivantes
      se décalent d'un cran, sinon la numérotation afficherait deux « 1 ». */
-  const stepNo = (n: number) => (doctor.acceptsVideo ? n + 1 : n);
+  const stepNo = (n: number) => n + 1;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,11 +221,12 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
             {/* Étape 1 : date & heure */}
             {step === 1 && (
               <div className="space-y-6 animate-fadeInUp">
-                {/* Mode de consultation — d'abord, car il conditionne la
-                    manière dont se déroulera le rendez-vous. Affiché seulement
-                    si le praticien a activé la téléconsultation. */}
-                {doctor.acceptsVideo && (
-                  <fieldset className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">
+                {/* Mode de consultation — toujours affiché, en premier, car il
+                    conditionne les créneaux proposés. Quand le praticien ne
+                    pratique pas la vidéo, l'option reste visible mais
+                    désactivée et motivée : le patient comprend pourquoi, au
+                    lieu de chercher une option absente. */}
+                <fieldset className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">
                     <legend className="contents">
                       <h3 className="text-lg font-bold text-gray-900 flex items-center gap-3 mb-4">
                         <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">1</span>
@@ -250,11 +251,19 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                         },
                       ]).map((opt) => {
                         const active = consultationType === opt.value;
+                        // La vidéo est indisponible si le praticien ne la
+                        // pratique pas, ou s'il n'a ouvert aucune heure ce jour-là.
+                        const unavailable =
+                          opt.value === 'video' && (!doctor.acceptsVideo || (!!selectedDate && videoCount === 0));
                         return (
                           <label
                             key={opt.value}
-                            className={`flex gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${
-                              active ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                            className={`flex gap-3 p-4 rounded-xl border transition-colors ${
+                              unavailable
+                                ? 'border-gray-200 bg-gray-50 opacity-70 cursor-not-allowed'
+                                : active
+                                  ? 'border-blue-600 bg-blue-50 cursor-pointer'
+                                  : 'border-gray-200 hover:border-gray-300 cursor-pointer'
                             }`}
                           >
                             <input
@@ -262,6 +271,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                               name="consultationType"
                               value={opt.value}
                               checked={active}
+                              disabled={unavailable}
                               onChange={() => {
                                 setConsultationType(opt.value);
                                 // L'horaire déjà coché peut ne pas exister dans
@@ -273,14 +283,20 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                             <span className="min-w-0">
                               <span className="block text-sm font-semibold text-gray-800">{opt.title}</span>
                               <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">{opt.desc}</span>
-                              {/* Le patient voit tout de suite si ce mode offre des horaires ce jour-là */}
-                              {selectedDate && (
+                              {/* Motif d'indisponibilité, ou nombre de créneaux du jour */}
+                              {opt.value === 'video' && !doctor.acceptsVideo ? (
+                                <span className="block text-xs mt-1 font-medium text-gray-500">
+                                  {isArabic
+                                    ? 'هذا الطبيب لا يقدّم الاستشارة عن بُعد'
+                                    : 'Ce praticien ne propose pas la téléconsultation'}
+                                </span>
+                              ) : selectedDate ? (
                                 <span className={`block text-xs mt-1 font-medium ${opt.count > 0 ? 'text-blue-700' : 'text-amber-700'}`}>
                                   {opt.count > 0
                                     ? (isArabic ? `${opt.count} موعد متاح` : `${opt.count} créneau${opt.count > 1 ? 'x' : ''} ce jour-là`)
                                     : (isArabic ? 'لا موعد في هذا اليوم' : 'Aucun créneau ce jour-là')}
                                 </span>
-                              )}
+                              ) : null}
                             </span>
                           </label>
                         );
@@ -288,11 +304,10 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                     </div>
                     <p className="text-xs text-gray-500 mt-3">
                       {isArabic
-                        ? 'الأوقات المتاحة هي نفسها في الحالتين.'
-                        : 'Les créneaux proposés sont les mêmes dans les deux cas.'}
+                        ? 'قد تختلف الأوقات المتاحة بين الحالتين.'
+                        : 'Les créneaux proposés peuvent différer selon le mode choisi.'}
                     </p>
                   </fieldset>
-                )}
 
                 {/* Sélecteur de date */}
                 <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">

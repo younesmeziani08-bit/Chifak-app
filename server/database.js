@@ -208,6 +208,14 @@ export async function initDatabase() {
     "CREATE INDEX IF NOT EXISTS idx_doctors_city ON doctors (city)",
     "CREATE INDEX IF NOT EXISTS idx_doctors_doctor_code ON doctors (doctor_code)",
     "CREATE INDEX IF NOT EXISTS idx_appointments_doctor_date ON appointments (doctor_id, appointment_date)",
+    // /api/booked-slots interroge la date SEULE. L'index ci-dessus commence par
+    // doctor_id, donc il ne peut pas servir : sans celui-ci, la table entière
+    // est parcourue à chaque changement de jour dans les résultats.
+    "CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments (appointment_date)",
+    // Index partiel : n'indexe que les praticiens en téléconsultation. Il reste
+    // minuscule même avec des dizaines de milliers de fiches, puisqu'il ignore
+    // toutes celles qui ne proposent pas la vidéo.
+    "CREATE INDEX IF NOT EXISTS idx_doctors_video ON doctors (id) WHERE accepts_video = 1",
     "CREATE INDEX IF NOT EXISTS idx_appointments_patient_email ON appointments (patient_email)",
     "CREATE INDEX IF NOT EXISTS idx_reviews_doctor ON reviews (doctor_id)",
     "CREATE INDEX IF NOT EXISTS idx_patients_email ON patients (email)",

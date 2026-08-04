@@ -90,7 +90,7 @@ function initials(name: string): string {
 
 export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHome, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, onOpenAccount, patientUser, onLogout }: SearchResultsProps) {
   const { language } = useLanguage();
-  const { getDoctorsBySpecialtyAndLocation } = useDoctors();
+  const { searchDoctors } = useDoctors();
   const isArabic = language === 'ar';
 
   const todayISO = buildDays(1, isArabic)[0].full;
@@ -123,16 +123,38 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
     return () => { alive = false; };
   }, [activeDay]);
 
+  /* Le mode suit le filtre : si le patient a demandé la téléconsultation,
+     les horaires proposés doivent être ceux ouverts à la vidéo. Sans cela,
+     on affichait des créneaux de cabinet sous un filtre « visio », et le
+     rendez-vous partait en présentiel. */
   const freeSlotsFor = (doctor: Doctor) =>
-    slotsForDay(doctor, activeDay).filter((t) => !bookedSet.has(`${doctor.id}|${t}`));
+    slotsForDay(doctor, activeDay, videoOnly ? 'video' : 'cabinet')
+      .filter((t) => !bookedSet.has(`${doctor.id}|${t}`));
 
-  const allDoctors = getDoctorsBySpecialtyAndLocation(searchQuery.specialty, searchQuery.location)
-    .filter((d) => (videoOnly ? d.acceptsVideo : true));
+  /* Deux requêtes serveur : la liste affichée, et le nombre de praticiens en
+     téléconsultation. La seconde alimente le compteur du filtre, qui doit être
+     connu même quand le filtre est inactif. */
+  const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
+  const [videoCount, setVideoCount] = useState(0);
+  const [searching, setSearching] = useState(true);
 
-  /* Nombre de praticiens proposant la visio, calculé avant filtrage :
-     sans ce chiffre, on afficherait un filtre qui vide la liste sans prévenir. */
-  const videoCount = getDoctorsBySpecialtyAndLocation(searchQuery.specialty, searchQuery.location)
-    .filter((d) => d.acceptsVideo).length;
+  useEffect(() => {
+    let alive = true;
+    setSearching(true);
+    searchDoctors(searchQuery.specialty, searchQuery.location, videoOnly)
+      .then((rows) => { if (alive) setAllDoctors(rows); })
+      .catch(() => { if (alive) setAllDoctors([]); })
+      .finally(() => { if (alive) setSearching(false); });
+    return () => { alive = false; };
+  }, [searchQuery.specialty, searchQuery.location, videoOnly]);
+
+  useEffect(() => {
+    let alive = true;
+    searchDoctors(searchQuery.specialty, searchQuery.location, true)
+      .then((rows) => { if (alive) setVideoCount(rows.length); })
+      .catch(() => { if (alive) setVideoCount(0); });
+    return () => { alive = false; };
+  }, [searchQuery.specialty, searchQuery.location]);
 
   const doctors = [...allDoctors].sort((a, b) => {
     if (sortBy === 'rating') return b.rating - a.rating;
@@ -283,7 +305,13 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
           </div>
         </div>
 
-        {doctors.length === 0 ? (
+        {searching ? (
+          /* État d'attente explicite : la recherche part maintenant au serveur,
+             il y a donc un délai réseau là où l'affichage était instantané. */
+          <div className="bg-white rounded-2xl border border-gray-200 p-12 sm:p-16 text-center">
+            <p className="text-gray-500">{isArabic ? 'جارٍ البحث…' : 'Recherche en cours…'}</p>
+          </div>
+        ) : doctors.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 sm:p-16 text-center">
             <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-5">
               <Icon name="search" className="w-7 h-7" />

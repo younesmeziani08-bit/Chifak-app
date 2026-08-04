@@ -178,10 +178,13 @@ export interface DoctorCreate {
 }
 
 export const doctorsAPI = {
-  getAll: async (specialty?: string, location?: string): Promise<Doctor[]> => {
+  /** `videoOnly` filtre en base : le navigateur ne reçoit que les praticiens
+   *  concernés, au lieu de tout télécharger pour trier ensuite. */
+  getAll: async (specialty?: string, location?: string, videoOnly?: boolean): Promise<Doctor[]> => {
     const params = new URLSearchParams();
     if (specialty) params.append('specialty', specialty);
     if (location) params.append('location', location);
+    if (videoOnly) params.append('video', '1');
 
     const url = API_URL + '/doctors' + (params.toString() ? '?' + params.toString() : '');
     

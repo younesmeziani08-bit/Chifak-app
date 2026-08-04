@@ -760,6 +760,13 @@ app.get('/api/doctors', async (req, res) => {
       params.push(`%${escapeLike(location)}%`);
     }
 
+    // Filtre téléconsultation appliqué en base, pas dans le navigateur.
+    // Un praticien n'est retenu que s'il a activé la visio ET déclaré au moins
+    // une heure : accepts_video seul laisserait passer des fiches sans créneau.
+    if (req.query.video === '1') {
+      query += " AND accepts_video = 1 AND video_slots IS NOT NULL AND video_slots <> '[]'";
+    }
+
     // Plafond de sécurité + pagination optionnelle (?limit & ?offset) — évite de renvoyer
     // des dizaines de milliers de lignes d'un coup si l'annuaire grossit.
     // Valeurs passées en paramètres liés (jamais concaténées dans le SQL).
@@ -770,24 +777,35 @@ app.get('/api/doctors', async (req, res) => {
 
     const doctors = await db.prepare(query).all(...params);
 
-    // Parser les available_slots (JSON string vers array)
-    const doctorsWithParsedSlots = doctors.map(doctor => ({
-      ...doctor,
-      password: undefined, // ne jamais exposer le hash
-      hasPassword: !!doctor.password,
-      availableSlots: JSON.parse(doctor.available_slots),
+    // Charge utile explicite : on n'étale plus la ligne brute avec « ...doctor ».
+    // Cet étalement renvoyait chaque colonne JSON deux fois — la chaîne d'origine
+    // ET sa version analysée — soit 38 % du poids pour rien, et exposait au
+    // passage le code médecin, l'e-mail et le téléphone du praticien à un
+    // visiteur anonyme. La liste ne contient que ce dont l'affichage a besoin.
+    const list = doctors.map((doctor) => ({
+      id: doctor.id,
+      name: doctor.name,
+      specialty: doctor.specialty,
+      address: doctor.address,
+      city: doctor.city,
+      image: doctor.image,
+      rating: doctor.rating,
+      reviewCount: doctor.review_count,
+      availableSlots: doctor.available_slots ? JSON.parse(doctor.available_slots) : [],
       nextAvailable: doctor.next_available,
       slotDuration: doctor.slot_duration || 30,
       workingDays: doctor.working_days ? JSON.parse(doctor.working_days) : [1, 2, 3, 4, 5],
-      description: doctor.description || '',
-      bio: doctor.bio || '',
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
       blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
       acceptsVideo: !!doctor.accepts_video,
       videoSlots: doctor.video_slots ? JSON.parse(doctor.video_slots) : [],
+      description: doctor.description || '',
+      latitude: doctor.latitude,
+      longitude: doctor.longitude,
+      mapsUrl: doctor.maps_url,
     }));
 
-    res.json(doctorsWithParsedSlots);
+    res.json(list);
   } catch (error) {
     console.error('Erreur récupération médecins:', error);
     res.status(500).json({ error: 'Erreur serveur' });

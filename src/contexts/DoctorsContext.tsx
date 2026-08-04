@@ -11,6 +11,8 @@ interface DoctorsContextType {
   deleteDoctor: (id: number) => Promise<void>;
   getDoctorsBySpecialtyAndLocation: (specialty: string, location: string) => Doctor[];
   refreshDoctors: () => Promise<void>;
+  /** Recherche interrogée en base, sans passer par la liste chargée en mémoire. */
+  searchDoctors: (specialty: string, location: string, videoOnly?: boolean) => Promise<Doctor[]>;
 }
 
 const DoctorsContext = createContext<DoctorsContextType | undefined>(undefined);
@@ -145,6 +147,24 @@ export function DoctorsProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /* Recherche déléguée à la base. Le filtrage en mémoire ne portait que sur les
+     médecins déjà chargés — au plus 500 — donc au-delà de ce seuil, une partie
+     de l'annuaire devenait tout simplement introuvable, quelle que soit la
+     requête du patient. Ici, c'est PostgreSQL qui filtre et pagine. */
+  const searchDoctors = async (specialty: string, location: string, videoOnly?: boolean): Promise<Doctor[]> => {
+    const data = await doctorsAPI.getAll(specialty || undefined, location || undefined, videoOnly);
+    const remote = data.map(normalizeDoctor);
+    // Les fiches créées hors ligne restent filtrées côté client : elles ne sont
+    // pas en base, le serveur ne peut donc pas les connaître.
+    const local = getLocalDoctors().map(normalizeDoctor).filter((d) => {
+      const okSpec = !specialty || d.specialty.toLowerCase().includes(specialty.toLowerCase());
+      const okCity = !location || d.city.toLowerCase().includes(location.toLowerCase());
+      const okVideo = !videoOnly || (d.acceptsVideo && (d.videoSlots?.length ?? 0) > 0);
+      return okSpec && okCity && okVideo;
+    });
+    return [...remote, ...local];
+  };
+
   const getDoctorsBySpecialtyAndLocation = (specialty: string, location: string): Doctor[] => {
     return doctors.filter(doctor => {
       const matchesSpecialty = !specialty || doctor.specialty.toLowerCase().includes(specialty.toLowerCase());
@@ -162,7 +182,8 @@ export function DoctorsProvider({ children }: { children: ReactNode }) {
       updateDoctor, 
       deleteDoctor,
       getDoctorsBySpecialtyAndLocation,
-      refreshDoctors
+      refreshDoctors,
+      searchDoctors
     }}>
       {children}
     </DoctorsContext.Provider>
