@@ -136,6 +136,10 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
      la téléconsultation : le choix ne s'affiche même pas dans ce cas. */
   const [consultationType, setConsultationType] = useState<'cabinet' | 'video'>('cabinet');
 
+  /* Le choix du mode occupe l'étape 1 lorsqu'il existe : les étapes suivantes
+     se décalent d'un cran, sinon la numérotation afficherait deux « 1 ». */
+  const stepNo = (n: number) => (doctor.acceptsVideo ? n + 1 : n);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.phone) return;
@@ -212,11 +216,69 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
             {/* Étape 1 : date & heure */}
             {step === 1 && (
               <div className="space-y-6 animate-fadeInUp">
+                {/* Mode de consultation — d'abord, car il conditionne la
+                    manière dont se déroulera le rendez-vous. Affiché seulement
+                    si le praticien a activé la téléconsultation. */}
+                {doctor.acceptsVideo && (
+                  <fieldset className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">
+                    <legend className="contents">
+                      <h3 className="text-lg font-bold text-gray-900 flex items-center gap-3 mb-4">
+                        <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">1</span>
+                        {isArabic ? 'نوع الاستشارة' : 'Type de consultation'}
+                      </h3>
+                    </legend>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {([
+                        {
+                          value: 'cabinet' as const,
+                          title: isArabic ? 'في العيادة' : 'Au cabinet',
+                          desc: `${doctor.address}, ${doctor.city}`,
+                        },
+                        {
+                          value: 'video' as const,
+                          title: isArabic ? 'عن بُعد بالفيديو' : 'En visioconférence',
+                          desc: isArabic
+                            ? 'رابط الاتصال يظهر لك وللطبيب فقط'
+                            : 'Le lien d’appel n’apparaît que pour vous et le praticien',
+                        },
+                      ]).map((opt) => {
+                        const active = consultationType === opt.value;
+                        return (
+                          <label
+                            key={opt.value}
+                            className={`flex gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${
+                              active ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="consultationType"
+                              value={opt.value}
+                              checked={active}
+                              onChange={() => setConsultationType(opt.value)}
+                              className="mt-0.5 w-4 h-4 accent-blue-600 flex-shrink-0"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-semibold text-gray-800">{opt.title}</span>
+                              <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">{opt.desc}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-3">
+                      {isArabic
+                        ? 'الأوقات المتاحة هي نفسها في الحالتين.'
+                        : 'Les créneaux proposés sont les mêmes dans les deux cas.'}
+                    </p>
+                  </fieldset>
+                )}
+
                 {/* Sélecteur de date */}
                 <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">
                   <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                     <h3 className="text-lg font-bold text-gray-900 flex items-center gap-3">
-                      <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">1</span>
+                      <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">{stepNo(1)}</span>
                       {isArabic ? 'اختر التاريخ' : 'Date de visite'}
                     </h3>
                     {/* Aller directement à une date précise (jusqu'à un an) */}
@@ -301,7 +363,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                 {selectedDate && isWorkingDate(selectedDate) && (
                   <div className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100 animate-fadeInUp">
                     <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-3">
-                      <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">2</span>
+                      <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">{stepNo(2)}</span>
                       {isArabic ? 'اختر الوقت' : 'Créneau horaire'}
                     </h3>
                     <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
@@ -342,59 +404,10 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                     </svg>
                   </button>
                   <h3 className="text-lg font-bold text-gray-900 flex items-center gap-3">
-                    <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">3</span>
+                    <span className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold">{stepNo(3)}</span>
                     {isArabic ? 'معلوماتك الشخصية' : 'Vos informations'}
                   </h3>
                 </div>
-
-                {/* Mode de consultation — affiché seulement si le praticien
-                    a activé la téléconsultation sur son compte. */}
-                {doctor.acceptsVideo && (
-                  <fieldset className="mb-6">
-                    <legend className="block text-sm font-medium text-gray-600 mb-2">
-                      {isArabic ? 'نوع الاستشارة' : 'Type de consultation'}
-                    </legend>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {([
-                        {
-                          value: 'cabinet' as const,
-                          title: isArabic ? 'في العيادة' : 'Au cabinet',
-                          desc: `${doctor.address}, ${doctor.city}`,
-                        },
-                        {
-                          value: 'video' as const,
-                          title: isArabic ? 'عن بُعد بالفيديو' : 'En visioconférence',
-                          desc: isArabic
-                            ? 'رابط الاتصال يظهر لك وللطبيب فقط'
-                            : 'Le lien d’appel n’apparaît que pour vous et le praticien',
-                        },
-                      ]).map((opt) => {
-                        const active = consultationType === opt.value;
-                        return (
-                          <label
-                            key={opt.value}
-                            className={`flex gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${
-                              active ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                          >
-                            <input
-                              type="radio"
-                              name="consultationType"
-                              value={opt.value}
-                              checked={active}
-                              onChange={() => setConsultationType(opt.value)}
-                              className="mt-0.5 w-4 h-4 accent-blue-600 flex-shrink-0"
-                            />
-                            <span className="min-w-0">
-                              <span className="block text-sm font-semibold text-gray-800">{opt.title}</span>
-                              <span className="block text-xs text-gray-500 mt-0.5 leading-relaxed">{opt.desc}</span>
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-                )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   {[
