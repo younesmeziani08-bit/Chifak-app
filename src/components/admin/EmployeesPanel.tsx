@@ -40,15 +40,10 @@ export default function EmployeesPanel() {
       setForm({ ...form, [cle]: e.target.value }),
   });
 
-  /* Aperçu de l'identifiant, calculé comme côté serveur. Il n'est pas envoyé :
-     le serveur le régénère et gère les homonymes, seul lui connaît les comptes
-     déjà pris. C'est un aperçu, pas une décision. */
-  const identifiantPrevu = (() => {
-    const nettoyer = (v: string) =>
-      v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
-    const base = [nettoyer(form.firstName), nettoyer(form.lastName)].filter(Boolean).join('.');
-    return base || '—';
-  })();
+  /* Compte tout juste créé : l'identifiant étant tiré au sort, l'admin ne peut
+     pas le deviner. Il faut donc le lui montrer une fois, clairement, pour
+     qu'il le transmette à l'employé. */
+  const [nouveauCompte, setNouveauCompte] = useState<Employee | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -94,7 +89,7 @@ export default function EmployeesPanel() {
     setCreating(true);
     setCreateError('');
     try {
-      await employeesAPI.create({
+      const nouveau = await employeesAPI.create({
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
         password: form.password,
@@ -108,8 +103,10 @@ export default function EmployeesPanel() {
         emergencyContact: form.emergencyContact.trim() || undefined,
         notes: form.notes.trim() || undefined,
       });
+      const cree = await employeesAPI.getAll();
+      setEmployees(cree);
+      setNouveauCompte(cree.find((c) => c.id === nouveau.id) ?? nouveau);
       setForm(vide);
-      await load();
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Erreur');
     } finally {
@@ -185,20 +182,16 @@ export default function EmployeesPanel() {
               {isArabic ? 'الدخول' : 'Accès'}
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
-              {/* L'identifiant n'est plus saisi : il se déduit du nom. Le champ
-                  est en lecture seule pour montrer le résultat sans laisser
-                  croire qu'il est modifiable. */}
-              <label className="flex flex-col">
+              {/* Rien à saisir : l'identifiant est tiré au sort à la création
+                  et affiché juste après, puisqu'il ne se devine pas. */}
+              <div className="flex flex-col justify-end">
                 <span className="text-xs text-gray-500 mb-1">
-                  {isArabic ? 'اسم الدخول (تلقائي)' : 'Identifiant de connexion (automatique)'}
+                  {isArabic ? 'اسم الدخول' : 'Identifiant de connexion'}
                 </span>
-                <input
-                  value={identifiantPrevu}
-                  readOnly
-                  tabIndex={-1}
-                  className={`${cls} bg-gray-100 text-gray-600 font-mono cursor-default`}
-                />
-              </label>
+                <div className={`${cls} bg-gray-100 text-gray-500 flex items-center`}>
+                  {isArabic ? 'رقم عشوائي يُمنح عند الإنشاء' : 'Numéro attribué à la création'}
+                </div>
+              </div>
               <label className="flex flex-col">
                 <span className="text-xs text-gray-500 mb-1">{isArabic ? 'كلمة المرور *' : 'Mot de passe *'}</span>
                 <input {...champ('password')} type="password" required className={cls} />
@@ -224,6 +217,47 @@ export default function EmployeesPanel() {
         {createError && <p className="text-sm text-red-600 mt-2">{createError}</p>}
       </form>
 
+      {/* Identifiant du compte tout juste créé. Affiché une fois, en grand :
+          il est aléatoire, donc introuvable si l'admin ne le note pas ici. */}
+      {nouveauCompte && (
+        <div className="bg-green-50 border-2 border-green-300 rounded-xl p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-green-800 font-semibold mb-1">
+                {isArabic ? 'تم إنشاء الحساب' : 'Compte créé'} — {nouveauCompte.full_name}
+              </p>
+              <p className="text-xs text-green-700 mb-3">
+                {isArabic
+                  ? 'سلّم هذا الرقم للموظف. لن يُعرض مرة أخرى بهذا الشكل.'
+                  : 'Communiquez ce numéro à l’employé. Il reste consultable dans la liste ci-dessous.'}
+              </p>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-3xl font-mono font-bold tracking-widest text-green-900">
+                  {nouveauCompte.username}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(nouveauCompte.username)}
+                  className="text-xs font-medium text-green-700 underline"
+                >
+                  {isArabic ? 'نسخ' : 'Copier'}
+                </button>
+              </div>
+              <p className="text-xs text-green-700 mt-2">
+                {isArabic ? 'الرقم التسلسلي' : 'Matricule'} : <span className="font-mono">{nouveauCompte.staff_code}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setNouveauCompte(null)}
+              className="text-green-700 hover:text-green-900 text-sm"
+            >
+              {isArabic ? 'إغلاق' : 'Fermer'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Liste ── */}
       {loading ? (
         <p className="text-gray-500">{isArabic ? 'جارٍ التحميل…' : 'Chargement…'}</p>
@@ -238,8 +272,27 @@ export default function EmployeesPanel() {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-gray-900">{emp.full_name || emp.username}</p>
-                  <p className="text-sm text-gray-500">@{emp.username}</p>
-                  <p className="text-xs font-mono text-blue-700 mt-1">{emp.staff_code || '—'}</p>
+                  {emp.position && <p className="text-sm text-gray-500">{emp.position}</p>}
+                  <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                    {/* L'identifiant est aléatoire : il doit rester consultable,
+                        sinon un employé qui l'oublie ne peut plus se connecter. */}
+                    <span className="text-sm font-mono font-semibold tracking-wider text-gray-900">
+                      {emp.username}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(emp.username)}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      {isArabic ? 'نسخ' : 'Copier'}
+                    </button>
+                    <span className="text-xs font-mono text-gray-400">{emp.staff_code || '—'}</span>
+                  </div>
+                  {(emp.phone || emp.email) && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {[emp.phone, emp.email].filter(Boolean).join(' · ')}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button

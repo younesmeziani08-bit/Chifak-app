@@ -1817,34 +1817,29 @@ app.post('/api/assistant/chat', authenticatePatientToken, async (req, res) => {
 // ==================== PERSONNEL (COMPTES EMPLOYÉS) ====================
 
 /**
- * Identifiant de connexion dérivé du nom : « Younès Meziani » → « younes.meziani ».
+ * Identifiant de connexion : suite de 8 chiffres tirée au sort.
  *
- * Les accents sont retirés et les espaces remplacés par un point, car
- * l'identifiant se tape au clavier, parfois sur un poste sans clavier français.
- * En cas d'homonyme, un numéro est ajouté : younes.meziani2, younes.meziani3…
+ * Un identifiant dérivé du nom se devine, et permet donc d'énumérer le
+ * personnel puis de tenter des mots de passe sur des comptes existants.
+ * Une suite aléatoire supprime cette prise : il faut connaître le numéro,
+ * qui n'est communiqué qu'à l'employé concerné.
+ *
+ * `randomInt` plutôt que `Math.random` : ce dernier est prédictible, et un
+ * identifiant devinable annulerait tout l'intérêt de la mesure.
+ * Le premier chiffre n'est jamais 0, sinon un zéro de tête disparaît dès que
+ * le numéro passe par un tableur ou un champ numérique.
  */
-async function genererIdentifiant(prenom, nom) {
-  const nettoyer = (v) =>
-    (v || '')
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')   // accents
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '')
-      .slice(0, 24);
-
-  const base = [nettoyer(prenom), nettoyer(nom)].filter(Boolean).join('.') || 'employe';
-
-  let candidat = base;
-  let n = 1;
-  // Boucle bornée : au-delà de 50 homonymes, il y a un problème de saisie,
-  // pas un besoin réel — on bascule sur un suffixe aléatoire.
-  while (n <= 50) {
+async function genererIdentifiant() {
+  for (let essai = 0; essai < 30; essai += 1) {
+    const premier = crypto.randomInt(1, 10);
+    const reste = String(crypto.randomInt(0, 10_000_000)).padStart(7, '0');
+    const candidat = `${premier}${reste}`;
     const pris = await db.prepare('SELECT id FROM users WHERE username = ?').get(candidat);
     if (!pris) return candidat;
-    n += 1;
-    candidat = `${base}${n}`;
   }
-  return `${base}.${crypto.randomBytes(3).toString('hex')}`;
+  // 30 collisions d'affilée sur 90 millions de combinaisons est impossible en
+  // pratique : si on arrive ici, mieux vaut échouer franchement que boucler.
+  throw new Error('Impossible de générer un identifiant unique.');
 }
 
 /** Matricule lisible : EMP-2026-0007. Le compteur repart de la base pour
@@ -1926,10 +1921,10 @@ app.post('/api/admin/employees', authenticateToken, requireAdmin, async (req, re
       return res.status(400).json({ error: 'Date d\'entrée invalide.' });
     }
 
-    // L'identifiant n'est plus saisi : il découle du nom, et le serveur règle
-    // seul les homonymes. Un identifiant choisi à la main finissait toujours
-    // par des « emp1 », « emp2 » impossibles à rattacher à une personne.
-    const username = await genererIdentifiant(firstName, lastName);
+    // Identifiant tiré au sort : ni saisi, ni dérivé du nom. L'admin le
+    // communique à l'employé après création — il ne peut pas le retrouver
+    // en devinant, c'est précisément le but.
+    const username = await genererIdentifiant();
 
     const hashed = await bcrypt.hash(password, 10);
     const staffCode = await genererMatricule();
