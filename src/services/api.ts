@@ -690,6 +690,15 @@ export const employeesAPI = {
     );
   },
 
+  /** Attribue un nouveau numéro de connexion. L'ancien cesse de fonctionner. */
+  regenerateLogin: async (id: number): Promise<{ username: string }> =>
+    attendreJson(
+      await fetch(`${API_URL}/admin/employees/${id}/regenerate-login`, {
+        method: 'POST', headers: getAuthHeaders(),
+      }),
+      'Régénération impossible'
+    ),
+
   stats: async (id: number, from?: string, to?: string): Promise<EmployeeStats> => {
     const p = new URLSearchParams();
     if (from) p.append('from', from);

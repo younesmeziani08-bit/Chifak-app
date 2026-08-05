@@ -1996,6 +1996,33 @@ app.delete('/api/admin/employees/:id', authenticateToken, requireAdmin, async (r
   }
 });
 
+// POST /api/admin/employees/:id/regenerate-login - Nouveau numéro de connexion
+// Deux usages : rattraper un compte créé avant le passage au tirage aléatoire,
+// et remplacer un numéro qui aurait circulé. L'ancien cesse aussitôt de
+// fonctionner, l'employé doit donc recevoir le nouveau.
+app.post('/api/admin/employees/:id/regenerate-login', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Identifiant invalide' });
+    const id = Number(req.params.id);
+
+    const target = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(id);
+    if (!target) return res.status(404).json({ error: 'Compte introuvable' });
+    if (target.role !== 'employee') {
+      return res.status(400).json({ error: 'Réservé aux comptes employés.' });
+    }
+
+    const username = await genererIdentifiant();
+    await db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username, id);
+    res.json({ username });
+  } catch (error) {
+    console.error('Erreur régénération identifiant:', error);
+    res.status(500).json({
+      error: 'Régénération impossible.',
+      detail: String(error && error.message || error).slice(0, 300),
+    });
+  }
+});
+
 // GET /api/admin/employees/:id/stats?from=&to= - Activité sur une période
 app.get('/api/admin/employees/:id/stats', authenticateToken, requireAdmin, async (req, res) => {
   try {

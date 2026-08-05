@@ -114,6 +114,21 @@ export default function EmployeesPanel() {
     }
   };
 
+  const regenerer = async (emp: Employee) => {
+    if (!window.confirm(isArabic
+      ? `رقم جديد لـ ${emp.full_name || emp.username}؟ الرقم القديم لن يعمل بعد الآن.`
+      : `Attribuer un nouveau numéro à ${emp.full_name || emp.username} ?\n\nL’ancien cessera immédiatement de fonctionner : pensez à lui communiquer le nouveau.`
+    )) return;
+    try {
+      const { username } = await employeesAPI.regenerateLogin(emp.id);
+      const rafraichi = await employeesAPI.getAll();
+      setEmployees(rafraichi);
+      setNouveauCompte(rafraichi.find((c) => c.id === emp.id) ?? { ...emp, username });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Erreur');
+    }
+  };
+
   const handleDelete = async (emp: Employee) => {
     const nom = emp.full_name || emp.username;
     if (!window.confirm(isArabic
@@ -285,6 +300,16 @@ export default function EmployeesPanel() {
                       className="text-xs text-blue-600 hover:underline"
                     >
                       {isArabic ? 'نسخ' : 'Copier'}
+                    </button>
+                    {/* Les comptes créés avant le passage au tirage aléatoire
+                        gardent un identifiant dérivé du nom : ce bouton permet
+                        de les rattraper sans les recréer. */}
+                    <button
+                      type="button"
+                      onClick={() => regenerer(emp)}
+                      className="text-xs text-gray-500 hover:text-blue-600 hover:underline"
+                    >
+                      {isArabic ? 'رقم جديد' : 'Nouveau numéro'}
                     </button>
                     <span className="text-xs font-mono text-gray-400">{emp.staff_code || '—'}</span>
                   </div>
