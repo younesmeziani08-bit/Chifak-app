@@ -1963,7 +1963,10 @@ app.post('/api/admin/employees', authenticateToken, requireAdmin, async (req, re
     res.status(201).json(created);
   } catch (error) {
     console.error('Erreur création employé:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    res.status(500).json({
+      error: 'Création impossible.',
+      detail: String(error && error.message || error).slice(0, 300),
+    });
   }
 });
 
@@ -2125,6 +2128,9 @@ app.get('/', async (req, res) => {
       assistantLangChoice: true,
       assistantOrientation: true,
       assistantRequiresPatientAuth: true,
+      staffAccounts: true,
+      randomStaffLogin: true,
+      publicFeedback: true,
     },
     // Diagnostic : en production, une liste blanche CORS vide fait rejeter
     // TOUTES les requêtes du navigateur — connexion comprise. On expose

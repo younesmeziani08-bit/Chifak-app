@@ -649,7 +649,12 @@ export interface EmployeeFeedback {
 
 const attendreJson = async (response: Response, defaut: string) => {
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || defaut);
+  if (!response.ok) {
+    // Le serveur joint parfois un « detail » technique. Sans lui, toute panne
+    // se résume à « Erreur serveur » et il faut aller lire les logs Render.
+    const message = [data.error || defaut, data.detail].filter(Boolean).join(' — ');
+    throw new Error(message);
+  }
   return data;
 };
 
