@@ -606,3 +606,97 @@ export const statsAPI = {
     return await response.json();
   }
 };
+
+// ==================== PERSONNEL (ADMIN) ====================
+
+export interface Employee {
+  id: number;
+  username: string;
+  full_name: string | null;
+  role: 'admin' | 'employee';
+  staff_code: string | null;
+  feedback_token: string | null;
+  active: number;
+  created_at: string;
+  created_count: string | number;
+  deleted_count: string | number;
+  feedback_count: string | number;
+  avg_rating: string | number | null;
+}
+
+export interface EmployeeStats {
+  from: string;
+  to: string;
+  created: number;
+  deleted: number;
+  recent: { action: string; doctor_name: string | null; created_at: string }[];
+}
+
+export interface EmployeeFeedback {
+  id: number;
+  staff_code: string | null;
+  employee_name: string | null;
+  doctor_name: string | null;
+  doctor_code: string | null;
+  rating: number;
+  comment: string | null;
+  suggestion: string | null;
+  created_at: string;
+}
+
+const attendreJson = async (response: Response, defaut: string) => {
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || defaut);
+  return data;
+};
+
+export const employeesAPI = {
+  getAll: async (): Promise<Employee[]> =>
+    attendreJson(await fetch(`${API_URL}/admin/employees`, { headers: getAuthHeaders() }), 'Erreur de chargement'),
+
+  create: async (data: { username: string; fullName?: string; password: string }): Promise<Employee> =>
+    attendreJson(
+      await fetch(`${API_URL}/admin/employees`, {
+        method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data),
+      }),
+      'Erreur lors de la création'
+    ),
+
+  remove: async (id: number): Promise<void> => {
+    await attendreJson(
+      await fetch(`${API_URL}/admin/employees/${id}`, { method: 'DELETE', headers: getAuthHeaders() }),
+      'Erreur lors de la suppression'
+    );
+  },
+
+  stats: async (id: number, from?: string, to?: string): Promise<EmployeeStats> => {
+    const p = new URLSearchParams();
+    if (from) p.append('from', from);
+    if (to) p.append('to', to);
+    const suffixe = p.toString() ? `?${p}` : '';
+    return attendreJson(
+      await fetch(`${API_URL}/admin/employees/${id}/stats${suffixe}`, { headers: getAuthHeaders() }),
+      'Erreur de chargement'
+    );
+  },
+
+  feedback: async (): Promise<EmployeeFeedback[]> =>
+    attendreJson(await fetch(`${API_URL}/admin/feedback`, { headers: getAuthHeaders() }), 'Erreur de chargement'),
+};
+
+/** Formulaire public atteint par le QR code — aucun jeton d'authentification. */
+export const feedbackAPI = {
+  whoIs: async (token: string): Promise<{ name: string; staffCode: string | null }> =>
+    attendreJson(await fetch(`${API_URL}/feedback/${encodeURIComponent(token)}`), 'Lien invalide'),
+
+  submit: async (
+    token: string,
+    data: { rating: number; doctorName?: string; doctorCode?: string; comment?: string; suggestion?: string }
+  ): Promise<{ message: string }> =>
+    attendreJson(
+      await fetch(`${API_URL}/feedback/${encodeURIComponent(token)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+      }),
+      'Envoi impossible'
+    ),
+};

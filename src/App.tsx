@@ -12,6 +12,7 @@ import AdminLogin from './components/admin/AdminLogin';
 import AdminDashboard from './components/admin/AdminDashboard';
 import DoctorSpace from './components/DoctorSpace';
 import ProfessionalModal from './components/ProfessionalModal';
+import FeedbackPage from './components/FeedbackPage';
 import { useAdminAuth } from './contexts/AdminAuthContext';
 import { appointmentsAPI } from './services/api';
 import PageTransition from './components/PageTransition';
@@ -58,6 +59,12 @@ export interface Booking {
 
 function isOAuthCallbackPath() {
   return window.location.pathname === '/auth/callback';
+}
+
+/** /avis/<jeton> : page publique ouverte par le QR code d'un employé. */
+function feedbackTokenFromPath(): string | null {
+  const m = window.location.pathname.match(/^\/avis\/([A-Za-z0-9_-]{8,64})\/?$/);
+  return m ? m[1] : null;
 }
 
 export default function App() {
@@ -112,6 +119,13 @@ export default function App() {
 
   if (isOAuthCallbackPath() && !oauthDone) {
     return <OAuthCallback onComplete={() => setOauthDone(true)} />;
+  }
+
+  /* Page d'avis : rendue avant tout le reste, sans en-tête ni session — le
+     médecin qui scanne le QR code ne doit pas avoir à se connecter. */
+  const feedbackToken = feedbackTokenFromPath();
+  if (feedbackToken) {
+    return <FeedbackPage token={feedbackToken} />;
   }
 
   const handleSearch = (specialty: string, location: string, date: string) => {

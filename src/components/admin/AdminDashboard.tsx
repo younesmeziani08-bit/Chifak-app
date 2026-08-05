@@ -6,9 +6,11 @@ import LanguageToggle from '../LanguageToggle';
 import AddDoctorForm from './AddDoctorForm';
 import DoctorsList from './DoctorsList';
 import AdminReviews from './AdminReviews';
+import EmployeesPanel from './EmployeesPanel';
+import EmployeeFeedbackPanel from './EmployeeFeedbackPanel';
 import { appointmentsAPI } from '../../services/api';
 
-type Tab = 'add' | 'list' | 'reviews';
+type Tab = 'add' | 'list' | 'reviews' | 'staff' | 'staffFeedback';
 
 interface AdminDashboardProps {
   onBackToHome: () => void;
@@ -78,10 +80,19 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
     },
   ];
 
+  /* Les deux onglets « personnel » n'apparaissent que pour un administrateur.
+     Le masquage est un confort : les routes correspondantes exigent déjà le
+     rôle admin côté serveur, un employé curieux n'obtiendrait rien. */
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'add', label: isArabic ? 'إضافة طبيب' : 'Ajouter un médecin', icon: '➕' },
     { key: 'list', label: isArabic ? 'قائمة الأطباء' : 'Liste des médecins', icon: '📋' },
-    { key: 'reviews', label: isArabic ? 'التقييمات' : 'Avis', icon: '⭐' },
+    { key: 'reviews', label: isArabic ? 'تقييم الأطباء' : 'Avis patients', icon: '⭐' },
+    ...(adminUser?.role === 'admin'
+      ? ([
+          { key: 'staff' as Tab, label: isArabic ? 'الموظفون' : 'Employés', icon: '👥' },
+          { key: 'staffFeedback' as Tab, label: isArabic ? 'آراء واقتراحات' : 'Retours & suggestions', icon: '💬' },
+        ])
+      : []),
   ];
 
   return (
@@ -176,12 +187,12 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
         {/* Tabs */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="border-b border-gray-100">
-            <div className="flex">
+            <div className="flex overflow-x-auto no-scrollbar">
               {tabs.map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-2 px-6 py-4 text-sm font-semibold border-b-2 transition ${
+                  className={`flex items-center gap-2 px-5 py-4 text-sm font-semibold border-b-2 transition whitespace-nowrap flex-shrink-0 ${
                     activeTab === tab.key
                       ? 'border-blue-600 text-blue-600 bg-blue-50/50'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
@@ -194,7 +205,11 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
             </div>
           </div>
           <div className="p-6">
-            {activeTab === 'add' ? <AddDoctorForm /> : activeTab === 'reviews' ? <AdminReviews /> : <DoctorsList />}
+            {activeTab === 'add' ? <AddDoctorForm />
+              : activeTab === 'reviews' ? <AdminReviews />
+              : activeTab === 'staff' ? <EmployeesPanel />
+              : activeTab === 'staffFeedback' ? <EmployeeFeedbackPanel />
+              : <DoctorsList />}
           </div>
         </div>
       </div>

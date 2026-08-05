@@ -188,6 +188,51 @@ export async function initDatabase() {
   // on n'active pas une modalité de soin à la place du praticien.
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS accepts_video INTEGER DEFAULT 0");
 
+  // ── Comptes du personnel ──
+  // Matricule lisible par un humain (EMP-2026-0007) : c'est lui que l'admin
+  // cite dans un échange, pas l'identifiant technique de la ligne.
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_code TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT');
+  // Jeton public du QR code. Distinct du matricule : le matricule est affiché
+  // partout, alors que ce jeton donne le droit de déposer un avis. S'il fuite,
+  // on le renouvelle sans changer l'identité de l'employé.
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS feedback_token TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS active INTEGER DEFAULT 1');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_staff_code ON users (staff_code) WHERE staff_code IS NOT NULL');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feedback_token ON users (feedback_token) WHERE feedback_token IS NOT NULL');
+
+  // ── Journal des actions du personnel ──
+  // On conserve le nom du médecin en clair : une fiche supprimée n'existe plus,
+  // mais l'admin doit pouvoir lire « X a supprimé Dr Y le 4 août ».
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS staff_actions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER,
+      staff_code TEXT,
+      action TEXT NOT NULL CHECK (action IN ('doctor_created', 'doctor_deleted')),
+      doctor_id INTEGER,
+      doctor_name TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ── Avis des médecins sur l'accompagnement reçu ──
+  // Lisible par l'administration seule : un employé ne doit pas pouvoir
+  // consulter — ni corriger — ce qui est dit de lui.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS employee_feedback (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      staff_code TEXT,
+      doctor_name TEXT,
+      doctor_code TEXT,
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT,
+      suggestion TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Heures ouvertes à la téléconsultation, sous-ensemble des créneaux du
   // praticien : ["14:00", "14:30", ...]. Vide = aucune plage vidéo, même si
   // accepts_video vaut 1 — le médecin doit désigner explicitement ses heures.
@@ -216,6 +261,10 @@ export async function initDatabase() {
     // minuscule même avec des dizaines de milliers de fiches, puisqu'il ignore
     // toutes celles qui ne proposent pas la vidéo.
     "CREATE INDEX IF NOT EXISTS idx_doctors_video ON doctors (id) WHERE accepts_video = 1",
+    // Les statistiques filtrent toujours par employé PUIS par date : l'index
+    // composite dans cet ordre permet à PostgreSQL de compter sans lire la table.
+    "CREATE INDEX IF NOT EXISTS idx_staff_actions_user_date ON staff_actions (user_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_employee_feedback_user ON employee_feedback (user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_appointments_patient_email ON appointments (patient_email)",
     "CREATE INDEX IF NOT EXISTS idx_reviews_doctor ON reviews (doctor_id)",
     "CREATE INDEX IF NOT EXISTS idx_patients_email ON patients (email)",

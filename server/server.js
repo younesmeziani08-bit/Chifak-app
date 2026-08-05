@@ -897,6 +897,9 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
 
     const newDoctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(result.lastInsertRowid);
 
+    // Trace : qui a inscrit ce médecin, et quand.
+    await journaliser(req.user, 'doctor_created', newDoctor);
+
     res.status(201).json({
       ...newDoctor,
       password: undefined,
@@ -998,6 +1001,10 @@ app.delete('/api/doctors/:id', authenticateToken, requireAdmin, async (req, res)
     }
 
     await db.prepare('DELETE FROM doctors WHERE id = ?').run(req.params.id);
+
+    // Le nom est recopié dans le journal : la fiche n'existe plus, mais
+    // l'administration doit pouvoir lire « X a supprimé Dr Y ».
+    await journaliser(req.user, 'doctor_deleted', doctor);
 
     res.json({ message: 'Médecin supprimé avec succès' });
   } catch (error) {
@@ -1820,6 +1827,230 @@ app.post('/api/assistant/chat', authenticatePatientToken, async (req, res) => {
     }
     console.error('Erreur assistant:', error);
     res.status(500).json({ error: 'Erreur serveur', reply: 'Une erreur est survenue.' });
+  }
+});
+
+// ==================== PERSONNEL (COMPTES EMPLOYÉS) ====================
+
+/** Matricule lisible : EMP-2026-0007. Le compteur repart de la base pour
+ *  rester continu même après une suppression. */
+async function genererMatricule() {
+  const annee = new Date().getFullYear();
+  const row = await db.prepare(
+    "SELECT COUNT(*) AS n FROM users WHERE staff_code LIKE ?"
+  ).get(`EMP-${annee}-%`);
+  const suivant = Number(row?.n || 0) + 1;
+  return `EMP-${annee}-${String(suivant).padStart(4, '0')}`;
+}
+
+/**
+ * Trace une action du personnel. Volontairement silencieuse en cas d'échec :
+ * un journal indisponible ne doit jamais empêcher l'inscription d'un médecin.
+ */
+async function journaliser(user, action, doctor) {
+  try {
+    const staff = await db.prepare('SELECT staff_code FROM users WHERE id = ?').get(user.id);
+    await db.prepare(`
+      INSERT INTO staff_actions (user_id, staff_code, action, doctor_id, doctor_name)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(user.id, staff?.staff_code || null, action, doctor?.id || null, doctor?.name || null);
+  } catch (e) {
+    console.error('Journalisation impossible:', e.message);
+  }
+}
+
+// GET /api/admin/employees - Liste du personnel (admin uniquement)
+app.get('/api/admin/employees', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await db.prepare(`
+      SELECT u.id, u.username, u.full_name, u.role, u.staff_code, u.feedback_token,
+             u.active, u.created_at,
+             (SELECT COUNT(*) FROM staff_actions a WHERE a.user_id = u.id AND a.action = 'doctor_created') AS created_count,
+             (SELECT COUNT(*) FROM staff_actions a WHERE a.user_id = u.id AND a.action = 'doctor_deleted') AS deleted_count,
+             (SELECT COUNT(*) FROM employee_feedback f WHERE f.user_id = u.id) AS feedback_count,
+             (SELECT ROUND(AVG(f.rating)::numeric, 1) FROM employee_feedback f WHERE f.user_id = u.id) AS avg_rating
+      FROM users u
+      ORDER BY u.role DESC, u.created_at DESC
+    `).all();
+    res.json(rows);
+  } catch (error) {
+    console.error('Erreur liste personnel:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/admin/employees - Créer un compte employé
+app.post('/api/admin/employees', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const username = cleanString(req.body.username, 60).toLowerCase();
+    const fullName = cleanString(req.body.fullName, 120);
+    const { password } = req.body;
+
+    if (!username || username.length < 3) {
+      return res.status(400).json({ error: 'Identifiant trop court (3 caractères minimum).' });
+    }
+    if (!/^[a-z0-9._-]+$/.test(username)) {
+      return res.status(400).json({ error: 'Identifiant : lettres, chiffres, point, tiret et souligné uniquement.' });
+    }
+    const pwdError = passwordStrengthError(password);
+    if (pwdError) return res.status(400).json({ error: pwdError });
+
+    const existing = await db.prepare('SELECT id FROM users WHERE username = ?').get(username);
+    if (existing) return res.status(409).json({ error: 'Cet identifiant est déjà utilisé.' });
+
+    const hashed = await bcrypt.hash(password, 10);
+    const staffCode = await genererMatricule();
+    // Jeton du QR code : aléatoire, jamais dérivé du matricule.
+    const feedbackToken = crypto.randomBytes(18).toString('base64url');
+
+    const result = await db.prepare(`
+      INSERT INTO users (username, password, role, staff_code, full_name, feedback_token, active)
+      VALUES (?, ?, 'employee', ?, ?, ?, 1)
+    `).run(username, hashed, staffCode, fullName || null, feedbackToken);
+
+    const created = await db.prepare(
+      'SELECT id, username, full_name, role, staff_code, feedback_token, active, created_at FROM users WHERE id = ?'
+    ).get(result.lastInsertRowid);
+
+    res.status(201).json(created);
+  } catch (error) {
+    console.error('Erreur création employé:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/admin/employees/:id - Supprimer un compte employé
+app.delete('/api/admin/employees/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Identifiant invalide' });
+    const id = Number(req.params.id);
+
+    const target = await db.prepare('SELECT id, role FROM users WHERE id = ?').get(id);
+    if (!target) return res.status(404).json({ error: 'Compte introuvable' });
+    if (target.role === 'admin') {
+      return res.status(400).json({ error: 'Un compte administrateur ne peut pas être supprimé ici.' });
+    }
+    if (Number(req.user.id) === id) {
+      return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte.' });
+    }
+
+    // Le compte disparaît, mais NI son journal NI les avis le concernant :
+    // effacer l'historique d'activité à chaque départ rendrait tout suivi
+    // impossible. Les lignes conservent le matricule pour rester lisibles.
+    await db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    res.json({ message: 'Compte supprimé. Son historique est conservé.' });
+  } catch (error) {
+    console.error('Erreur suppression employé:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/admin/employees/:id/stats?from=&to= - Activité sur une période
+app.get('/api/admin/employees/:id/stats', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) return res.status(400).json({ error: 'Identifiant invalide' });
+    const id = Number(req.params.id);
+
+    // Période par défaut : les 30 derniers jours.
+    const to = isValidDate(req.query.to) ? req.query.to : new Date().toISOString().slice(0, 10);
+    const from = isValidDate(req.query.from)
+      ? req.query.from
+      : new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+
+    // Comptage agrégé en base : le serveur ne rapatrie jamais les lignes.
+    const counts = await db.prepare(`
+      SELECT action, COUNT(*) AS n
+      FROM staff_actions
+      WHERE user_id = ? AND created_at >= ?::date AND created_at < (?::date + INTERVAL '1 day')
+      GROUP BY action
+    `).all(id, from, to);
+
+    const parAction = Object.fromEntries(counts.map((r) => [r.action, Number(r.n)]));
+
+    const recent = await db.prepare(`
+      SELECT action, doctor_name, created_at
+      FROM staff_actions
+      WHERE user_id = ? AND created_at >= ?::date AND created_at < (?::date + INTERVAL '1 day')
+      ORDER BY created_at DESC
+      LIMIT 50
+    `).all(id, from, to);
+
+    res.json({
+      from,
+      to,
+      created: parAction.doctor_created || 0,
+      deleted: parAction.doctor_deleted || 0,
+      recent,
+    });
+  } catch (error) {
+    console.error('Erreur statistiques employé:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ==================== AVIS DES MÉDECINS SUR LE PERSONNEL ====================
+
+// GET /api/feedback/:token - Identité de l'employé derrière le QR code (public)
+// Ne renvoie que le nom : ni identifiant de connexion, ni avis déjà déposés.
+app.get('/api/feedback/:token', async (req, res) => {
+  try {
+    const token = cleanString(req.params.token, 64);
+    const staff = await db.prepare(
+      "SELECT full_name, username, staff_code FROM users WHERE feedback_token = ? AND role = 'employee'"
+    ).get(token);
+    if (!staff) return res.status(404).json({ error: 'Lien invalide ou expiré.' });
+    res.json({ name: staff.full_name || staff.username, staffCode: staff.staff_code });
+  } catch (error) {
+    console.error('Erreur lecture lien avis:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// POST /api/feedback/:token - Dépôt d'un avis par un médecin (public, limité)
+app.post('/api/feedback/:token', authLimiter, async (req, res) => {
+  try {
+    const token = cleanString(req.params.token, 64);
+    const staff = await db.prepare(
+      "SELECT id, staff_code FROM users WHERE feedback_token = ? AND role = 'employee'"
+    ).get(token);
+    if (!staff) return res.status(404).json({ error: 'Lien invalide ou expiré.' });
+
+    const rating = toBoundedInt(req.body.rating, { min: 1, max: 5, fallback: null });
+    if (!rating) return res.status(400).json({ error: 'Note requise (1 à 5).' });
+
+    const doctorName = cleanString(req.body.doctorName, 120);
+    const doctorCode = cleanString(req.body.doctorCode, 40);
+    const comment = cleanString(req.body.comment, 2000);
+    const suggestion = cleanString(req.body.suggestion, 2000);
+
+    await db.prepare(`
+      INSERT INTO employee_feedback (user_id, staff_code, doctor_name, doctor_code, rating, comment, suggestion)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(staff.id, staff.staff_code, doctorName || null, doctorCode || null, rating, comment || null, suggestion || null);
+
+    res.status(201).json({ message: 'Merci, votre avis a bien été transmis.' });
+  } catch (error) {
+    console.error('Erreur dépôt avis:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/admin/feedback - Avis et suggestions (admin uniquement)
+app.get('/api/admin/feedback', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await db.prepare(`
+      SELECT f.id, f.staff_code, f.doctor_name, f.doctor_code, f.rating,
+             f.comment, f.suggestion, f.created_at,
+             COALESCE(u.full_name, u.username) AS employee_name
+      FROM employee_feedback f
+      LEFT JOIN users u ON u.id = f.user_id
+      ORDER BY f.created_at DESC
+      LIMIT 500
+    `).all();
+    res.json(rows);
+  } catch (error) {
+    console.error('Erreur lecture avis:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
