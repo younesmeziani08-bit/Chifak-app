@@ -3,6 +3,7 @@ import { Doctor, Booking } from '../App';
 import Header from './Header';
 import FloatingShapes from './FloatingShapes';
 import DoctorAvatar from './DoctorAvatar';
+import DoctorReviews from './DoctorReviews';
 import { useLanguage } from '../contexts/LanguageContext';
 import { slotsForDay, isWorkingDate as isWorkingDateShared, todayIso, maxBookingIso } from '../utils/slots';
 
@@ -428,6 +429,11 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
                     )}
                   </div>
                 )}
+
+                {/* Avis des patients — sous la fiche, à la manière d'une fiche
+                    de lieu. Visibles avant de choisir, sans possibilité de
+                    retrait : c'est ce qui leur donne leur valeur. */}
+                <DoctorReviews doctorId={doctor.id} />
               </div>
             )}
 

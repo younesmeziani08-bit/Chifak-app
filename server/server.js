@@ -1152,27 +1152,11 @@ app.get('/api/reviews', authenticateToken, async (req, res) => {
   }
 });
 
-// DELETE /api/reviews/:id - Supprimer un avis (admin/personnel) + recalcul de la note
-app.delete('/api/reviews/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    if (!isValidId(req.params.id)) {
-      return res.status(400).json({ error: 'Identifiant invalide' });
-    }
-    const id = Number(req.params.id);
-    const review = await db.prepare('SELECT doctor_id FROM reviews WHERE id = ?').get(id);
-    if (!review) {
-      return res.status(404).json({ error: 'Avis non trouvé' });
-    }
-    await db.prepare('DELETE FROM reviews WHERE id = ?').run(id);
-    const stats = await db.prepare('SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0) AS avg FROM reviews WHERE doctor_id = ?').get(review.doctor_id);
-    const avg = Math.round(Number(stats.avg) * 10) / 10;
-    await db.prepare('UPDATE doctors SET rating = ?, review_count = ? WHERE id = ?').run(avg, stats.count, review.doctor_id);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Erreur suppression avis:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
+/* La suppression d'un avis a été retirée volontairement.
+   Un avis publié par un patient ne doit pas pouvoir disparaître : une note
+   effaçable sur demande ne vaut rien pour le patient suivant. Les avis sont
+   désormais affichés sous la fiche du praticien, sans possibilité de retrait. */
+
 
 // ==================== ROUTES APPOINTMENTS ====================
 
@@ -1832,6 +1816,37 @@ app.post('/api/assistant/chat', authenticatePatientToken, async (req, res) => {
 
 // ==================== PERSONNEL (COMPTES EMPLOYÉS) ====================
 
+/**
+ * Identifiant de connexion dérivé du nom : « Younès Meziani » → « younes.meziani ».
+ *
+ * Les accents sont retirés et les espaces remplacés par un point, car
+ * l'identifiant se tape au clavier, parfois sur un poste sans clavier français.
+ * En cas d'homonyme, un numéro est ajouté : younes.meziani2, younes.meziani3…
+ */
+async function genererIdentifiant(prenom, nom) {
+  const nettoyer = (v) =>
+    (v || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')   // accents
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '')
+      .slice(0, 24);
+
+  const base = [nettoyer(prenom), nettoyer(nom)].filter(Boolean).join('.') || 'employe';
+
+  let candidat = base;
+  let n = 1;
+  // Boucle bornée : au-delà de 50 homonymes, il y a un problème de saisie,
+  // pas un besoin réel — on bascule sur un suffixe aléatoire.
+  while (n <= 50) {
+    const pris = await db.prepare('SELECT id FROM users WHERE username = ?').get(candidat);
+    if (!pris) return candidat;
+    n += 1;
+    candidat = `${base}${n}`;
+  }
+  return `${base}.${crypto.randomBytes(3).toString('hex')}`;
+}
+
 /** Matricule lisible : EMP-2026-0007. Le compteur repart de la base pour
  *  rester continu même après une suppression. */
 async function genererMatricule() {
@@ -1863,8 +1878,10 @@ async function journaliser(user, action, doctor) {
 app.get('/api/admin/employees', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const rows = await db.prepare(`
-      SELECT u.id, u.username, u.full_name, u.role, u.staff_code, u.feedback_token,
-             u.active, u.created_at,
+      SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.role,
+             u.staff_code, u.feedback_token, u.active, u.created_at,
+             u.birth_date, u.birth_place, u.phone, u.address, u.email,
+             u.position, u.hired_at, u.emergency_contact, u.notes,
              (SELECT COUNT(*) FROM staff_actions a WHERE a.user_id = u.id AND a.action = 'doctor_created') AS created_count,
              (SELECT COUNT(*) FROM staff_actions a WHERE a.user_id = u.id AND a.action = 'doctor_deleted') AS deleted_count,
              (SELECT COUNT(*) FROM employee_feedback f WHERE f.user_id = u.id) AS feedback_count,
@@ -1882,34 +1899,70 @@ app.get('/api/admin/employees', authenticateToken, requireAdmin, async (req, res
 // POST /api/admin/employees - Créer un compte employé
 app.post('/api/admin/employees', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const username = cleanString(req.body.username, 60).toLowerCase();
-    const fullName = cleanString(req.body.fullName, 120);
+    const firstName = cleanString(req.body.firstName, 60);
+    const lastName = cleanString(req.body.lastName, 60);
     const { password } = req.body;
 
-    if (!username || username.length < 3) {
-      return res.status(400).json({ error: 'Identifiant trop court (3 caractères minimum).' });
-    }
-    if (!/^[a-z0-9._-]+$/.test(username)) {
-      return res.status(400).json({ error: 'Identifiant : lettres, chiffres, point, tiret et souligné uniquement.' });
+    if (!firstName || !lastName) {
+      return res.status(400).json({ error: 'Nom et prénom obligatoires.' });
     }
     const pwdError = passwordStrengthError(password);
     if (pwdError) return res.status(400).json({ error: pwdError });
 
-    const existing = await db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-    if (existing) return res.status(409).json({ error: 'Cet identifiant est déjà utilisé.' });
+    const email = req.body.email ? normalizeEmail(req.body.email) : '';
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Adresse e-mail invalide.' });
+    }
+    const phone = cleanString(req.body.phone, 20);
+    if (phone && !isValidPhone(phone)) {
+      return res.status(400).json({ error: 'Numéro de téléphone invalide.' });
+    }
+    const birthDate = req.body.birthDate ? cleanString(req.body.birthDate, 10) : '';
+    if (birthDate && !isValidDate(birthDate)) {
+      return res.status(400).json({ error: 'Date de naissance invalide.' });
+    }
+    const hiredAt = req.body.hiredAt ? cleanString(req.body.hiredAt, 10) : '';
+    if (hiredAt && !isValidDate(hiredAt)) {
+      return res.status(400).json({ error: 'Date d\'entrée invalide.' });
+    }
+
+    // L'identifiant n'est plus saisi : il découle du nom, et le serveur règle
+    // seul les homonymes. Un identifiant choisi à la main finissait toujours
+    // par des « emp1 », « emp2 » impossibles à rattacher à une personne.
+    const username = await genererIdentifiant(firstName, lastName);
 
     const hashed = await bcrypt.hash(password, 10);
     const staffCode = await genererMatricule();
     // Jeton du QR code : aléatoire, jamais dérivé du matricule.
     const feedbackToken = crypto.randomBytes(18).toString('base64url');
+    const fullName = `${firstName} ${lastName}`.trim();
 
     const result = await db.prepare(`
-      INSERT INTO users (username, password, role, staff_code, full_name, feedback_token, active)
-      VALUES (?, ?, 'employee', ?, ?, ?, 1)
-    `).run(username, hashed, staffCode, fullName || null, feedbackToken);
+      INSERT INTO users (
+        username, password, role, staff_code, full_name, first_name, last_name,
+        birth_date, birth_place, phone, address, email, position, hired_at,
+        emergency_contact, notes, feedback_token, active
+      )
+      VALUES (?, ?, 'employee', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(
+      username, hashed, staffCode, fullName, firstName, lastName,
+      birthDate || null,
+      cleanString(req.body.birthPlace, 120) || null,
+      phone || null,
+      cleanString(req.body.address, 200) || null,
+      email || null,
+      cleanString(req.body.position, 80) || null,
+      hiredAt || null,
+      cleanString(req.body.emergencyContact, 120) || null,
+      cleanString(req.body.notes, 1000) || null,
+      feedbackToken
+    );
 
     const created = await db.prepare(
-      'SELECT id, username, full_name, role, staff_code, feedback_token, active, created_at FROM users WHERE id = ?'
+      `SELECT id, username, full_name, first_name, last_name, role, staff_code,
+              birth_date, birth_place, phone, address, email, position, hired_at,
+              emergency_contact, notes, feedback_token, active, created_at
+       FROM users WHERE id = ?`
     ).get(result.lastInsertRowid);
 
     res.status(201).json(created);

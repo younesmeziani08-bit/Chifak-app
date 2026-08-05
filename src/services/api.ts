@@ -424,15 +424,7 @@ export const reviewsAPI = {
     return await response.json();
   },
 
-  // Admin : supprimer un avis
-  remove: async (id: number) => {
-    const response = await fetch(`${API_URL}/reviews/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Erreur lors de la suppression');
-    }
-    return await response.json();
-  },
+  // La suppression d'un avis n'existe plus : voir la note dans server.js.
 };
 
 // ==================== ESPACE MÉDECIN ====================
@@ -613,6 +605,17 @@ export interface Employee {
   id: number;
   username: string;
   full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  birth_date: string | null;
+  birth_place: string | null;
+  phone: string | null;
+  address: string | null;
+  email: string | null;
+  position: string | null;
+  hired_at: string | null;
+  emergency_contact: string | null;
+  notes: string | null;
   role: 'admin' | 'employee';
   staff_code: string | null;
   feedback_token: string | null;
@@ -654,7 +657,20 @@ export const employeesAPI = {
   getAll: async (): Promise<Employee[]> =>
     attendreJson(await fetch(`${API_URL}/admin/employees`, { headers: getAuthHeaders() }), 'Erreur de chargement'),
 
-  create: async (data: { username: string; fullName?: string; password: string }): Promise<Employee> =>
+  create: async (data: {
+    firstName: string;
+    lastName: string;
+    password: string;
+    birthDate?: string;
+    birthPlace?: string;
+    phone?: string;
+    address?: string;
+    email?: string;
+    position?: string;
+    hiredAt?: string;
+    emergencyContact?: string;
+    notes?: string;
+  }): Promise<Employee> =>
     attendreJson(
       await fetch(`${API_URL}/admin/employees`, {
         method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data),

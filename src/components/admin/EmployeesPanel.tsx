@@ -18,6 +18,8 @@ function lienAvis(token: string) {
   return `${window.location.origin}/avis/${token}`;
 }
 
+const cls = 'px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 w-full';
+
 export default function EmployeesPanel() {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
@@ -26,7 +28,27 @@ export default function EmployeesPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const [form, setForm] = useState({ username: '', fullName: '', password: '' });
+  const vide = {
+    firstName: '', lastName: '', password: '',
+    birthDate: '', birthPlace: '', phone: '', address: '', email: '',
+    position: '', hiredAt: '', emergencyContact: '', notes: '',
+  };
+  const [form, setForm] = useState(vide);
+  const champ = (cle: keyof typeof vide) => ({
+    value: form[cle],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setForm({ ...form, [cle]: e.target.value }),
+  });
+
+  /* Aperçu de l'identifiant, calculé comme côté serveur. Il n'est pas envoyé :
+     le serveur le régénère et gère les homonymes, seul lui connaît les comptes
+     déjà pris. C'est un aperçu, pas une décision. */
+  const identifiantPrevu = (() => {
+    const nettoyer = (v: string) =>
+      v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
+    const base = [nettoyer(form.firstName), nettoyer(form.lastName)].filter(Boolean).join('.');
+    return base || '—';
+  })();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -73,11 +95,20 @@ export default function EmployeesPanel() {
     setCreateError('');
     try {
       await employeesAPI.create({
-        username: form.username.trim().toLowerCase(),
-        fullName: form.fullName.trim() || undefined,
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
         password: form.password,
+        birthDate: form.birthDate || undefined,
+        birthPlace: form.birthPlace.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        address: form.address.trim() || undefined,
+        email: form.email.trim() || undefined,
+        position: form.position.trim() || undefined,
+        hiredAt: form.hiredAt || undefined,
+        emergencyContact: form.emergencyContact.trim() || undefined,
+        notes: form.notes.trim() || undefined,
       });
-      setForm({ username: '', fullName: '', password: '' });
+      setForm(vide);
       await load();
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Erreur');
@@ -109,30 +140,74 @@ export default function EmployeesPanel() {
         <h3 className="font-bold text-gray-900 mb-4">
           {isArabic ? 'إضافة موظف' : 'Ajouter un employé'}
         </h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <input
-            value={form.fullName}
-            onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-            placeholder={isArabic ? 'الاسم الكامل' : 'Nom et prénom'}
-            className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-            placeholder={isArabic ? 'اسم الدخول' : 'Identifiant de connexion'}
-            required
-            className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            placeholder={isArabic ? 'كلمة المرور' : 'Mot de passe'}
-            required
-            className="px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              {isArabic ? 'الهوية' : 'Identité'}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input {...champ('firstName')} required placeholder={isArabic ? 'الاسم *' : 'Prénom *'} className={cls} />
+              <input {...champ('lastName')} required placeholder={isArabic ? 'اللقب *' : 'Nom *'} className={cls} />
+              <input {...champ('birthDate')} type="date" max={aujourdhui} placeholder="Date de naissance" className={cls} />
+              <input {...champ('birthPlace')} placeholder={isArabic ? 'مكان الميلاد' : 'Lieu de naissance'} className={cls} />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              {isArabic ? 'الاتصال' : 'Contact'}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input {...champ('phone')} type="tel" placeholder={isArabic ? 'الهاتف' : 'Téléphone'} className={cls} />
+              <input {...champ('email')} type="email" placeholder="Email" className={cls} />
+              <input {...champ('address')} placeholder={isArabic ? 'العنوان' : 'Adresse'} className={`${cls} sm:col-span-2`} />
+              {/* Utile pour un poste de terrain : l'employé se déplace chez les praticiens. */}
+              <input {...champ('emergencyContact')} placeholder={isArabic ? 'شخص يُتصل به عند الطوارئ' : 'Personne à prévenir (nom et téléphone)'} className={`${cls} sm:col-span-2`} />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              {isArabic ? 'المنصب' : 'Poste'}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input {...champ('position')} placeholder={isArabic ? 'الوظيفة (مثال: مندوب ميداني)' : 'Fonction (ex : chargé de secteur)'} className={cls} />
+              <label className="flex flex-col">
+                <span className="text-xs text-gray-500 mb-1">{isArabic ? 'تاريخ التوظيف' : 'Date d’entrée'}</span>
+                <input {...champ('hiredAt')} type="date" className={cls} />
+              </label>
+              <textarea {...champ('notes')} rows={2} placeholder={isArabic ? 'ملاحظات داخلية' : 'Notes internes'} className={`${cls} sm:col-span-2 resize-none`} />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              {isArabic ? 'الدخول' : 'Accès'}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {/* L'identifiant n'est plus saisi : il se déduit du nom. Le champ
+                  est en lecture seule pour montrer le résultat sans laisser
+                  croire qu'il est modifiable. */}
+              <label className="flex flex-col">
+                <span className="text-xs text-gray-500 mb-1">
+                  {isArabic ? 'اسم الدخول (تلقائي)' : 'Identifiant de connexion (automatique)'}
+                </span>
+                <input
+                  value={identifiantPrevu}
+                  readOnly
+                  tabIndex={-1}
+                  className={`${cls} bg-gray-100 text-gray-600 font-mono cursor-default`}
+                />
+              </label>
+              <label className="flex flex-col">
+                <span className="text-xs text-gray-500 mb-1">{isArabic ? 'كلمة المرور *' : 'Mot de passe *'}</span>
+                <input {...champ('password')} type="password" required className={cls} />
+              </label>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 mt-3">
+
+        <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-gray-200">
           <button
             type="submit"
             disabled={creating}
@@ -142,8 +217,8 @@ export default function EmployeesPanel() {
           </button>
           <p className="text-xs text-gray-500">
             {isArabic
-              ? 'يُمنح رقم تسلسلي تلقائيًا، ويُنشأ رمز QR للآراء.'
-              : 'Le matricule et le QR code d’avis sont attribués automatiquement.'}
+              ? 'يُمنح رقم تسلسلي ورمز QR تلقائيًا. في حال التشابه يُضاف رقم لاسم الدخول.'
+              : 'Matricule et QR code attribués automatiquement. En cas d’homonyme, un numéro est ajouté à l’identifiant.'}
           </p>
         </div>
         {createError && <p className="text-sm text-red-600 mt-2">{createError}</p>}

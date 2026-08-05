@@ -193,6 +193,21 @@ export async function initDatabase() {
   // cite dans un échange, pas l'identifiant technique de la ligne.
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS staff_code TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT');
+  // Fiche administrative de l'employé. Séparer prénom et nom permet de
+  // construire l'identifiant de connexion et de trier correctement.
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_date TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_place TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS position TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS hired_at TEXT');
+  // Contact à prévenir en cas d'accident : information utile pour un poste
+  // de terrain, où l'employé se déplace chez les praticiens.
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT');
   // Jeton public du QR code. Distinct du matricule : le matricule est affiché
   // partout, alors que ce jeton donne le droit de déposer un avis. S'il fuite,
   // on le renouvelle sans changer l'identité de l'employé.
