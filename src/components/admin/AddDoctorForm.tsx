@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { Doctor } from '../../App';
 import { useDoctors } from '../../contexts/DoctorsContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import LocationSelector from '../LocationSelector';
-import DoctorAvatar from '../DoctorAvatar';
+import LocationSelector from '../home/LocationSelector';
+import DoctorAvatar from '../shared/DoctorAvatar';
 import { preparerPhoto, poidsApproximatif, ImageTropLourdeError } from '../../utils/imageUpload';
 
 interface AddDoctorFormProps {

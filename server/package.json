@@ -32,7 +32,8 @@
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
     "rate-limit-redis": "^4.2.0",
-    "redis": "^4.7.0"
+    "redis": "^4.7.0",
+    "connect-redis": "^8.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

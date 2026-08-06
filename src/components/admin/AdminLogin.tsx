@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import LanguageToggle from '../LanguageToggle';
-import FloatingShapes from '../FloatingShapes';
+import LanguageToggle from '../shared/LanguageToggle';
+import FloatingShapes from '../home/FloatingShapes';
 
 interface AdminLoginProps {
   onLoginSuccess: () => void;

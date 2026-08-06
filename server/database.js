@@ -1,6 +1,7 @@
 import './env.js';
 import pg from 'pg';
 import bcrypt from 'bcrypt';
+import crypto from 'node:crypto';
 
 const { Pool } = pg;
 
@@ -329,89 +330,130 @@ export async function initDatabase() {
 
   console.log('✅ Tables PostgreSQL prêtes');
 
-  // Utilisateurs par défaut (admin / employés)
+  /* ── Semis initial ──
+     Règle absolue : AUCUN identifiant connu d'avance en production.
+     L'ancien code créait admin/chifak2026, employee1/chifak123,
+     employee2/chifak456 et un patient demo/patient123 — des mots de passe
+     lisibles par quiconque ouvre le dépôt GitHub. En production, on crée un
+     seul compte admin, avec un mot de passe tiré au hasard et affiché UNE
+     fois dans les logs du premier démarrage : à changer immédiatement.
+     Les données de démonstration (médecins fictifs, avis inventés, faux
+     compteurs « 4,9 ★ · 245 avis ») n'existent qu'en développement — les
+     afficher à de vrais patients serait un mensonge. */
+  const enProduction = process.env.NODE_ENV === 'production';
+
   const userCount = await pool.query('SELECT COUNT(*)::int AS count FROM users');
   if (userCount.rows[0].count === 0) {
     const insertUser = 'INSERT INTO users (username, password, role) VALUES ($1, $2, $3)';
-    await pool.query(insertUser, ['admin', await bcrypt.hash('chifak2026', 10), 'admin']);
-    await pool.query(insertUser, ['employee1', await bcrypt.hash('chifak123', 10), 'employee']);
-    await pool.query(insertUser, ['employee2', await bcrypt.hash('chifak456', 10), 'employee']);
-    console.log('✅ Utilisateurs par défaut créés');
-  }
-
-  // Patient de démonstration
-  const demoPatientEmail = 'demo.patient@chifak.dz';
-  const existingDemo = await pool.query('SELECT id FROM patients WHERE email = $1', [demoPatientEmail]);
-  if (existingDemo.rows.length === 0) {
-    await pool.query(
-      'INSERT INTO patients (email, name, password, is_verified) VALUES ($1, $2, $3, 1)',
-      [demoPatientEmail, 'Patient Demo', await bcrypt.hash('patient123', 10)]
-    );
-    console.log('✅ Patient de démonstration créé');
-  }
-
-  // Médecins par défaut
-  const doctorCount = await pool.query('SELECT COUNT(*)::int AS count FROM doctors');
-  if (doctorCount.rows[0].count === 0) {
-    const slots = JSON.stringify(['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00']);
-    const insertDoctor = `
-      INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, rating, review_count, available_slots, next_available, slot_duration, working_days)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-    `;
-    await pool.query(insertDoctor, [
-      'Dr. Ahmed Benali', 'Médecin généraliste', '15 Rue Didouche Mourad', "Sidi M'Hamed, Alger",
-      '0555123456', 'ahmed.benali@chifak.dz', 'MED-001', '👨‍⚕️', 4.9, 245, slots, 'Disponible maintenant', 30, '[1,2,3,4,5]',
-    ]);
-    await pool.query(insertDoctor, [
-      'Dr. Fatima Zahra', 'Dentiste', "8 Avenue de l'Indépendance", 'Bir Mourad Raïs, Alger',
-      '0555234567', 'fatima.zahra@chifak.dz', 'MED-002', '👩‍⚕️', 4.8, 189, slots, 'Disponible maintenant', 30, '[1,2,3,4,5]',
-    ]);
-    console.log('✅ Médecins par défaut créés');
-  }
-
-  // Quelques avis de démonstration
-  const reviewCount = await pool.query('SELECT COUNT(*)::int AS count FROM reviews');
-  if (reviewCount.rows[0].count === 0) {
-    const d1 = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-001'")).rows[0];
-    const d2 = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-002'")).rows[0];
-    const seedReviews = [];
-    if (d1) {
-      seedReviews.push([d1.id, 'amina.b@example.dz', 'Amina B.', 5, 'Médecin très à l\'écoute et professionnel. Je recommande.']);
-      seedReviews.push([d1.id, 'yacine.m@example.dz', 'Yacine M.', 4, 'Bonne consultation, explications claires. Un peu d\'attente.']);
-      seedReviews.push([d1.id, 'nadia.h@example.dz', 'Nadia H.', 5, 'Excellent accueil, rien à redire.']);
+    if (enProduction) {
+      const motDePasseInitial = crypto.randomBytes(12).toString('base64url');
+      await pool.query(insertUser, ['admin', await bcrypt.hash(motDePasseInitial, 12), 'admin']);
+      console.log('┌──────────────────────────────────────────────────────────┐');
+      console.log('│  Compte admin créé. Mot de passe initial (une seule      │');
+      console.log('│  apparition — changez-le dès la première connexion) :    │');
+      console.log(`│  admin / ${motDePasseInitial}                        │`);
+      console.log('└──────────────────────────────────────────────────────────┘');
+    } else {
+      await pool.query(insertUser, ['admin', await bcrypt.hash('chifak2026', 10), 'admin']);
+      await pool.query(insertUser, ['employee1', await bcrypt.hash('chifak123', 10), 'employee']);
+      await pool.query(insertUser, ['employee2', await bcrypt.hash('chifak456', 10), 'employee']);
+      console.log('✅ Utilisateurs de développement créés');
     }
-    if (d2) {
-      seedReviews.push([d2.id, 'sara.k@example.dz', 'Sara K.', 5, 'Dentiste douce et compétente, cabinet impeccable.']);
-      seedReviews.push([d2.id, 'karim.d@example.dz', 'Karim D.', 4, 'Travail soigné, je reviendrai.']);
+  }
+
+  /* Détection d'un héritage dangereux : si le compte admin de PRODUCTION
+     porte encore l'un des anciens mots de passe publiés, on le crie à chaque
+     démarrage. On ne peut pas le changer d'office — l'admin perdrait l'accès
+     sans explication — mais on ne laisse pas le danger silencieux. */
+  if (enProduction) {
+    const adminRow = await pool.query("SELECT password FROM users WHERE username = 'admin'");
+    if (adminRow.rows[0]) {
+      for (const ancien of ['chifak2026', 'admin', 'password']) {
+        if (await bcrypt.compare(ancien, adminRow.rows[0].password)) {
+          console.error('🚨 SÉCURITÉ : le compte admin utilise encore un mot de passe publié');
+          console.error('🚨 dans le dépôt du projet. Changez-le IMMÉDIATEMENT depuis');
+          console.error('🚨 l\'interface d\'administration.');
+          break;
+        }
+      }
     }
-    for (const r of seedReviews) {
+  }
+
+  if (!enProduction) {
+    // Patient de démonstration
+    const demoPatientEmail = 'demo.patient@chifak.dz';
+    const existingDemo = await pool.query('SELECT id FROM patients WHERE email = $1', [demoPatientEmail]);
+    if (existingDemo.rows.length === 0) {
       await pool.query(
-        'INSERT INTO reviews (doctor_id, patient_email, patient_name, rating, comment) VALUES ($1, $2, $3, $4, $5)',
-        r
+        'INSERT INTO patients (email, name, password, is_verified) VALUES ($1, $2, $3, 1)',
+        [demoPatientEmail, 'Patient Demo', await bcrypt.hash('patient123', 10)]
       );
+      console.log('✅ Patient de démonstration créé');
     }
-    // Recalcul des notes des médecins concernés
-    for (const d of [d1, d2]) {
-      if (!d) continue;
-      const s = (await pool.query('SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0) AS avg FROM reviews WHERE doctor_id = $1', [d.id])).rows[0];
-      await pool.query('UPDATE doctors SET rating = $1, review_count = $2 WHERE id = $3', [Math.round(Number(s.avg) * 10) / 10, s.count, d.id]);
-    }
-    console.log('✅ Avis de démonstration créés');
-  }
 
-  // Rendez-vous passé de démonstration (pour tester la notification + les avis)
-  const demoAppt = await pool.query("SELECT COUNT(*)::int AS count FROM appointments WHERE patient_email = 'demo.patient@chifak.dz'");
-  if (demoAppt.rows[0].count === 0) {
-    const dd = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-001'")).rows[0];
-    if (dd) {
-      const past = new Date();
-      past.setDate(past.getDate() - 3);
-      const iso = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
-      await pool.query(
-        "INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, status) VALUES ($1, $2, $3, $4, $5, $6, 'confirmed')",
-        [dd.id, 'Patient Demo', 'demo.patient@chifak.dz', '0555000000', iso, '09:00']
-      );
-      console.log('✅ Rendez-vous de démonstration (passé) créé');
+    // Médecins de démonstration — notes et compteurs à zéro : les seuls
+    // chiffres affichés sont ceux que les avis semés produisent réellement.
+    const doctorCount = await pool.query('SELECT COUNT(*)::int AS count FROM doctors');
+    if (doctorCount.rows[0].count === 0) {
+      const slots = JSON.stringify(['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00']);
+      const insertDoctor = `
+        INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, rating, review_count, available_slots, next_available, slot_duration, working_days)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0, $9, $10, $11, $12)
+      `;
+      await pool.query(insertDoctor, [
+        'Dr. Ahmed Benali', 'Médecin généraliste', '15 Rue Didouche Mourad', "Sidi M'Hamed, Alger",
+        '0555123456', 'ahmed.benali@chifak.dz', 'MED-001', '👨‍⚕️', slots, 'Disponible maintenant', 30, '[1,2,3,4,5]',
+      ]);
+      await pool.query(insertDoctor, [
+        'Dr. Fatima Zahra', 'Dentiste', "8 Avenue de l'Indépendance", 'Bir Mourad Raïs, Alger',
+        '0555234567', 'fatima.zahra@chifak.dz', 'MED-002', '👩‍⚕️', slots, 'Disponible maintenant', 30, '[1,2,3,4,5]',
+      ]);
+      console.log('✅ Médecins de démonstration créés');
+    }
+
+    // Avis de démonstration
+    const reviewCount = await pool.query('SELECT COUNT(*)::int AS count FROM reviews');
+    if (reviewCount.rows[0].count === 0) {
+      const d1 = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-001'")).rows[0];
+      const d2 = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-002'")).rows[0];
+      const seedReviews = [];
+      if (d1) {
+        seedReviews.push([d1.id, 'amina.b@example.dz', 'Amina B.', 5, 'Médecin très à l\'écoute et professionnel. Je recommande.']);
+        seedReviews.push([d1.id, 'yacine.m@example.dz', 'Yacine M.', 4, 'Bonne consultation, explications claires. Un peu d\'attente.']);
+        seedReviews.push([d1.id, 'nadia.h@example.dz', 'Nadia H.', 5, 'Excellent accueil, rien à redire.']);
+      }
+      if (d2) {
+        seedReviews.push([d2.id, 'sara.k@example.dz', 'Sara K.', 5, 'Dentiste douce et compétente, cabinet impeccable.']);
+        seedReviews.push([d2.id, 'karim.d@example.dz', 'Karim D.', 4, 'Travail soigné, je reviendrai.']);
+      }
+      for (const r of seedReviews) {
+        await pool.query(
+          'INSERT INTO reviews (doctor_id, patient_email, patient_name, rating, comment) VALUES ($1, $2, $3, $4, $5)',
+          r
+        );
+      }
+      for (const d of [d1, d2]) {
+        if (!d) continue;
+        const s = (await pool.query('SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0) AS avg FROM reviews WHERE doctor_id = $1', [d.id])).rows[0];
+        await pool.query('UPDATE doctors SET rating = $1, review_count = $2 WHERE id = $3', [Math.round(Number(s.avg) * 10) / 10, s.count, d.id]);
+      }
+      console.log('✅ Avis de démonstration créés');
+    }
+
+    // Rendez-vous passé de démonstration (teste la notification + les avis)
+    const demoAppt = await pool.query("SELECT COUNT(*)::int AS count FROM appointments WHERE patient_email = 'demo.patient@chifak.dz'");
+    if (demoAppt.rows[0].count === 0) {
+      const dd = (await pool.query("SELECT id FROM doctors WHERE doctor_code = 'MED-001'")).rows[0];
+      if (dd) {
+        const past = new Date();
+        past.setDate(past.getDate() - 3);
+        const iso = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, '0')}-${String(past.getDate()).padStart(2, '0')}`;
+        await pool.query(
+          "INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, status) VALUES ($1, $2, $3, $4, $5, $6, 'confirmed')",
+          [dd.id, 'Patient Demo', 'demo.patient@chifak.dz', '0555000000', iso, '09:00']
+        );
+        console.log('✅ Rendez-vous de démonstration (passé) créé');
+      }
     }
   }
 }

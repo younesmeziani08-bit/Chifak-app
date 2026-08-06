@@ -141,6 +141,15 @@ export async function sendVerificationEmail(email, code, language = 'fr') {
   `;
 
   if (!isEmailConfigured()) {
+    /* Le code n'apparaît dans les logs qu'en développement. En production,
+       les logs Render sont un stockage partagé et durable : y écrire un code
+       de vérification revient à le publier. Si l'e-mail n'est pas configuré
+       en production, la vérification échoue franchement — c'est un problème
+       de configuration à corriger, pas à contourner. */
+    if (process.env.NODE_ENV === 'production') {
+      console.error('❌ EMAIL_USER/EMAIL_PASSWORD absents : impossible d\'envoyer le code de vérification.');
+      return false;
+    }
     console.log('\n📧 [MODE DÉMO] Code de vérification');
     console.log(`   Email : ${email}`);
     console.log(`   Code  : ${code}\n`);
@@ -159,9 +168,13 @@ export async function sendVerificationEmail(email, code, language = 'fr') {
     console.log(`✅ Email de vérification envoyé à ${email}`);
     return true;
   } catch (error) {
-    console.error('❌ Erreur envoi email:', error);
-    console.log(`\n📧 [FALLBACK DÉMO] Code de vérification pour ${email}: ${code}\n`);
-    return true;
+    console.error('❌ Erreur envoi email:', error.message);
+    // Même règle : le code ne sort dans les logs qu'en développement.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`\n📧 [FALLBACK DÉMO] Code de vérification pour ${email}: ${code}\n`);
+      return true;
+    }
+    return false;
   }
 }
 

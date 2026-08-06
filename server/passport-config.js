@@ -2,10 +2,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import db from './database.js';
-import dotenv from 'dotenv';
-import { saveAccountToFile } from './storageService.js';
-
-dotenv.config();
+import './env.js';
 
 // Sérialisation de l'utilisateur
 passport.serializeUser((user, done) => {
@@ -14,7 +11,11 @@ passport.serializeUser((user, done) => {
 
 // Désérialisation de l'utilisateur
 passport.deserializeUser(async (id, done) => {
-  const user = await db.prepare('SELECT * FROM patients WHERE id = ?').get(id);
+  // Jamais SELECT * ici : l'objet ressort dans req.user à chaque requête de
+  // session, et l'ancienne version y plaçait le hachage du mot de passe.
+  const user = await db.prepare(
+    'SELECT id, email, name, is_verified, balance FROM patients WHERE id = ?'
+  ).get(id);
   done(null, user);
 });
 
@@ -55,8 +56,6 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_ID !== 'your_googl
         }
       }
 
-      // Sauvegarde dans le dossier temporaire
-      saveAccountToFile({ ...user, password: '[OAUTH_GOOGLE]', status: 'verified_google' });
 
       return done(null, user);
     } catch (error) {
@@ -101,8 +100,6 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_ID !== 'your_faceboo
         }
       }
 
-      // Sauvegarde dans le dossier temporaire
-      saveAccountToFile({ ...user, password: '[OAUTH_FACEBOOK]', status: 'verified_facebook' });
 
       return done(null, user);
     } catch (error) {

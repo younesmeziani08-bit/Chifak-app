@@ -3,7 +3,7 @@ import { Doctor } from '../../App';
 import { useDoctors } from '../../contexts/DoctorsContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { appointmentsAPI } from '../../services/api';
-import DoctorAvatar from '../DoctorAvatar';
+import DoctorAvatar from '../shared/DoctorAvatar';
 import AddDoctorForm from './AddDoctorForm';
 
 export default function DoctorsList() {

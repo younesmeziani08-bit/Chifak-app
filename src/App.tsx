@@ -1,21 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import HomePage from './components/HomePage';
-import SearchResults from './components/SearchResults';
-import PatientAccount from './components/PatientAccount';
-import BookingPage from './components/BookingPage';
-import ConfirmationPage from './components/ConfirmationPage';
-import LoginModal from './components/LoginModal';
+import HomePage from './components/home/HomePage';
+import SearchResults from './components/booking/SearchResults';
+import PatientAccount from './components/patient/PatientAccount';
+import BookingPage from './components/booking/BookingPage';
+import ConfirmationPage from './components/booking/ConfirmationPage';
+import LoginModal from './components/patient/LoginModal';
 import SignupModal from './components/auth/SignupModal';
 import OAuthCallback from './components/auth/OAuthCallback';
 import AdminLogin from './components/admin/AdminLogin';
 import AdminDashboard from './components/admin/AdminDashboard';
-import DoctorSpace from './components/DoctorSpace';
-import ProfessionalModal from './components/ProfessionalModal';
-import FeedbackPage from './components/FeedbackPage';
+import DoctorSpace from './components/doctor/DoctorSpace';
+import ProfessionalModal from './components/shared/ProfessionalModal';
+import FeedbackPage from './components/doctor/FeedbackPage';
 import { useAdminAuth } from './contexts/AdminAuthContext';
 import { appointmentsAPI } from './services/api';
-import PageTransition from './components/PageTransition';
+import PageTransition from './components/shared/PageTransition';
 
 export interface Doctor {
   id: number;

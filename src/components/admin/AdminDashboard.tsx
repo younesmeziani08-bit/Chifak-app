@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAdminAuth } from '../../contexts/AdminAuthContext';
 import { useDoctors } from '../../contexts/DoctorsContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import LanguageToggle from '../LanguageToggle';
+import LanguageToggle from '../shared/LanguageToggle';
 import AddDoctorForm from './AddDoctorForm';
 import DoctorsList from './DoctorsList';
 import EmployeesPanel from './EmployeesPanel';
