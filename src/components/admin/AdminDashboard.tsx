@@ -28,14 +28,10 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   const [upcoming, setUpcoming] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
-    const today = new Date().toISOString().slice(0, 10);
-    appointmentsAPI.getAll()
-      .then((rows: any[]) => {
-        if (!alive) return;
-        setUpcoming((rows || []).filter(
-          (a) => a.status !== 'cancelled' && String(a.appointment_date) >= today
-        ).length);
-      })
+    // Compté en base : voir la note dans le service. Le tableau de bord
+    // n'affiche qu'un total, il n'a aucune raison de recevoir les patients.
+    appointmentsAPI.getUpcomingStats()
+      .then(({ total }) => { if (alive) setUpcoming(total); })
       .catch(() => { if (alive) setUpcoming(null); });
     return () => { alive = false; };
   }, [doctors.length]);

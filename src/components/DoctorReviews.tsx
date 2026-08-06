@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
-import { reviewsAPI } from '../services/api';
+import { reviewsAPI, type ReviewSummary } from '../services/api';
 
 /**
  * Avis des patients sous la fiche d'un praticien.
@@ -15,14 +15,6 @@ import { reviewsAPI } from '../services/api';
  * avis à 3, sans rien signifier de comparable.
  */
 
-interface Review {
-  id: number;
-  patient_name: string | null;
-  rating: number;
-  comment: string | null;
-  created_at: string;
-}
-
 function Etoiles({ note, taille = 'text-base' }: { note: number; taille?: string }) {
   return (
     <span className={`${taille} tracking-tight`} aria-label={`${note} sur 5`}>
@@ -36,28 +28,33 @@ export default function DoctorReviews({ doctorId }: { doctorId: number }) {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
 
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const [resume, setResume] = useState<ReviewSummary | null>(null);
   const [loading, setLoading] = useState(true);
   /** Au-delà de cinq avis, on replie : la fiche resterait sinon interminable. */
   const [tout, setTout] = useState(false);
 
   useEffect(() => {
-    let alive = true;
-    reviewsAPI.getForDoctor(doctorId)
-      .then((rows) => { if (alive) setReviews(Array.isArray(rows) ? rows : []); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    let vivant = true;
+    setLoading(true);
+    reviewsAPI.getSummaryForDoctor(doctorId)
+      .then((r) => { if (vivant) setResume(r); })
+      .finally(() => { if (vivant) setLoading(false); });
+    return () => { vivant = false; };
   }, [doctorId]);
 
-  if (loading) return null;
+  if (loading || !resume) return null;
 
-  const total = reviews.length;
-  const moyenne = total ? reviews.reduce((s, r) => s + r.rating, 0) / total : 0;
+  /* Moyenne et répartition viennent du serveur : elles portent sur la
+     totalité des avis, alors que la liste ci-dessous s'arrête aux cent plus
+     récents. Les calculer ici donnerait une moyenne fausse sur les praticiens
+     les plus consultés. */
+  const { total, moyenne, reviews } = resume;
   const repartition = [5, 4, 3, 2, 1].map((n) => ({
     note: n,
-    nombre: reviews.filter((r) => r.rating === n).length,
+    nombre: resume.repartition?.[n] ?? 0,
   }));
   const visibles = tout ? reviews : reviews.slice(0, 5);
+  const partiel = total > reviews.length;
 
   return (
     <section className="bg-white rounded-2xl p-5 sm:p-8 shadow-sm border border-gray-100">
@@ -130,7 +127,7 @@ export default function DoctorReviews({ doctorId }: { doctorId: number }) {
             ))}
           </ul>
 
-          {total > 5 && (
+          {reviews.length > 5 && (
             <button
               type="button"
               onClick={() => setTout((v) => !v)}
@@ -138,8 +135,18 @@ export default function DoctorReviews({ doctorId }: { doctorId: number }) {
             >
               {tout
                 ? (isArabic ? 'عرض أقل' : 'Afficher moins')
-                : (isArabic ? `عرض كل الآراء (${total})` : `Voir les ${total} avis`)}
+                : (isArabic
+                    ? `عرض الآراء (${reviews.length})`
+                    : `Voir les ${reviews.length} avis`)}
             </button>
+          )}
+
+          {tout && partiel && (
+            <p className="mt-3 text-xs text-gray-400">
+              {isArabic
+                ? `أحدث ${reviews.length} رأي من أصل ${total}.`
+                : `Les ${reviews.length} avis les plus récents sur ${total}.`}
+            </p>
           )}
         </>
       )}

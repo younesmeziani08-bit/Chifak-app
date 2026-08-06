@@ -20,18 +20,10 @@ export default function DoctorsList() {
   const [upcomingByDoctor, setUpcomingByDoctor] = useState<Record<number, number>>({});
   useEffect(() => {
     let alive = true;
-    const today = new Date().toISOString().slice(0, 10);
-    appointmentsAPI.getAll()
-      .then((rows: any[]) => {
-        if (!alive) return;
-        const counts: Record<number, number> = {};
-        for (const a of rows || []) {
-          if (a.status === 'cancelled') continue;
-          if (String(a.appointment_date) < today) continue;
-          counts[a.doctor_id] = (counts[a.doctor_id] || 0) + 1;
-        }
-        setUpcomingByDoctor(counts);
-      })
+    // Compté en base : on ne rapatrie plus la liste entière des rendez-vous,
+    // avec les coordonnées de chaque patient, pour n'afficher qu'un nombre.
+    appointmentsAPI.getUpcomingStats()
+      .then(({ parMedecin }) => { if (alive) setUpcomingByDoctor(parMedecin || {}); })
       .catch(() => { /* l'avertissement est un confort, pas un bloquant */ });
     return () => { alive = false; };
   }, [doctors.length]);

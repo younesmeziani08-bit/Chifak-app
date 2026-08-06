@@ -1,3 +1,4 @@
+import './env.js';
 import pg from 'pg';
 import bcrypt from 'bcrypt';
 
@@ -188,6 +189,18 @@ export async function initDatabase() {
   // on n'active pas une modalité de soin à la place du praticien.
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS accepts_video INTEGER DEFAULT 0");
 
+  /* Empreinte de la photo téléversée.
+     Les portraits sont stockés en « data:image/jpeg;base64,… » dans la colonne
+     image, soit jusqu'à 200 Ko par praticien. Les renvoyer dans la liste de
+     l'annuaire faisait peser une recherche jusqu'à cent mégaoctets. On garde
+     ici une empreinte courte : la liste ne cite plus que l'adresse de la photo,
+     et PostgreSQL n'a plus besoin d'aller lire la colonne volumineuse. */
+  await pool.query('ALTER TABLE doctors ADD COLUMN IF NOT EXISTS photo_hash TEXT');
+  await pool.query(`
+    UPDATE doctors SET photo_hash = md5(image)
+    WHERE image LIKE 'data:image/%' AND photo_hash IS NULL
+  `);
+
   // ── Comptes du personnel ──
   // Matricule lisible par un humain (EMP-2026-0007) : c'est lui que l'admin
   // cite dans un échange, pas l'identifiant technique de la ligne.
@@ -281,13 +294,37 @@ export async function initDatabase() {
     "CREATE INDEX IF NOT EXISTS idx_staff_actions_user_date ON staff_actions (user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_employee_feedback_user ON employee_feedback (user_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_appointments_patient_email ON appointments (patient_email)",
-    "CREATE INDEX IF NOT EXISTS idx_reviews_doctor ON reviews (doctor_id)",
+    // La fiche affiche les avis les plus récents d'abord : en indexant la date
+    // dans l'ordre de lecture, PostgreSQL prend les cent premiers sans trier.
+    "CREATE INDEX IF NOT EXISTS idx_reviews_doctor_date ON reviews (doctor_id, created_at DESC)",
+    // « Ai-je déjà noté ce médecin ? » interroge l'e-mail du patient.
+    "CREATE INDEX IF NOT EXISTS idx_reviews_patient ON reviews (patient_email)",
     "CREATE INDEX IF NOT EXISTS idx_patients_email ON patients (email)",
     "CREATE INDEX IF NOT EXISTS idx_consultations_doctor ON consultations (doctor_id)",
     "CREATE INDEX IF NOT EXISTS idx_verification_email ON verification_codes (email)",
+    // username porte déjà une contrainte UNIQUE, donc son index existe.
+    // Le QR code d'un employé est résolu par ce jeton, sur une route publique.
+    "CREATE INDEX IF NOT EXISTS idx_users_feedback_token ON users (feedback_token)",
   ];
   for (const sql of indexes) {
     try { await pool.query(sql); } catch (e) { console.warn('Index ignoré:', e.message); }
+  }
+
+  /* Recherche par spécialité et par ville.
+     Ces deux champs sont interrogés avec ILIKE '%…%'. Un index B-tree classique
+     n'y sert à rien : le joker en tête interdit toute recherche ordonnée, et
+     PostgreSQL parcourt la table entière à chaque frappe. L'extension pg_trgm
+     indexe les groupes de trois lettres et rend ces recherches immédiates,
+     même sur des dizaines de milliers de fiches.
+     Si l'extension n'est pas disponible sur l'hébergement, on continue sans :
+     la recherche reste correcte, seulement plus lente. */
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_doctors_specialty_trgm ON doctors USING gin (specialty gin_trgm_ops)');
+    await pool.query('CREATE INDEX IF NOT EXISTS idx_doctors_city_trgm ON doctors USING gin (city gin_trgm_ops)');
+    console.log('✅ Recherche par trigrammes active');
+  } catch (e) {
+    console.warn('pg_trgm indisponible, recherche non indexée:', e.message);
   }
 
   console.log('✅ Tables PostgreSQL prêtes');

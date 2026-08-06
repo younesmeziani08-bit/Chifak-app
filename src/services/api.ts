@@ -316,6 +316,22 @@ export const appointmentsAPI = {
     return await response.json();
   },
 
+  /**
+   * Compteurs de rendez-vous à venir, calculés en base.
+   *
+   * Le tableau de bord n'a besoin que de nombres. Les obtenir en téléchargeant
+   * la liste complète des rendez-vous faisait transiter le nom, le téléphone
+   * et l'e-mail de chaque patient jusqu'au navigateur, pour n'en afficher
+   * aucun.
+   */
+  getUpcomingStats: async (): Promise<{ total: number; parMedecin: Record<number, number> }> => {
+    const response = await fetch(`${API_URL}/appointments/upcoming-stats`, {
+      headers: getAuthHeaders(),
+    });
+    if (!response.ok) throw new Error('Erreur lors du comptage des rendez-vous');
+    return await response.json();
+  },
+
   getMy: async () => {
     const patientToken = localStorage.getItem('chifak_patient_token');
 
@@ -378,15 +394,67 @@ export const appointmentsAPI = {
 
 // ==================== AVIS (REVIEWS) ====================
 
+export interface ReviewSummary {
+  total: number;
+  moyenne: number;
+  repartition: Record<number, number>;
+  reviews: {
+    id: number;
+    patient_name: string | null;
+    rating: number;
+    comment: string | null;
+    created_at: string;
+  }[];
+}
+
+const RESUME_VIDE: ReviewSummary = {
+  total: 0,
+  moyenne: 0,
+  repartition: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
+  reviews: [],
+};
+
 export const reviewsAPI = {
-  getForDoctor: async (doctorId: number) => {
+  /**
+   * Résumé complet : moyenne et répartition calculées en base, puis les cent
+   * avis les plus récents. Le serveur renvoyait autrefois un simple tableau ;
+   * on accepte encore cette forme pour qu'un navigateur en cache ne casse pas
+   * pendant les minutes qui suivent un déploiement.
+   */
+  getSummaryForDoctor: async (doctorId: number): Promise<ReviewSummary> => {
     try {
       const response = await fetch(`${API_URL}/doctors/${doctorId}/reviews`);
-      if (!response.ok) return [];
-      return await response.json();
+      if (!response.ok) return RESUME_VIDE;
+      const data = await response.json();
+
+      if (Array.isArray(data)) {
+        const total = data.length;
+        const somme = data.reduce((s: number, r: { rating: number }) => s + r.rating, 0);
+        const repartition: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+        for (const r of data) repartition[r.rating] = (repartition[r.rating] || 0) + 1;
+        return {
+          total,
+          moyenne: total ? Math.round((somme / total) * 10) / 10 : 0,
+          repartition,
+          reviews: data,
+        };
+      }
+
+      return {
+        total: Number(data?.total) || 0,
+        moyenne: Number(data?.moyenne) || 0,
+        repartition: data?.repartition || RESUME_VIDE.repartition,
+        reviews: Array.isArray(data?.reviews) ? data.reviews : [],
+      };
     } catch {
-      return [];
+      return RESUME_VIDE;
     }
+  },
+
+  /** Liste seule, pour l'espace du praticien. */
+  getForDoctor: async (doctorId: number) => {
+    const resume = await reviewsAPI.getSummaryForDoctor(doctorId);
+    return resume.reviews;
   },
 
   submit: async (doctorId: number, rating: number, comment: string) => {

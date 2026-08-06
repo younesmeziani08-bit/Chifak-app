@@ -1,3 +1,6 @@
+// EN PREMIER : charge .env avant que database.js ne construise son pool.
+// Voir l'explication dans env.js — l'ordre compte réellement ici.
+import './env.js';
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -71,6 +74,56 @@ app.use(cors({
 // Limite la taille des corps de requête (protège contre les payloads abusifs)
 app.use(express.json({ limit: '1mb' }));
 
+/* ── Compteurs partagés du limiteur de débit ──
+   express-rate-limit compte en mémoire du processus. Avec une seule instance
+   c'est exact ; dès la deuxième, chaque instance compte de son côté et le
+   plafond réel est multiplié par le nombre d'instances — une attaque par
+   force brute sur la connexion en profite directement.
+
+   Redis donne un compteur commun. Il reste FACULTATIF : sans REDIS_URL, ou si
+   le serveur Redis ne répond pas, on retombe sur le comptage mémoire. Le
+   démarrage n'échoue jamais pour cette raison, et le développement local ne
+   demande aucune installation. */
+let fabriqueMagasin = null;
+
+if (process.env.REDIS_URL) {
+  try {
+    const [{ createClient }, moduleStore] = await Promise.all([
+      import('redis'),
+      import('rate-limit-redis'),
+    ]);
+    const RedisStore = moduleStore.default || moduleStore.RedisStore;
+
+    const clientRedis = createClient({
+      url: process.env.REDIS_URL,
+      // Au-delà de dix tentatives, on cesse de réessayer : le service continue
+      // en mémoire plutôt que d'accumuler des reconnexions en arrière-plan.
+      socket: { reconnectStrategy: (essais) => (essais > 10 ? false : Math.min(essais * 200, 3000)) },
+    });
+    // Un incident Redis ne doit pas faire tomber le processus.
+    clientRedis.on('error', (e) => console.warn('Redis:', e.message));
+    await clientRedis.connect();
+
+    /* Un préfixe distinct par limiteur. Sans cela, les trois limiteurs
+       partageraient les mêmes clés : une recherche de médecin consommerait le
+       quota de tentatives de connexion. */
+    fabriqueMagasin = (prefixe) => new RedisStore({
+      sendCommand: (...args) => clientRedis.sendCommand(args),
+      prefix: `chifak:${prefixe}:`,
+    });
+
+    process.on('SIGTERM', () => { clientRedis.quit().catch(() => {}); });
+    console.log('✅ Limiteur de débit partagé (Redis)');
+  } catch (e) {
+    console.warn('⚠️  Redis indisponible, limiteur en mémoire :', e.message);
+  }
+} else {
+  console.log('ℹ️  REDIS_URL absent : limiteur de débit en mémoire (instance unique)');
+}
+
+/** Magasin partagé si Redis répond, sinon rien — express-rate-limit prend alors sa mémoire. */
+const magasin = (prefixe) => (fabriqueMagasin ? { store: fabriqueMagasin(prefixe) } : {});
+
 // ── Rate limiting ──
 // Limiteur général : plafonne les requêtes par IP pour absorber les pics / abus.
 const generalLimiter = rateLimit({
@@ -79,6 +132,7 @@ const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Trop de requêtes, réessayez dans un instant.' },
+  ...magasin('general'),
 });
 app.use('/api/', generalLimiter);
 
@@ -89,6 +143,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
+  ...magasin('auth'),
 });
 [
   '/api/auth/login',
@@ -107,6 +162,7 @@ const assistantLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { reply: 'Vous envoyez des messages trop vite. Patientez un instant avant de réessayer.' },
+  ...magasin('assistant'),
 });
 app.use('/api/assistant', assistantLimiter);
 
@@ -147,7 +203,10 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'Token manquant' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  // Algorithme épinglé : sans cette précision, la bibliothèque accepte tout
+  // algorithme annoncé DANS le jeton lui-même. Un attaquant choisirait alors
+  // le sien. On n'accepte que celui avec lequel nous signons.
+  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Token invalide' });
     }
@@ -175,7 +234,7 @@ const authenticatePatientToken = (req, res, next) => {
     return res.status(401).json({ error: 'Token manquant' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Token invalide' });
     }
@@ -195,7 +254,7 @@ const authenticateDoctorToken = (req, res, next) => {
     return res.status(401).json({ error: 'Token manquant' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Token invalide' });
     }
@@ -266,7 +325,10 @@ app.post('/api/auth/login-doctor', async (req, res) => {
       return res.status(400).json({ error: 'Code médecin requis' });
     }
 
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE doctor_code = ?').get(doctorCode);
+    const doctor = await db.prepare(`
+      SELECT id, name, specialty, doctor_code, email, password, must_change_password
+      FROM doctors WHERE doctor_code = ?
+    `).get(doctorCode);
 
     // Message volontairement identique pour ne pas révéler si le code existe
     if (!doctor) {
@@ -740,6 +802,93 @@ app.get('/api/auth/facebook/callback',
 // ==================== ROUTES DOCTORS ====================
 
 // GET /api/doctors - Récupérer tous les médecins
+/**
+ * Créneaux bloqués, réduits à leurs seuls horaires.
+ *
+ * En base, une entrée peut contenir le patient auquel le médecin réserve la
+ * plage : nom, téléphone, e-mail, note. Ces informations ne doivent JAMAIS
+ * sortir sur une route publique — n'importe qui aurait pu récupérer la liste
+ * des patients habitués d'un praticien avec leurs coordonnées.
+ * Le navigateur n'a besoin que de l'horaire pour masquer le créneau.
+ */
+function horairesBloquesPublics(raw) {
+  let liste;
+  try {
+    liste = JSON.parse(raw || '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(liste)) return [];
+  return liste
+    .map((e) => (typeof e === 'string' ? e : e && typeof e.slot === 'string' ? e.slot : null))
+    .filter(Boolean);
+}
+
+/**
+ * Adresse publique d'une photo de praticien.
+ *
+ * Les portraits téléversés sont stockés en base sous forme de « data URL ».
+ * Les inclure dans la liste de l'annuaire revenait à envoyer jusqu'à 200 Ko
+ * par médecin, à chaque recherche, sans que le navigateur puisse rien garder
+ * en cache : cinq cents fiches faisaient une réponse de cent mégaoctets.
+ *
+ * On renvoie désormais une adresse. L'empreinte en paramètre sert de version :
+ * le navigateur peut conserver la photo un an, et une photo remplacée change
+ * d'empreinte donc d'adresse — elle est rechargée d'elle-même.
+ */
+function urlPhoto(req, doctor) {
+  if (doctor.photo_hash) {
+    const base = (process.env.PUBLIC_API_URL || '').replace(/\/$/, '')
+      || `${req.protocol}://${req.get('host')}`;
+    return `${base}/api/doctors/${doctor.id}/photo?v=${doctor.photo_hash.slice(0, 12)}`;
+  }
+  // Photo externe (adresse web) ou emoji hérité : la valeur est courte, on la
+  // transmet telle quelle.
+  return doctor.image || null;
+}
+
+/** Empreinte d'une photo téléversée ; null pour une adresse web ou un emoji. */
+function empreintePhoto(image) {
+  if (typeof image !== 'string' || !image.startsWith('data:image/')) return null;
+  return crypto.createHash('md5').update(image).digest('hex');
+}
+
+// GET /api/doctors/:id/photo - Portrait du praticien, mis en cache par le navigateur
+app.get('/api/doctors/:id/photo', async (req, res) => {
+  try {
+    if (!isValidId(req.params.id)) return res.status(400).end();
+    const row = await db.prepare('SELECT image, photo_hash FROM doctors WHERE id = ?')
+      .get(Number(req.params.id));
+    if (!row || typeof row.image !== 'string' || !row.image.startsWith('data:image/')) {
+      return res.status(404).end();
+    }
+
+    const virgule = row.image.indexOf(',');
+    if (virgule === -1) return res.status(404).end();
+    const entete = row.image.slice(0, virgule);
+    const base64 = row.image.slice(virgule + 1);
+    const type = /^data:(image\/[a-z+]+);base64$/i.exec(entete);
+    if (!type || !base64) return res.status(404).end();
+
+    const etag = `"${row.photo_hash || empreintePhoto(row.image)}"`;
+    if (req.headers['if-none-match'] === etag) return res.status(304).end();
+
+    const bytes = Buffer.from(base64, 'base64');
+    res.set({
+      'Content-Type': type[1],
+      'Content-Length': bytes.length,
+      // Immuable : l'adresse porte l'empreinte, une photo modifiée change d'adresse.
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      ETag: etag,
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(bytes);
+  } catch (error) {
+    console.error('Erreur photo médecin:', error);
+    res.status(500).end();
+  }
+});
+
 app.get('/api/doctors', async (req, res) => {
   try {
     // Entrées bornées et nettoyées ; les valeurs restent des paramètres liés.
@@ -748,7 +897,17 @@ app.get('/api/doctors', async (req, res) => {
     // Neutralise les jokers LIKE fournis par l'utilisateur (% et _)
     const escapeLike = (v) => v.replace(/[\\%_]/g, (m) => `\\${m}`);
 
-    let query = 'SELECT * FROM doctors WHERE 1=1';
+    /* Colonnes citées une à une. « SELECT * » ramenait la colonne image —
+       jusqu'à 200 Ko de base64 par praticien — que PostgreSQL doit alors aller
+       chercher dans son stockage débordé. Ne pas la nommer suffit à ne jamais
+       la lire. Le CASE n'évalue image que pour les photos externes, courtes. */
+    let query = `SELECT id, name, specialty, address, city, rating, review_count,
+                        available_slots, next_available, slot_duration, working_days,
+                        off_days, blocked_slots, accepts_video, video_slots,
+                        description, latitude, longitude, maps_url, created_at,
+                        photo_hash,
+                        CASE WHEN photo_hash IS NULL THEN image ELSE NULL END AS image
+                 FROM doctors WHERE 1=1`;
     const params = [];
 
     if (specialty) {
@@ -789,7 +948,7 @@ app.get('/api/doctors', async (req, res) => {
       specialty: doctor.specialty,
       address: doctor.address,
       city: doctor.city,
-      image: doctor.image,
+      image: urlPhoto(req, doctor),
       rating: doctor.rating,
       reviewCount: doctor.review_count,
       availableSlots: doctor.available_slots ? JSON.parse(doctor.available_slots) : [],
@@ -797,7 +956,7 @@ app.get('/api/doctors', async (req, res) => {
       slotDuration: doctor.slot_duration || 30,
       workingDays: doctor.working_days ? JSON.parse(doctor.working_days) : [1, 2, 3, 4, 5],
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
-      blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
+      blockedSlots: horairesBloquesPublics(doctor.blocked_slots),
       acceptsVideo: !!doctor.accepts_video,
       videoSlots: doctor.video_slots ? JSON.parse(doctor.video_slots) : [],
       description: doctor.description || '',
@@ -816,26 +975,47 @@ app.get('/api/doctors', async (req, res) => {
 // GET /api/doctors/:id - Récupérer un médecin
 app.get('/api/doctors/:id', async (req, res) => {
   try {
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
+    const doctor = await db.prepare(`
+      SELECT id, name, specialty, address, city, rating, review_count,
+             available_slots, next_available, slot_duration, working_days,
+             description, bio, off_days, blocked_slots, accepts_video, video_slots,
+             latitude, longitude, maps_url, photo_hash,
+             CASE WHEN photo_hash IS NULL THEN image ELSE NULL END AS image
+      FROM doctors WHERE id = ?
+    `).get(Number(req.params.id));
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
     }
 
+    /* Liste de champs explicite, jamais « ...doctor ». L'étalement renvoyait
+       le code de connexion du praticien, son e-mail, son téléphone et l'état
+       de son mot de passe à n'importe quel visiteur. */
     const doctorWithParsedSlots = {
-      ...doctor,
-      password: undefined, // ne jamais exposer le hash
-      hasPassword: !!doctor.password,
-      availableSlots: JSON.parse(doctor.available_slots),
+      id: doctor.id,
+      name: doctor.name,
+      specialty: doctor.specialty,
+      address: doctor.address,
+      city: doctor.city,
+      image: urlPhoto(req, doctor),
+      rating: doctor.rating,
+      reviewCount: doctor.review_count,
+      availableSlots: doctor.available_slots ? JSON.parse(doctor.available_slots) : [],
       nextAvailable: doctor.next_available,
       slotDuration: doctor.slot_duration || 30,
       workingDays: doctor.working_days ? JSON.parse(doctor.working_days) : [1, 2, 3, 4, 5],
       description: doctor.description || '',
       bio: doctor.bio || '',
       offDays: doctor.off_days ? JSON.parse(doctor.off_days) : [],
-      blockedSlots: doctor.blocked_slots ? JSON.parse(doctor.blocked_slots) : [],
+      blockedSlots: horairesBloquesPublics(doctor.blocked_slots),
       acceptsVideo: !!doctor.accepts_video,
       videoSlots: doctor.video_slots ? JSON.parse(doctor.video_slots) : [],
+      latitude: doctor.latitude,
+      longitude: doctor.longitude,
+      mapsUrl: doctor.maps_url,
     };
 
     res.json(doctorWithParsedSlots);
@@ -873,8 +1053,8 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
     const mustChange = password ? 1 : 0;
 
     const result = await db.prepare(`
-      INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, available_slots, next_available, slot_duration, working_days, latitude, longitude, maps_url, password, must_change_password)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, photo_hash, available_slots, next_available, slot_duration, working_days, latitude, longitude, maps_url, password, must_change_password)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       name,
       specialty,
@@ -884,6 +1064,7 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
       email || null,
       doctorCode || null,
       image || '👨‍⚕️',
+      empreintePhoto(image),
       slots,
       nextAvailable || 'Disponible maintenant',
       Number(slotDuration) || 30,
@@ -903,6 +1084,9 @@ app.post('/api/doctors', authenticateToken, async (req, res) => {
     res.status(201).json({
       ...newDoctor,
       password: undefined,
+      // Adresse de la photo, comme dans la liste : renvoyer la data URL ferait
+      // remonter 200 Ko pour rien, et le formulaire la réécrirait à l'identique.
+      image: urlPhoto(req, newDoctor),
       hasPassword: !!newDoctor.password,
       availableSlots: JSON.parse(newDoctor.available_slots),
       nextAvailable: newDoctor.next_available,
@@ -926,7 +1110,19 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Photo invalide ou trop lourde (220 Ko maximum).' });
     }
 
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    /* Le formulaire d'administration relit la fiche puis la renvoie entière.
+       Comme la fiche porte désormais l'ADRESSE de la photo et non la photo
+       elle-même, un enregistrement où l'admin n'a pas touché au portrait
+       écraserait l'image stockée par sa propre adresse — le portrait serait
+       perdu sans retour possible. On reconnaît nos propres adresses et on les
+       traite comme « aucun changement ». */
+    const photoInchangee = typeof image === 'string' && /\/api\/doctors\/\d+\/photo(\?|$)/.test(image);
+
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
+    const doctorId = Number(req.params.id);
+    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(doctorId);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
@@ -949,7 +1145,7 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
     await db.prepare(`
       UPDATE doctors
       SET name = ?, specialty = ?, address = ?, city = ?, phone = ?, email = ?, doctor_code = ?,
-          image = ?, available_slots = ?, next_available = ?, slot_duration = ?, working_days = ?, latitude = ?, longitude = ?, maps_url = ?, password = ?, must_change_password = ?, accepts_video = ?, updated_at = CURRENT_TIMESTAMP
+          image = ?, photo_hash = ?, available_slots = ?, next_available = ?, slot_duration = ?, working_days = ?, latitude = ?, longitude = ?, maps_url = ?, password = ?, must_change_password = ?, accepts_video = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).run(
       name || doctor.name,
@@ -959,7 +1155,10 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
       phone !== undefined ? phone : doctor.phone,
       email !== undefined ? email : doctor.email,
       doctorCode !== undefined ? doctorCode : doctor.doctor_code,
-      image || doctor.image,
+      photoInchangee || !image ? doctor.image : image,
+      // L'empreinte suit la photo : sans cela, l'adresse mise en cache par les
+      // navigateurs continuerait de désigner l'ancien portrait.
+      photoInchangee || !image ? doctor.photo_hash : empreintePhoto(image),
       slots,
       nextAvailable || doctor.next_available,
       slotDuration !== undefined ? Number(slotDuration) : (doctor.slot_duration || 30),
@@ -971,14 +1170,15 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
       mustChange,
       // Champ non transmis = on ne touche pas au réglage choisi par le praticien.
       acceptsVideo === undefined ? (doctor.accepts_video || 0) : (acceptsVideo ? 1 : 0),
-      req.params.id
+      doctorId
     );
 
-    const updatedDoctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    const updatedDoctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(doctorId);
 
     res.json({
       ...updatedDoctor,
       password: undefined,
+      image: urlPhoto(req, updatedDoctor),
       hasPassword: !!updatedDoctor.password,
       availableSlots: JSON.parse(updatedDoctor.available_slots),
       nextAvailable: updatedDoctor.next_available,
@@ -994,13 +1194,19 @@ app.put('/api/doctors/:id', authenticateToken, async (req, res) => {
 // DELETE /api/doctors/:id - Supprimer un médecin (authentification requise)
 app.delete('/api/doctors/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.params.id);
+    if (!isValidId(req.params.id)) {
+      return res.status(400).json({ error: 'Identifiant invalide' });
+    }
+    const doctorId = Number(req.params.id);
+    // Seuls les champs recopiés dans le journal : inutile de charger la photo.
+    const doctor = await db.prepare('SELECT id, name, specialty FROM doctors WHERE id = ?')
+      .get(doctorId);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
     }
 
-    await db.prepare('DELETE FROM doctors WHERE id = ?').run(req.params.id);
+    await db.prepare('DELETE FROM doctors WHERE id = ?').run(doctorId);
 
     // Le nom est recopié dans le journal : la fiche n'existe plus, mais
     // l'administration doit pouvoir lire « X a supprimé Dr Y ».
@@ -1045,7 +1251,7 @@ app.get('/api/consultations', authenticateDoctorToken, async (req, res) => {
       FROM consultations c
       LEFT JOIN appointments a ON c.next_appointment_id = a.id
       WHERE c.doctor_id = ?
-      ORDER BY c.created_at DESC
+      ORDER BY c.created_at DESC LIMIT 500
     `).all(req.user.id);
 
     res.json(consultations);
@@ -1064,11 +1270,42 @@ app.get('/api/doctors/:id/reviews', async (req, res) => {
       return res.status(400).json({ error: 'Identifiant invalide' });
     }
     const doctorId = Number(req.params.id);
-    const reviews = await db.prepare(`
-      SELECT id, patient_name, rating, comment, created_at
-      FROM reviews WHERE doctor_id = ? ORDER BY created_at DESC
-    `).all(doctorId);
-    res.json(reviews);
+
+    /* Deux requêtes plutôt qu'une. La moyenne et la répartition par étoile
+       étaient calculées côté navigateur à partir de la liste complète : sur un
+       praticien à trois mille avis, cela voulait dire trois mille lignes
+       envoyées à chaque ouverture de fiche. On agrège en base — un index sur
+       doctor_id suffit — et on ne renvoie que les cent avis les plus récents,
+       les seuls qu'un lecteur parcourt réellement. */
+    const [resume, reviews] = await Promise.all([
+      db.prepare(`
+        SELECT COUNT(*)::int AS total,
+               COALESCE(AVG(rating), 0)::float AS moyenne,
+               COUNT(*) FILTER (WHERE rating = 5)::int AS n5,
+               COUNT(*) FILTER (WHERE rating = 4)::int AS n4,
+               COUNT(*) FILTER (WHERE rating = 3)::int AS n3,
+               COUNT(*) FILTER (WHERE rating = 2)::int AS n2,
+               COUNT(*) FILTER (WHERE rating = 1)::int AS n1
+        FROM reviews WHERE doctor_id = ?
+      `).get(doctorId),
+      db.prepare(`
+        SELECT id, patient_name, rating, comment, created_at
+        FROM reviews WHERE doctor_id = ? ORDER BY created_at DESC LIMIT 100
+      `).all(doctorId),
+    ]);
+
+    res.json({
+      total: resume ? resume.total : 0,
+      moyenne: resume ? Math.round(resume.moyenne * 10) / 10 : 0,
+      repartition: {
+        5: resume ? resume.n5 : 0,
+        4: resume ? resume.n4 : 0,
+        3: resume ? resume.n3 : 0,
+        2: resume ? resume.n2 : 0,
+        1: resume ? resume.n1 : 0,
+      },
+      reviews,
+    });
   } catch (error) {
     console.error('Erreur récupération avis:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -1128,10 +1365,40 @@ app.post('/api/doctors/:id/reviews', authenticatePatientToken, async (req, res) 
 // GET /api/patient/reviews - Médecins déjà notés par le patient connecté
 app.get('/api/patient/reviews', authenticatePatientToken, async (req, res) => {
   try {
-    const rows = await db.prepare('SELECT doctor_id FROM reviews WHERE patient_email = ?').all(req.user.email);
+    const rows = await db.prepare('SELECT doctor_id FROM reviews WHERE patient_email = ? LIMIT 500').all(req.user.email);
     res.json(rows);
   } catch (error) {
     console.error('Erreur récupération avis patient:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// GET /api/appointments/upcoming-stats - Comptes de rendez-vous à venir (personnel)
+/* Le tableau de bord et la liste des médecins affichaient chacun un compteur
+   de rendez-vous à venir. Pour l'obtenir, ils téléchargeaient la totalité des
+   rendez-vous — jusqu'à mille lignes avec nom, téléphone et e-mail de chaque
+   patient — et les comptaient dans le navigateur. Deux écrans, deux fois la
+   même liste, pour afficher deux nombres. PostgreSQL les compte ici, et rien
+   d'identifiable ne quitte le serveur. */
+app.get('/api/appointments/upcoming-stats', authenticateToken, async (req, res) => {
+  try {
+    const aujourdhui = new Date().toISOString().slice(0, 10);
+    const lignes = await db.prepare(`
+      SELECT doctor_id, COUNT(*)::int AS n
+      FROM appointments
+      WHERE status <> 'cancelled' AND appointment_date >= ?
+      GROUP BY doctor_id
+    `).all(aujourdhui);
+
+    const parMedecin = {};
+    let total = 0;
+    for (const l of lignes) {
+      parMedecin[l.doctor_id] = l.n;
+      total += l.n;
+    }
+    res.json({ total, parMedecin });
+  } catch (error) {
+    console.error('Erreur statistiques rendez-vous:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
@@ -1144,6 +1411,7 @@ app.get('/api/reviews', authenticateToken, async (req, res) => {
              d.name AS doctor_name, d.specialty
       FROM reviews r JOIN doctors d ON r.doctor_id = d.id
       ORDER BY r.created_at DESC
+      LIMIT 500
     `).all();
     res.json(rows);
   } catch (error) {
@@ -1197,7 +1465,16 @@ app.post('/api/appointments', async (req, res) => {
       return res.status(400).json({ error: 'Date hors de la période autorisée' });
     }
 
-    const doctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(doctorId);
+    /* Chemin le plus sollicité de l'application : c'est ici que passent toutes
+       les réservations. « SELECT * » y chargeait la photo du praticien —
+       jusqu'à 200 Ko lus en base pour une prise de rendez-vous qui n'en fait
+       rien. On ne demande que les champs réellement consultés plus bas. */
+    const doctor = await db.prepare(`
+      SELECT id, name, specialty, address, city, email, phone,
+             available_slots, working_days, off_days, blocked_slots,
+             slot_duration, accepts_video, video_slots
+      FROM doctors WHERE id = ?
+    `).get(doctorId);
 
     if (!doctor) {
       return res.status(404).json({ error: 'Médecin non trouvé' });
@@ -1311,6 +1588,7 @@ app.get('/api/booked-slots', async (req, res) => {
       SELECT doctor_id, appointment_time
       FROM appointments
       WHERE appointment_date = ? AND status != 'cancelled'
+      LIMIT 20000
     `).all(date);
     res.json(rows);
   } catch (error) {
@@ -1322,14 +1600,29 @@ app.get('/api/booked-slots', async (req, res) => {
 // GET /api/patient/appointments - Récupérer les rendez-vous du patient connecté
 app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) => {
   try {
-    const appointments = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
+    /* Champs listés explicitement. « a.* » renvoyait doctor_notes — les
+       remarques privées que le médecin prend sur son patient — directement à
+       ce patient. Et « d.blocked_slots » contenait le nom, le téléphone et
+       l'e-mail des patients habitués du praticien : chaque patient pouvait
+       lire la liste des autres. */
+    const rows = await db.prepare(`
+      SELECT a.id, a.doctor_id, a.patient_name, a.patient_email, a.patient_phone,
+             a.appointment_date, a.appointment_time, a.reason, a.status,
+             a.consultation_type, a.video_room, a.created_at,
+             d.name AS doctor_name, d.specialty, d.address, d.city,
+             d.slot_duration, d.available_slots, d.working_days, d.off_days,
+             d.blocked_slots, d.accepts_video, d.video_slots
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
       WHERE a.patient_email = ?
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
+      LIMIT 500
     `).all(req.user.email);
+
+    const appointments = rows.map(({ blocked_slots, ...reste }) => ({
+      ...reste,
+      blocked_slots: JSON.stringify(horairesBloquesPublics(blocked_slots)),
+    }));
 
     res.json(appointments);
   } catch (error) {
@@ -1338,6 +1631,30 @@ app.get('/api/patient/appointments', authenticatePatientToken, async (req, res) 
   }
 });
 
+/**
+ * Fiche d'un rendez-vous telle qu'un patient a le droit de la voir.
+ *
+ * Les routes d'annulation et de report renvoyaient « a.* » joint à
+ * « d.blocked_slots » : le patient recevait les notes privées que son médecin
+ * prend sur lui, et les nom, téléphone et e-mail des autres patients à qui ce
+ * médecin réserve des créneaux. Une seule fonction, pour que la correction
+ * tienne aux deux endroits — et aux suivants.
+ */
+async function ficheRendezVousPatient(id) {
+  const brut = await db.prepare(`
+    SELECT a.id, a.doctor_id, a.patient_name, a.patient_email, a.patient_phone,
+           a.appointment_date, a.appointment_time, a.reason, a.status,
+           a.consultation_type, a.video_room, a.created_at,
+           d.name AS doctor_name, d.specialty, d.address, d.city,
+           d.slot_duration, d.available_slots, d.working_days, d.off_days,
+           d.blocked_slots, d.accepts_video, d.video_slots
+    FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
+  `).get(id);
+  if (!brut) return null;
+  const { blocked_slots, ...reste } = brut;
+  return { ...reste, blocked_slots: JSON.stringify(horairesBloquesPublics(blocked_slots)) };
+}
+
 // PATCH /api/patient/appointments/:id/cancel - Annuler son rendez-vous
 app.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, async (req, res) => {
   try {
@@ -1345,20 +1662,19 @@ app.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, asyn
       return res.status(400).json({ error: 'Identifiant invalide' });
     }
     const id = Number(req.params.id);
-    const appt = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
+    const appt = await db.prepare('SELECT id, doctor_id, patient_email FROM appointments WHERE id = ?').get(id);
     if (!appt) {
       return res.status(404).json({ error: 'Rendez-vous non trouvé' });
     }
     if (appt.patient_email !== req.user.email) {
       return res.status(403).json({ error: 'Ce rendez-vous ne vous appartient pas' });
     }
-    await db.prepare("UPDATE appointments SET status = 'cancelled' WHERE id = ?").run(id);
-    const updated = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
-      FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
-    `).get(id);
-    res.json(updated);
+    /* La salle de visioconférence est effacée en même temps. Sans cela, le
+       lien continuait d'ouvrir une salle valide après l'annulation : deux
+       personnes ayant reçu ce lien un jour pouvaient s'y retrouver, hors de
+       tout rendez-vous. */
+    await db.prepare("UPDATE appointments SET status = 'cancelled', video_room = NULL WHERE id = ?").run(id);
+    res.json(await ficheRendezVousPatient(id));
   } catch (error) {
     console.error('Erreur annulation rendez-vous:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -1376,7 +1692,7 @@ app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, 
     if (!appointmentDate || !appointmentTime) {
       return res.status(400).json({ error: 'Date et heure requises' });
     }
-    const appt = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(id);
+    const appt = await db.prepare('SELECT id, doctor_id, patient_email FROM appointments WHERE id = ?').get(id);
     if (!appt) {
       return res.status(404).json({ error: 'Rendez-vous non trouvé' });
     }
@@ -1393,12 +1709,7 @@ app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, 
     }
     await db.prepare("UPDATE appointments SET appointment_date = ?, appointment_time = ?, status = 'confirmed' WHERE id = ?")
       .run(appointmentDate, appointmentTime, id);
-    const updated = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
-      FROM appointments a JOIN doctors d ON a.doctor_id = d.id WHERE a.id = ?
-    `).get(id);
-    res.json(updated);
+    res.json(await ficheRendezVousPatient(id));
   } catch (error) {
     console.error('Erreur reprogrammation rendez-vous:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -1409,16 +1720,20 @@ app.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, 
 app.get('/api/appointments', authenticateToken, async (req, res) => {
   try {
     const appointments = await db.prepare(`
-      SELECT a.*, d.name as doctor_name, d.specialty, d.address, d.city,
-             d.slot_duration, d.available_slots, d.working_days, d.off_days, d.blocked_slots
+      SELECT a.id, a.doctor_id, a.patient_name, a.patient_email, a.patient_phone,
+             a.appointment_date, a.appointment_time, a.reason, a.status,
+             a.consultation_type, a.created_at,
+             d.name AS doctor_name, d.specialty, d.address, d.city
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id
       ORDER BY a.appointment_date DESC, a.appointment_time DESC
+      LIMIT 1000
     `).all();
 
-    // L'administration voit qu'un rendez-vous est en visio, mais jamais le nom
-    // de la salle : seuls le patient concerné et son médecin peuvent y entrer.
-    res.json(appointments.map(({ video_room, ...rest }) => rest));
+    // La salle de visio n'est pas sélectionnée du tout : seuls le patient
+    // concerné et son médecin peuvent y entrer. L'administration voit
+    // seulement qu'un rendez-vous est en visio.
+    res.json(appointments);
   } catch (error) {
     console.error('Erreur récupération rendez-vous:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -1430,7 +1745,13 @@ app.get('/api/appointments', authenticateToken, async (req, res) => {
 // GET /api/doctor/profile - Profil du médecin connecté
 app.get('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
   try {
-    const d = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
+    // La photo n'est pas affichée sur cet écran : inutile d'aller la lire.
+    const d = await db.prepare(`
+      SELECT id, name, email, phone, address, city, specialty, doctor_code,
+             description, bio, slot_duration, off_days, blocked_slots,
+             accepts_video, video_slots, available_slots, working_days
+      FROM doctors WHERE id = ?
+    `).get(req.user.id);
     if (!d) return res.status(404).json({ error: 'Médecin non trouvé' });
     res.json({
       id: d.id,
@@ -1460,7 +1781,11 @@ app.get('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
 // PUT /api/doctor/profile - Modifier UNIQUEMENT descriptif, parcours, durée créneau, jours off
 app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
   try {
-    const current = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
+    const current = await db.prepare(`
+      SELECT id, description, bio, slot_duration, off_days, blocked_slots,
+             accepts_video, video_slots, available_slots
+      FROM doctors WHERE id = ?
+    `).get(req.user.id);
     if (!current) return res.status(404).json({ error: 'Médecin non trouvé' });
 
     const { description, bio, slotDuration, offDays, blockedSlots, acceptsVideo, videoSlots } = req.body;
@@ -1514,7 +1839,11 @@ app.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
     await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, blocked_slots = ?, accepts_video = ?, video_slots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(newDescription, newBio, newDuration, newOff, newBlocked, acceptsVideo ? 1 : 0, newVideoSlots, req.user.id);
 
-    const d = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(req.user.id);
+    const d = await db.prepare(`
+      SELECT description, bio, slot_duration, off_days, blocked_slots,
+             accepts_video, video_slots
+      FROM doctors WHERE id = ?
+    `).get(req.user.id);
     res.json({
       description: d.description || '',
       bio: d.bio || '',
@@ -1541,6 +1870,7 @@ app.get('/api/doctor/appointments', authenticateDoctorToken, async (req, res) =>
       FROM appointments
       WHERE doctor_id = ?
       ORDER BY appointment_date DESC, appointment_time DESC
+      LIMIT 1000
     `).all(req.user.id);
     res.json(rows);
   } catch (error) {
@@ -1872,17 +2202,37 @@ async function journaliser(user, action, doctor) {
 // GET /api/admin/employees - Liste du personnel (admin uniquement)
 app.get('/api/admin/employees', authenticateToken, requireAdmin, async (req, res) => {
   try {
+    /* Quatre sous-requêtes corrélées par ligne — soit deux mille exécutions
+       pour cinq cents employés — devenaient le point lent de la page dès que
+       le journal d'actions grossissait. Deux agrégats calculés une seule fois
+       puis joints donnent le même résultat en un seul parcours de chaque
+       table. */
     const rows = await db.prepare(`
+      WITH actions AS (
+        SELECT user_id,
+               COUNT(*) FILTER (WHERE action = 'doctor_created') AS created_count,
+               COUNT(*) FILTER (WHERE action = 'doctor_deleted') AS deleted_count
+        FROM staff_actions GROUP BY user_id
+      ),
+      avis AS (
+        SELECT user_id,
+               COUNT(*) AS feedback_count,
+               ROUND(AVG(rating)::numeric, 1) AS avg_rating
+        FROM employee_feedback GROUP BY user_id
+      )
       SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.role,
              u.staff_code, u.feedback_token, u.active, u.created_at,
              u.birth_date, u.birth_place, u.phone, u.address, u.email,
              u.position, u.hired_at, u.emergency_contact, u.notes,
-             (SELECT COUNT(*) FROM staff_actions a WHERE a.user_id = u.id AND a.action = 'doctor_created') AS created_count,
-             (SELECT COUNT(*) FROM staff_actions a WHERE a.user_id = u.id AND a.action = 'doctor_deleted') AS deleted_count,
-             (SELECT COUNT(*) FROM employee_feedback f WHERE f.user_id = u.id) AS feedback_count,
-             (SELECT ROUND(AVG(f.rating)::numeric, 1) FROM employee_feedback f WHERE f.user_id = u.id) AS avg_rating
+             COALESCE(actions.created_count, 0)::int AS created_count,
+             COALESCE(actions.deleted_count, 0)::int AS deleted_count,
+             COALESCE(avis.feedback_count, 0)::int AS feedback_count,
+             avis.avg_rating
       FROM users u
+      LEFT JOIN actions ON actions.user_id = u.id
+      LEFT JOIN avis ON avis.user_id = u.id
       ORDER BY u.role DESC, u.created_at DESC
+      LIMIT 500
     `).all();
     res.json(rows);
   } catch (error) {
@@ -2134,7 +2484,7 @@ app.get('/api/admin/feedback', authenticateToken, requireAdmin, async (req, res)
 
 // POST /api/admin/daily-agendas - Déclenche manuellement l'envoi des agendas (test)
 // Body optionnel : { date: 'YYYY-MM-DD', doctorId: number }
-app.post('/api/admin/daily-agendas', authenticateToken, async (req, res) => {
+app.post('/api/admin/daily-agendas', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { date, doctorId } = req.body || {};
     const summary = await sendDailyAgendas({ date, doctorId: doctorId ? Number(doctorId) : undefined });
@@ -2165,6 +2515,12 @@ app.get('/', async (req, res) => {
     cors: {
       production: process.env.NODE_ENV === 'production',
       allowedOriginsCount: allowedOrigins.length,
+    },
+    // Permet de vérifier après déploiement que les compteurs sont bien partagés.
+    // On expose l'état, jamais l'adresse du serveur Redis.
+    rateLimit: {
+      shared: !!fabriqueMagasin,
+      backend: fabriqueMagasin ? 'redis' : 'memory',
     },
   });
 });
