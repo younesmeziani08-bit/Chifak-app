@@ -1,5 +1,5 @@
 import { Doctor } from '../App';
-import { API_URL, getAuthHeaders } from './http';
+import { API_URL, getAuthHeaders, fetchWithRetry } from './http';
 
 // ==================== DOCTORS ====================
 
@@ -34,8 +34,8 @@ export const doctorsAPI = {
     if (videoOnly) params.append('video', '1');
 
     const url = API_URL + '/doctors' + (params.toString() ? '?' + params.toString() : '');
-    
-    const response = await fetch(url);
+
+    const response = await fetchWithRetry(url);
 
     if (!response.ok) {
       throw new Error('Erreur lors de la récupération des médecins');

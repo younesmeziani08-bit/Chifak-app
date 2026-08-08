@@ -4,6 +4,7 @@ import Header from '../shared/Header';
 import LocationSelector from './LocationSelector';
 import LogoMark from '../shared/LogoMark';
 import HealthArticles from './HealthArticles';
+import TraceDuTerritoire from './TraceDuTerritoire';
 import AssistantConsult from '../booking/AssistantConsult';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { PHOTOS, SPECIALTY_PHOTOS, photoUrl, photoSrcSet, type PhotoKey } from '../../data/photos';
@@ -163,6 +164,25 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
     if (specialty) onSearch(t(specialty), location, date || todayISO);
   };
 
+  /**
+   * Raccourci « D'Alger à Tamanrasset ».
+   *
+   * On ne lance PAS la recherche : il manque la spécialité, et un écran de
+   * résultats vide serait pire que rien. On remplit le lieu, on ramène le
+   * visiteur au formulaire et on lui donne le focus sur le champ qui reste à
+   * remplir. Le raccourci fait donc exactement ce que le titre annonce :
+   * démarrer depuis sa wilaya.
+   */
+  const choisirWilaya = (nom: string) => {
+    setSelectedWilaya({ code: 0, name: nom, nameAr: nom });
+    setLocation(nom);
+    document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Après le défilement : le champ manquant prend le focus de lui-même.
+    window.setTimeout(() => {
+      document.getElementById('hero-specialty')?.focus({ preventScroll: true });
+    }, 600);
+  };
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }} dir={isArabic ? 'rtl' : 'ltr'}>
       <Header
@@ -240,35 +260,47 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
             })}
           </div>
 
-          <div className={heroTab === 'rdv' ? '' : 'max-w-xl'}>
-            <h1
-              key={heroTab}
-              className="hero-reveal display-light mb-4 max-w-xl"
-              style={{
-                /* Grande échelle en graisse légère : c'est le contraste de
-                   taille qui porte la hiérarchie, pas l'épaisseur du trait. */
-                fontSize: 'clamp(2.25rem, 5.6vw, 4.25rem)',
-                color: '#FFFFFF',
-                whiteSpace: 'pre-line',
-              }}
-            >
-              {patientUser && heroTab === 'rdv'
-                ? (isArabic
-                  ? `مرحباً ${patientUser.name.split(' ')[0]}،\nهل تحتاج موعدًا؟`
-                  : `Bonjour ${patientUser.name.split(' ')[0]},\nbesoin d’un rendez-vous ?`)
-                : (isArabic ? activeTab.titleAr : activeTab.title)}
-            </h1>
+          {/* ── Panneaux d'onglet, EMPILÉS dans une même cellule de grille ──
+              Chaque panneau reste dans le flux, seul l'actif est visible. La
+              hauteur du bloc est donc celle du plus grand des trois, en
+              permanence.
 
-            <p className="text-base sm:text-lg leading-relaxed mb-7 max-w-xl" style={{ color: 'rgba(255,255,255,0.72)' }}>
-              {isArabic ? activeTab.subtitleAr : activeTab.subtitle}
-            </p>
+              Sans cela, passer de « Prendre rendez-vous » (un formulaire
+              complet, ~200 px) à « Téléconsultation » (un bouton, 48 px)
+              faisait remonter toute la page d'un coup. Une hauteur fixe en
+              pixels n'aurait pas tenu : le formulaire empile ses champs sur
+              téléphone et double de hauteur. L'empilement, lui, s'adapte de
+              lui-même à chaque largeur d'écran. */}
+          <div className="hero-panneaux">
 
-            {/* ─ Onglet « Prendre rendez-vous » ─
+            {/* ─ Panneau « Prendre rendez-vous » ─
                 Le formulaire reste la voie principale et occupe la place
                 principale. L'assistant l'accompagne sur le côté : il propose,
                 il n'impose pas, et on peut réserver sans jamais l'ouvrir. */}
-            <div className={heroTab === 'rdv' ? 'grid lg:grid-cols-[minmax(0,1fr)_22rem] gap-4 items-start' : ''}>
-            {heroTab === 'rdv' && (
+            <div data-active={heroTab === 'rdv'} aria-hidden={heroTab !== 'rdv'}>
+              <h1
+                className="hero-reveal display-light mb-4 max-w-xl"
+                style={{
+                  /* Grande échelle en graisse légère : c'est le contraste de
+                     taille qui porte la hiérarchie, pas l'épaisseur du trait. */
+                  fontSize: 'clamp(2.25rem, 5.6vw, 4.25rem)',
+                  color: '#FFFFFF',
+                  whiteSpace: 'pre-line',
+                }}
+              >
+                {patientUser
+                  ? (isArabic
+                    ? `مرحباً ${patientUser.name.split(' ')[0]}،\nهل تحتاج موعدًا؟`
+                    : `Bonjour ${patientUser.name.split(' ')[0]},\nbesoin d’un rendez-vous ?`)
+                  : (isArabic ? HERO_TABS[0].titleAr : HERO_TABS[0].title)}
+              </h1>
+
+              <p className="text-base sm:text-lg leading-relaxed mb-7 max-w-xl" style={{ color: 'rgba(255,255,255,0.72)' }}>
+                {isArabic ? HERO_TABS[0].subtitleAr : HERO_TABS[0].subtitle}
+              </p>
+
+            <div className="grid lg:grid-cols-[minmax(0,1fr)_22rem] gap-4 items-start">
+            {(
               <form
                 onSubmit={handleSubmit}
                 className="rounded-2xl p-3"
@@ -282,6 +314,7 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                       </label>
                       <div className="relative">
                         <select
+                          id="hero-specialty"
                           value={specialty}
                           onChange={(e) => setSpecialty(e.target.value)}
                           className="field ltr:pr-9 rtl:pl-9 cursor-pointer"
@@ -302,7 +335,13 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                       <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 px-1" style={{ color: 'var(--ink-3)' }}>
                         {isArabic ? 'المكان' : 'Où ?'}
                       </label>
-                      <LocationSelector onLocationChange={setLocation} onWilayaChange={setSelectedWilaya} showWilayaLabel={false} selectVariant="hero" />
+                      <LocationSelector
+                        onLocationChange={setLocation}
+                        onWilayaChange={setSelectedWilaya}
+                        showWilayaLabel={false}
+                        selectVariant="hero"
+                        wilayaName={selectedWilaya?.name ?? null}
+                      />
                     </div>
                   </div>
 
@@ -336,8 +375,15 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
               </form>
             )}
 
-            {/* Accompagnement facultatif, à côté du formulaire */}
-            {heroTab === 'rdv' && (
+            {/* Accompagnement facultatif, à côté du formulaire.
+
+                La colonne réserve sa hauteur maximale dès le départ. Sans
+                cette réserve, ouvrir l'assistant faisait passer son panneau
+                de 180 px à 480 px, et poussait vers le bas tout ce qui suit —
+                dont les repères « Réservation gratuite · Sans appel · Urgences ».
+                Réserver la place coûte un peu de vide sous la carte repliée ;
+                laisser la page sauter coûte le repère visuel du lecteur. */}
+            <div className="assistant-colonne">
               <AssistantConsult
                 patientUser={patientUser}
                 onOpenLogin={onOpenLogin}
@@ -349,37 +395,57 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                   document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }}
               />
-            )}
+            </div>
+            </div>
             </div>
 
-            {/* ─ Onglets « Téléconsultation » et « Praticien » : action directe ─ */}
-            {(heroTab === 'visio' || heroTab === 'pro') && (
-              <div className="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={
-                    heroTab === 'visio'
-                      ? () => (patientUser ? onOpenAccount?.() : onOpenLogin())
-                      : onOpenProfessional
-                  }
-                  className="btn-primary"
-                  style={{ background: '#FFFFFF', color: 'var(--accent)', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
+            {/* ─ Panneaux « Téléconsultation » et « Praticien » : action directe ─ */}
+            {HERO_TABS.slice(1).map((tb) => (
+              <div key={tb.id} data-active={heroTab === tb.id} aria-hidden={heroTab !== tb.id} className="max-w-xl">
+                <h1
+                  className="hero-reveal display-light mb-4 max-w-xl"
+                  style={{
+                    fontSize: 'clamp(2.25rem, 5.6vw, 4.25rem)',
+                    color: '#FFFFFF',
+                    whiteSpace: 'pre-line',
+                  }}
                 >
-                  {isArabic ? activeTab.ctaAr : activeTab.cta}
-                  <Icon name="arrow" className="w-4 h-4 rtl:rotate-180" strokeWidth={2} />
-                </button>
-                {heroTab === 'pro' && (
+                  {isArabic ? tb.titleAr : tb.title}
+                </h1>
+
+                <p className="text-base sm:text-lg leading-relaxed mb-7 max-w-xl" style={{ color: 'rgba(255,255,255,0.72)' }}>
+                  {isArabic ? tb.subtitleAr : tb.subtitle}
+                </p>
+
+                <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
-                    onClick={() => onDoctorClick?.()}
+                    onClick={
+                      tb.id === 'visio'
+                        ? () => (patientUser ? onOpenAccount?.() : onOpenLogin())
+                        : onOpenProfessional
+                    }
                     className="btn-primary"
-                    style={{ background: 'rgba(255,255,255,0.12)', color: '#FFFFFF', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
+                    style={{ background: '#FFFFFF', color: 'var(--accent)', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
                   >
-                    {isArabic ? 'مساحة الطبيب' : 'Espace docteur'}
+                    {isArabic ? tb.ctaAr : tb.cta}
+                    <Icon name="arrow" className="w-4 h-4 rtl:rotate-180" strokeWidth={2} />
                   </button>
-                )}
+                  {tb.id === 'pro' && (
+                    <button
+                      type="button"
+                      onClick={() => onDoctorClick?.()}
+                      className="btn-primary"
+                      style={{ background: 'rgba(255,255,255,0.12)', color: '#FFFFFF', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
+                    >
+                      {isArabic ? 'مساحة الطبيب' : 'Espace docteur'}
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
+            ))}
+
+          </div>
 
             {/* Repères de confiance */}
             <ul className="flex flex-wrap gap-x-5 gap-y-2 mt-6">
@@ -394,7 +460,6 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                 </li>
               ))}
             </ul>
-          </div>
         </div>
 
         {/* Crédit photo — discret, mais dû à l'auteur */}
@@ -410,11 +475,21 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
       </section>
 
       {/* ── COUVERTURE TERRITORIALE ──
-          Une page pleine largeur, en aplat sombre, sans illustration : la
-          phrase porte seule. Les noms de wilayas en dessous font office de
-          texture et de preuve — ce sont ceux réellement présents en base. */}
-      <section style={{ background: 'var(--nuit)' }}>
-        <div className="max-w-5xl mx-auto px-4 sm:px-8 py-16 sm:py-24 text-center">
+          Aplat sombre, sans illustration : la phrase porte seule.
+
+          Les noms de wilayas étaient auparavant du texte inerte, alors que la
+          consigne juste au-dessus dit « Choisissez votre wilaya ». Une promesse
+          qu'on ne tient pas coûte plus cher qu'une absence de promesse : le
+          visiteur essaie de cliquer, rien ne bouge, il en conclut que le site
+          est cassé. Ce sont désormais de vrais boutons — ils remplissent la
+          recherche et y ramènent. */}
+      <section className="relative overflow-hidden" style={{ background: 'var(--nuit)' }}>
+        {/* Tracé du territoire : Alger au nord, Tamanrasset au sud, et la
+            distance entre les deux. Décoratif, en arrière-plan, sans effet
+            sur la lecture ni sur les clics. */}
+        <TraceDuTerritoire />
+
+        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-8 py-16 sm:py-24 text-center">
           <h2
             className="display-light mb-6"
             style={{ fontSize: 'clamp(2.25rem, 6vw, 4.5rem)', color: '#FFFFFF' }}
@@ -431,24 +506,48 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
               : 'Choisissez votre wilaya, puis votre daïra et votre commune : chifak vous montre les cabinets les plus proches.'}
           </p>
 
-          <ul
-            className="flex flex-wrap justify-center gap-x-5 gap-y-2 mt-12 pt-10"
-            style={{ borderTop: '1px solid rgba(101,116,248,0.24)' }}
-            aria-label={isArabic ? 'الولايات المغطاة' : 'Wilayas couvertes'}
-          >
-            {COVERED_WILAYAS.map((w) => {
-              const active = selectedWilaya?.name === w;
-              return (
-                <li
-                  key={w}
-                  className="text-sm transition-colors"
-                  style={{ color: active ? '#FFFFFF' : 'var(--barbeau)' }}
-                >
-                  {w}
-                </li>
-              );
-            })}
-          </ul>
+          <div className="mt-12 pt-10" style={{ borderTop: '1px solid rgba(101,116,248,0.24)' }}>
+            {/* Intitulé de la liste : sans lui, on ne sait pas ce que sont ces
+                noms ni pourquoi ils sont seize et pas cinquante-huit. */}
+            <p
+              className="text-xs uppercase mb-6"
+              style={{ color: '#8E97D8', letterSpacing: '0.12em' }}
+            >
+              {isArabic ? 'ابدأ من ولايتك' : 'Démarrez depuis votre wilaya'}
+            </p>
+
+            <ul className="flex flex-wrap justify-center gap-2.5">
+              {COVERED_WILAYAS.map((w) => {
+                const active = selectedWilaya?.name === w;
+                return (
+                  <li key={w}>
+                    <button
+                      type="button"
+                      onClick={() => choisirWilaya(w)}
+                      aria-pressed={active}
+                      className="wilaya-pill"
+                      data-active={active ? 'true' : undefined}
+                    >
+                      {w}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+
+            {/* Les seize ci-dessus sont un raccourci, pas la couverture réelle.
+                Le dire, et donner accès aux quarante-huit. */}
+            <button
+              type="button"
+              onClick={() => {
+                document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}
+              className="mt-7 text-sm underline underline-offset-4 rounded-sm transition-colors"
+              style={{ color: '#B9C0F0' }}
+            >
+              {isArabic ? 'عرض الولايات الـ 48' : 'Voir les 48 wilayas'}
+            </button>
+          </div>
         </div>
       </section>
 

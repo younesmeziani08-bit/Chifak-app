@@ -176,6 +176,55 @@ export async function initDatabase() {
     )
   `);
 
+  /* ── Demandes d'inscription des praticiens ──
+     Un médecin ne crée PAS son compte directement : il dépose une demande,
+     qu'un administrateur examine. Sans cette étape, n'importe qui pourrait
+     s'inscrire comme cardiologue et recevoir de vrais patients — la
+     vérification humaine est ici la seule barrière qui vaille.
+
+     Le mot de passe choisi par le praticien est haché dès le dépôt : une
+     demande en attente ne doit pas contenir de secret en clair, même si elle
+     n'aboutit jamais. */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS doctor_applications (
+      id SERIAL PRIMARY KEY,
+      kind TEXT NOT NULL DEFAULT 'registration' CHECK (kind IN ('registration', 'demo')),
+      full_name TEXT NOT NULL,
+      specialty TEXT NOT NULL,
+      city TEXT NOT NULL,
+      address TEXT,
+      phone TEXT NOT NULL,
+      email TEXT NOT NULL,
+      license_number TEXT,
+      message TEXT,
+      /* Résultat du contrôle facial fait DANS LE NAVIGATEUR du praticien.
+         Deux colonnes, et rien d'autre : ni image, ni vecteur, ni gabarit —
+         aucune donnée biométrique n'atteint ce serveur, par construction.
+         Ce booléen est DÉCLARATIF : le contrôle s'exécute chez l'utilisateur,
+         qui peut donc l'annoncer réussi sans l'avoir passé. Il oriente
+         l'examen humain, il ne le remplace jamais. */
+      identity_checked BOOLEAN,
+      identity_score REAL,
+      password TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+      review_note TEXT,
+      reviewed_by INTEGER,
+      reviewed_at TIMESTAMP,
+      doctor_id INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE SET NULL
+    )
+  `);
+
+  /* Une seule demande en attente par adresse : sans cela, un même praticien
+     impatient — ou un script — remplirait la file de doublons. Index partiel :
+     il n'empêche pas de redéposer une demande après un refus. */
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_applications_email_pending
+    ON doctor_applications (email) WHERE status = 'pending'
+  `);
+
   // Colonnes supplémentaires (espace médecin) — sans casser l'existant
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS description TEXT");
   await pool.query("ALTER TABLE doctors ADD COLUMN IF NOT EXISTS bio TEXT");
@@ -304,6 +353,9 @@ export async function initDatabase() {
     "CREATE INDEX IF NOT EXISTS idx_consultations_doctor ON consultations (doctor_id)",
     "CREATE INDEX IF NOT EXISTS idx_verification_email ON verification_codes (email)",
     // username porte déjà une contrainte UNIQUE, donc son index existe.
+    // L'écran d'administration lit les demandes en attente, les plus récentes
+    // d'abord : l'index porte les deux, il n'y a donc ni balayage ni tri.
+    "CREATE INDEX IF NOT EXISTS idx_applications_status_date ON doctor_applications (status, created_at DESC)",
     // Le QR code d'un employé est résolu par ce jeton, sur une route publique.
     "CREATE INDEX IF NOT EXISTS idx_users_feedback_token ON users (feedback_token)",
   ];

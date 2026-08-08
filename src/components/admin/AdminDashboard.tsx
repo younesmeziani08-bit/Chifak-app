@@ -7,9 +7,10 @@ import AddDoctorForm from './AddDoctorForm';
 import DoctorsList from './DoctorsList';
 import EmployeesPanel from './EmployeesPanel';
 import EmployeeFeedbackPanel from './EmployeeFeedbackPanel';
+import ApplicationsPanel from './ApplicationsPanel';
 import { appointmentsAPI } from '../../services/api';
 
-type Tab = 'add' | 'list' | 'staff' | 'staffFeedback';
+type Tab = 'add' | 'list' | 'applications' | 'staff' | 'staffFeedback';
 
 interface AdminDashboardProps {
   onBackToHome: () => void;
@@ -81,6 +82,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'add', label: isArabic ? 'إضافة طبيب' : 'Ajouter un médecin', icon: '➕' },
     { key: 'list', label: isArabic ? 'قائمة الأطباء' : 'Liste des médecins', icon: '📋' },
+    { key: 'applications', label: isArabic ? 'طلبات التسجيل' : 'Demandes d’inscription', icon: '📨' },
     ...(adminUser?.role === 'admin'
       ? ([
           { key: 'staff' as Tab, label: isArabic ? 'الموظفون' : 'Employés', icon: '👥' },
@@ -200,6 +202,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
           </div>
           <div className="p-6">
             {activeTab === 'add' ? <AddDoctorForm />
+              : activeTab === 'applications' ? <ApplicationsPanel />
               : activeTab === 'staff' ? <EmployeesPanel />
               : activeTab === 'staffFeedback' ? <EmployeeFeedbackPanel />
               : <DoctorsList />}

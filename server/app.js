@@ -29,6 +29,7 @@ import routesConsultations from './routes/consultations.js';
 import routesDoctorSpace from './routes/doctorSpace.js';
 import routesAssistant from './routes/assistant.js';
 import routesStaff from './routes/staff.js';
+import routesApplications from './routes/applications.js';
 
 // SÉCURITÉ : on refuse de démarrer en production avec des secrets absents ou faibles.
 assertStrongSecrets();
@@ -77,6 +78,9 @@ app.get('/', (req, res) => {
     cors: {
       production: process.env.NODE_ENV === 'production',
       allowedOriginsCount: allowedOrigins.length,
+      // Les origines Capacitor sont toujours acceptées : ce sont celles de
+      // l'application mobile elle-même, pas d'un site tiers.
+      mobileApp: true,
     },
     rateLimit: {
       shared: !!fabriqueMagasin,
@@ -96,6 +100,7 @@ app.use(routesConsultations); // dossiers de consultation (espace médecin)
 app.use(routesDoctorSpace);   // profil et rendez-vous du praticien connecté
 app.use(routesAssistant);     // assistant santé (IA)
 app.use(routesStaff);         // comptes employés, QR d'avis, agendas manuels
+app.use(routesApplications);  // demandes d'inscription des praticiens
 
 // ── 6. Filets ──
 app.use('/api', (req, res) => {

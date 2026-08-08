@@ -222,7 +222,7 @@ export default function AssistantConsult({ patientUser, onOpenLogin, onOrientati
   return (
     <div
       className="rounded-2xl flex flex-col overflow-hidden"
-      style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-lg)', maxHeight: '30rem' }}
+      style={{ background: 'var(--bg)', boxShadow: 'var(--shadow-lg)', maxHeight: 'var(--h-assistant, 24rem)' }}
       dir={rtl ? 'rtl' : 'ltr'}
     >
       <div

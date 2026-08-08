@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import ProfessionalForm from './ProfessionalForm';
+import type { ApplicationKind } from '../../services/api';
 
 interface ProfessionalModalProps {
   isOpen: boolean;
@@ -10,6 +13,12 @@ export default function ProfessionalModal({ isOpen, onClose }: ProfessionalModal
   const isRTL = language === 'ar';
   const isArabic = language === 'ar';
 
+  /* Formulaire ouvert, et pour quel motif. Les deux boutons du bas menaient
+     nulle part : ils n'avaient aucun gestionnaire de clic. */
+  const [demande, setDemande] = useState<ApplicationKind | null>(null);
+
+  const fermer = () => { setDemande(null); onClose(); };
+
   if (!isOpen) return null;
 
   return (
@@ -19,6 +28,30 @@ export default function ProfessionalModal({ isOpen, onClose }: ProfessionalModal
       <div className="relative w-full max-w-5xl bg-white rounded-4xl shadow-3xl overflow-y-auto max-h-[90vh] animate-in zoom-in-95 slide-in-from-bottom-10 duration-500" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 to-cyan-400" />
         
+        {demande ? (
+          <div className="p-8 sm:p-12">
+            <div className="flex justify-between items-start mb-8">
+              <div>
+                <h2 className="text-2xl sm:text-3xl tracking-tight" style={{ color: 'var(--ink)' }}>
+                  {demande === 'registration'
+                    ? (isArabic ? 'طلب تسجيل' : 'Demande d’inscription')
+                    : (isArabic ? 'طلب عرض توضيحي' : 'Demande de démonstration')}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={fermer}
+                aria-label={isArabic ? 'إغلاق' : 'Fermer'}
+                className="w-11 h-11 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all flex-shrink-0"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <ProfessionalForm kind={demande} isArabic={isArabic} onDone={fermer} />
+          </div>
+        ) : (
         <div className="p-8 sm:p-12">
           {/* Header - Pro Max */}
           <div className="flex justify-between items-start mb-12">
@@ -96,15 +129,24 @@ export default function ProfessionalModal({ isOpen, onClose }: ProfessionalModal
               {t('pro.tryFree30')}
             </p>
             <div className="flex flex-col sm:flex-row gap-5 justify-center">
-              <button className="btn-pro px-10 py-5 bg-white text-blue-700 font-black uppercase tracking-widest text-xs rounded-2xl shadow-xl hover:shadow-blue-500/20 active:scale-95 transition-all">
+              <button
+                type="button"
+                onClick={() => setDemande('registration')}
+                className="btn-pro px-10 py-5 bg-white text-blue-700 font-black uppercase tracking-widest text-xs rounded-2xl shadow-xl hover:shadow-blue-500/20 active:scale-95 transition-all"
+              >
                 {t('pro.createProAccount')}
               </button>
-              <button className="btn-pro px-10 py-5 border-2 border-white/30 text-white font-black uppercase tracking-widest text-xs rounded-2xl hover:bg-white/10 active:scale-95 transition-all">
+              <button
+                type="button"
+                onClick={() => setDemande('demo')}
+                className="btn-pro px-10 py-5 border-2 border-white/30 text-white font-black uppercase tracking-widest text-xs rounded-2xl hover:bg-white/10 active:scale-95 transition-all"
+              >
                 {t('pro.scheduleDemo')}
               </button>
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

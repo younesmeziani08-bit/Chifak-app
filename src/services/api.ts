@@ -19,3 +19,4 @@ export * from './patient';
 export * from './consultations';
 export * from './stats';
 export * from './staff';
+export * from './applications';

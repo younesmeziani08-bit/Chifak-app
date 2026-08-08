@@ -25,6 +25,7 @@ const ICONS: Record<string, ReactNode> = {
   arrowLeft: <><path d="M19 12H5" /><path d="m12 19-7-7 7-7" /></>,
   calendar: <><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>,
   map: <><path d="M9 20l-5.4 2.7A1 1 0 0 1 2 21.8V6.2a1 1 0 0 1 .6-.9L9 2m0 18 6-3M9 20V2m6 15 5.4 2.7A1 1 0 0 0 22 18.8V3.2a1 1 0 0 0-.6-.9L15 -1M15 17V2M15 2 9 5" /></>,
+  alert: <><path d="M12 9v4" /><path d="M12 17h.01" /><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" /></>,
 };
 
 function Icon({ name, className = 'w-5 h-5', strokeWidth = 1.75 }: { name: string; className?: string; strokeWidth?: number }) {
@@ -133,16 +134,22 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
   const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
   const [videoCount, setVideoCount] = useState(0);
   const [searching, setSearching] = useState(true);
+  /* Distingue « le serveur n'a répondu aucun praticien » de « le serveur n'a
+     pas répondu du tout » (backend endormi, réseau coupé…) : sans cela, les
+     deux cas affichaient le même message « Aucun praticien trouvé », alors
+     que le second n'a rien à voir avec l'annuaire — un ré-essai suffit. */
+  const [searchError, setSearchError] = useState(false);
+  const [retryTick, setRetryTick] = useState(0);
 
   useEffect(() => {
     let alive = true;
     setSearching(true);
     searchDoctors(searchQuery.specialty, searchQuery.location, videoOnly)
-      .then((rows) => { if (alive) setAllDoctors(rows); })
-      .catch(() => { if (alive) setAllDoctors([]); })
+      .then((rows) => { if (alive) { setAllDoctors(rows); setSearchError(false); } })
+      .catch(() => { if (alive) { setAllDoctors([]); setSearchError(true); } })
       .finally(() => { if (alive) setSearching(false); });
     return () => { alive = false; };
-  }, [searchQuery.specialty, searchQuery.location, videoOnly]);
+  }, [searchQuery.specialty, searchQuery.location, videoOnly, retryTick]);
 
   useEffect(() => {
     let alive = true;
@@ -306,6 +313,26 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
              il y a donc un délai réseau là où l'affichage était instantané. */
           <div className="bg-white rounded-2xl border border-gray-200 p-12 sm:p-16 text-center">
             <p className="text-gray-500">{isArabic ? 'جارٍ البحث…' : 'Recherche en cours…'}</p>
+          </div>
+        ) : searchError ? (
+          <div className="bg-white rounded-2xl border border-gray-200 p-12 sm:p-16 text-center">
+            <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-5">
+              <Icon name="alert" className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2" style={{ color: NAVY }}>
+              {isArabic ? 'تعذّر الاتصال بالخادم' : 'Connexion au serveur impossible'}
+            </h3>
+            <p className="text-gray-500 max-w-md mx-auto mb-8">
+              {isArabic
+                ? 'قد تكون هذه مشكلة مؤقتة في الشبكة أو الخادم. أعد المحاولة.'
+                : "Ce n'est probablement pas votre annuaire qui est vide : le serveur n'a pas répondu à temps. Réessayez."}
+            </p>
+            <button
+              onClick={() => setRetryTick((t) => t + 1)}
+              className="btn-pro inline-flex px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold text-sm hover:bg-blue-700 transition-colors"
+            >
+              {isArabic ? 'إعادة المحاولة' : 'Réessayer'}
+            </button>
           </div>
         ) : doctors.length === 0 ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 sm:p-16 text-center">

@@ -61,6 +61,11 @@
   --tint-30: rgba(12, 14, 69, 0.22);
   --tint-50: rgba(12, 14, 69, 0.42);
 
+  /* Hauteur de l'assistant du hero. La colonne la réserve, la conversation
+     s'y limite : les deux lisent la même valeur, elles ne peuvent donc pas
+     diverger et faire sauter la page à l'ouverture. */
+  --h-assistant: 24rem;
+
   --r-sm:  8px;
   --r-md:  12px;
   --r-lg:  18px;
@@ -133,38 +138,62 @@
   --font-weight-black:     600;
 }
 
-/* ── Base ── */
-html {
-  scroll-behavior: smooth;
-  /* Empêche iOS d'agrandir le texte en mode paysage */
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-body {
-  font-family: var(--font-text);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background: #FFFFFF;
-  color: #0C0E45;
-  /* Aucun défilement horizontal : élimine la « page qui glisse » sur mobile.
-     « clip » plutôt que « hidden » : n'crée pas de conteneur de défilement,
-     donc l'en-tête collant (position: sticky) continue de fonctionner. */
-  overflow-x: clip;
-  /* Retire le flash gris au toucher sur iOS */
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* IMPORTANT : ces règles sont placées dans @layer base pour que les classes
-   utilitaires de Tailwind (min-w-…, max-w-…, h-…) gardent la priorité.
-   Hors « layer », elles écraseraient toutes les utilitaires et casseraient
-   les mises en page (cartes écrasées, hauteurs forcées, etc.). */
+/* IMPORTANT : tout le CSS custom ci-dessous est placé dans @layer base /
+   @layer components pour que les classes utilitaires de Tailwind (hidden,
+   md:flex, min-w-…, max-w-…, h-…) gardent la priorité. Hors « layer », une
+   règle CSS bat TOUJOURS les utilitaires Tailwind quel que soit l'ordre des
+   fichiers ou du breakpoint — c'est ce qui empêchait `hidden md:inline-flex`
+   de fonctionner sur .btn-primary/.btn-secondary et cassait l'adaptation
+   mobile de toute l'interface (boutons visibles et débordants au lieu
+   d'être masqués). */
 @layer base {
+  html {
+    scroll-behavior: smooth;
+    /* Empêche iOS d'agrandir le texte en mode paysage */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    font-family: var(--font-text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #FFFFFF;
+    color: #0C0E45;
+    /* Aucun défilement horizontal : élimine la « page qui glisse » sur mobile.
+       « clip » plutôt que « hidden » : n'crée pas de conteneur de défilement,
+       donc l'en-tête collant (position: sticky) continue de fonctionner. */
+    overflow-x: clip;
+    /* Retire le flash gris au toucher sur iOS */
+    -webkit-tap-highlight-color: transparent;
+  }
+
   /* Les médias ne dépassent pas la largeur de leur conteneur */
   img, video, canvas { max-width: 100%; height: auto; }
 
   /* Les mots très longs (e-mails, adresses) passent à la ligne au lieu de déborder */
   p, h1, h2, h3, h4, li, td { overflow-wrap: break-word; }
+
+  /* Les titres passent au serif : c'est le geste typographique qui distingue
+     le plus l'interface. Graisse 600 par défaut, 300 pour les titres d'affiche. */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  /* En arabe, le naskh prime sur tout — y compris sur le serif latin. */
+  [dir="rtl"] body,
+  [dir="rtl"] h1,
+  [dir="rtl"] h2,
+  [dir="rtl"] h3,
+  [dir="rtl"] h4,
+  [dir="rtl"] p,
+  [dir="rtl"] .font-display,
+  [dir="rtl"] .display-light {
+    font-family: var(--font-arabic);
+    letter-spacing: normal;
+  }
 
   /* ── Confort tactile (mobile) ── */
   @media (max-width: 640px) {
@@ -177,218 +206,364 @@ body {
   }
 }
 
-/* Les titres passent au serif : c'est le geste typographique qui distingue
-   le plus l'interface. Graisse 600 par défaut, 300 pour les titres d'affiche. */
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-}
-
-/* Titre d'affiche : très grande échelle en graisse légère.
-   Le contraste d'échelle fait la hiérarchie, pas la graisse. */
-.display-light {
-  font-family: var(--font-display);
-  font-weight: 300;
-  letter-spacing: -0.02em;
-  line-height: 1.04;
-}
-
-/* Utilitaires typographiques — à préférer aux style={{fontFamily}} en ligne */
-.font-display { font-family: var(--font-display); }
-.font-text    { font-family: var(--font-text); }
-
-/* Chiffres alignés en colonne (horaires, tarifs, dates) */
-.tnum { font-variant-numeric: tabular-nums; }
-
-/* En arabe, le naskh prime sur tout — y compris sur le serif latin. */
-[dir="rtl"] body,
-[dir="rtl"] h1,
-[dir="rtl"] h2,
-[dir="rtl"] h3,
-[dir="rtl"] h4,
-[dir="rtl"] p,
-[dir="rtl"] .font-display,
-[dir="rtl"] .display-light {
-  font-family: var(--font-arabic);
-  letter-spacing: normal;
-}
-
-/* ── Scrollbar hide ── */
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-.no-scrollbar::-webkit-scrollbar { display: none; }
-
-/* ── Hero background: Islamic interlocking circles (tracé continu)
-   Barely visible — the signature element of Chifak's visual identity. ── */
-.hero-pattern {
-  background-color: #F7FAFF;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='none' stroke='%2307008F' stroke-width='0.6' opacity='0.13'%3E%3Ccircle cx='36' cy='36' r='34'/%3E%3Ccircle cx='0' cy='0' r='34'/%3E%3Ccircle cx='72' cy='0' r='34'/%3E%3Ccircle cx='0' cy='72' r='34'/%3E%3Ccircle cx='72' cy='72' r='34'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 72px 72px;
-}
-
-/* ── Input/select fields ── */
-.field {
-  width: 100%;
-  background: var(--bg-2);
-  border: 1.5px solid transparent;
-  border-radius: var(--r-md);
-  padding: 0.75rem 1rem;
-  font-size: 0.9375rem;
-  color: var(--ink);
-  font-family: var(--font-text);
-  transition: border-color 0.15s, box-shadow 0.15s;
-  outline: none;
-  appearance: none;
-}
-.field:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-bg);
-}
-.field option { background: #fff; }
-
-/* Même apparence que .field mais en gardant la flèche native (ex : select wilaya) */
-.field-native {
-  width: 100%;
-  background: var(--bg-2);
-  border: 1.5px solid transparent;
-  border-radius: var(--r-md);
-  padding: 0.75rem 1rem;
-  font-size: 0.9375rem;
-  color: var(--ink);
-  font-family: var(--font-text);
-  transition: border-color 0.15s, box-shadow 0.15s;
-  outline: none;
-}
-.field-native:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-bg);
-}
-.field-native option { background: #fff; }
-
-/* ── Primary CTA button ── */
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0 1.25rem;
-  height: 44px;
-  background: var(--accent);
-  color: #FFFFFF;
-  font-family: var(--font-text);
-  font-weight: 600;
-  font-size: 0.9375rem;
-  border-radius: var(--r-md);
-  border: none;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.18s ease, transform 0.14s ease, box-shadow 0.18s ease;
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-dk);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px var(--tint-30);
-}
-.btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
-.btn-primary:disabled { background: var(--bg-3); color: var(--ink-3); cursor: not-allowed; }
-
-/* ── Secondary button ── */
-.btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0 1rem;
-  height: 36px;
-  background: transparent;
-  color: var(--ink-2);
-  font-family: var(--font-text);
-  font-weight: 600;
-  font-size: 0.875rem;
-  border-radius: var(--r-md);
-  border: 1.5px solid var(--bg-3);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-}
-.btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
-
-/* ── btn-pro (backward compat) ── */
-.btn-pro {
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.2s ease;
-}
-.btn-pro:hover:not(:disabled) { transform: translateY(-1px); }
-.btn-pro:active:not(:disabled) { transform: translateY(0); }
-.btn-pro::after { display: none; }
-
-/* ── Carte de spécialité (photographie de fond) ──
-   Le fond sombre sert de couleur de repli tant que l'image n'est pas chargée :
-   le libellé blanc reste lisible dès le premier rendu, sans clignotement. */
-.specialty-card {
-  background: var(--nuit);
-  border: none;
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-xs);
-  cursor: pointer;
-  padding: 0;
-  transition: box-shadow 0.18s, transform 0.18s;
-}
-.specialty-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-/* L'anneau de focus doit rester visible par-dessus la photo */
-.specialty-card:focus-visible {
-  outline: 3px solid var(--barbeau);
-  outline-offset: 2px;
-}
-
-/* ── Nav link ── */
-.nav-link {
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--ink-2);
-  transition: color 0.15s;
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-}
-.nav-link:hover { color: var(--ink); }
-
-/* ── Radius / shadow extensions ── */
-.rounded-4xl { border-radius: 2rem; }
-.shadow-3xl  { box-shadow: var(--shadow-lg); }
-
-/* ── Keyframes ── */
-@keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
-@keyframes fadeInUp  { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-
-/* ── Animation utilities ── */
-.animate-fadeIn    { animation: fadeIn 0.5s ease both; }
-.animate-fadeInUp  { animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.animate-in        { animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.animate-slideDown { animation: slideDown 0.2s ease both; }
-.animate-float     { animation: none; }
-.animate-floatSlow { animation: none; }
-
-.hero-reveal         { animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.hero-reveal-delay-1 { animation-delay: 0.12s; }
-.hero-reveal-delay-2 { animation-delay: 0.24s; }
-
-.delay-1   { animation-delay: 0.1s; }
-.delay-2   { animation-delay: 0.2s; }
-.delay-100 { animation-delay: 0.1s; }
-.delay-200 { animation-delay: 0.2s; }
-.delay-300 { animation-delay: 0.3s; }
-
-/* ── Reduced motion ── */
-@media (prefers-reduced-motion: reduce) {
-  .animate-fadeIn, .animate-fadeInUp, .animate-in, .hero-reveal, .animate-slideDown {
-    animation: none !important;
+@layer components {
+  /* Titre d'affiche : très grande échelle en graisse légère.
+     Le contraste d'échelle fait la hiérarchie, pas la graisse. */
+  .display-light {
+    font-family: var(--font-display);
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    line-height: 1.04;
   }
-  .btn-primary, .btn-secondary, .btn-pro, .specialty-card { transition: none; }
+
+  /* Utilitaires typographiques — à préférer aux style={{fontFamily}} en ligne */
+  .font-display { font-family: var(--font-display); }
+  .font-text    { font-family: var(--font-text); }
+
+  /* Chiffres alignés en colonne (horaires, tarifs, dates) */
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ── Scrollbar hide ── */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* ── Hero background: Islamic interlocking circles (tracé continu)
+     Barely visible — the signature element of Chifak's visual identity. ── */
+  .hero-pattern {
+    background-color: #F7FAFF;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='72' height='72'%3E%3Cg fill='none' stroke='%2307008F' stroke-width='0.6' opacity='0.13'%3E%3Ccircle cx='36' cy='36' r='34'/%3E%3Ccircle cx='0' cy='0' r='34'/%3E%3Ccircle cx='72' cy='0' r='34'/%3E%3Ccircle cx='0' cy='72' r='34'/%3E%3Ccircle cx='72' cy='72' r='34'/%3E%3C/g%3E%3C/svg%3E");
+    background-size: 72px 72px;
+  }
+
+  /* ── Input/select fields ── */
+  .field {
+    width: 100%;
+    background: var(--bg-2);
+    border: 1.5px solid transparent;
+    border-radius: var(--r-md);
+    padding: 0.75rem 1rem;
+    font-size: 0.9375rem;
+    color: var(--ink);
+    font-family: var(--font-text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+    appearance: none;
+  }
+  .field:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+  .field option { background: #fff; }
+
+  /* Même apparence que .field mais en gardant la flèche native (ex : select wilaya) */
+  .field-native {
+    width: 100%;
+    background: var(--bg-2);
+    border: 1.5px solid transparent;
+    border-radius: var(--r-md);
+    padding: 0.75rem 1rem;
+    font-size: 0.9375rem;
+    color: var(--ink);
+    font-family: var(--font-text);
+    transition: border-color 0.15s, box-shadow 0.15s;
+    outline: none;
+  }
+  .field-native:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-bg);
+  }
+  .field-native option { background: #fff; }
+
+  /* ── Primary CTA button ── */
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0 1.25rem;
+    height: 44px;
+    background: var(--accent);
+    color: #FFFFFF;
+    font-family: var(--font-text);
+    font-weight: 600;
+    font-size: 0.9375rem;
+    border-radius: var(--r-md);
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.18s ease, transform 0.14s ease, box-shadow 0.18s ease;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-dk);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px var(--tint-30);
+  }
+  .btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+  .btn-primary:disabled { background: var(--bg-3); color: var(--ink-3); cursor: not-allowed; }
+
+  /* ── Panneaux d'onglet du hero ──
+     Les trois panneaux occupent la MÊME cellule de grille : le conteneur prend
+     donc la hauteur du plus grand, et changer d'onglet ne déplace plus rien.
+
+     Pourquoi pas `display: none` sur les panneaux inactifs : un élément retiré
+     du flux ne compte plus dans la hauteur, et c'est précisément ce qui faisait
+     remonter la page. `visibility: hidden` le garde dans le calcul tout en le
+     retirant de la navigation au clavier et des lecteurs d'écran. */
+  .hero-panneaux {
+    display: grid;
+  }
+  .hero-panneaux > * {
+    grid-area: 1 / 1;
+  }
+  .hero-panneaux > [data-active='false'] {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* Le titre du panneau actif rejoue son apparition à chaque changement
+     d'onglet. Les trois panneaux étant montés en permanence, l'animation ne
+     peut plus se déclencher au montage : c'est l'attribut data-active qui la
+     relance. Rien ne bouge sur les panneaux cachés. */
+  .hero-panneaux > [data-active='true'] .hero-reveal {
+    animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-panneaux > [data-active='false'] .hero-reveal {
+    animation: none;
+  }
+
+  /* ── Colonne de l'assistant, à côté du formulaire ──
+     Hauteur réservée à partir de la largeur où l'assistant occupe sa propre
+     colonne : ouvrir ou refermer la conversation ne déplace alors plus rien
+     sous le hero.
+
+     En dessous de cette largeur, l'assistant passe SOUS le formulaire. Réserver
+     470 px de vide sur un téléphone serait absurde — la carte repliée flotterait
+     au milieu du néant. À cette taille, l'ouverture agrandit donc le bloc, comme
+     n'importe quel dépliant : le geste vient de l'utilisateur, il en attend un
+     changement. */
+  @media (min-width: 1024px) {
+    .assistant-colonne { min-height: var(--h-assistant); }
+  }
+
+  /* ── Tracé décoratif « D'Alger à Tamanrasset » ──
+     Occupe toute la section, derrière le contenu. Il ne doit jamais capter un
+     clic destiné aux pastilles ni gêner la lecture du titre. */
+  .trace-territoire {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Le trait se dessine une seule fois, du repère d'Alger vers celui de
+     Tamanrasset : le geste suit le sens de lecture et celui de la carte. */
+  .trace-route,
+  .trace-souffle {
+    stroke-dasharray: 1400;
+    stroke-dashoffset: 1400;
+    animation: trace-apparition 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  .trace-souffle:nth-of-type(2) { animation-delay: 0.15s; }
+  .trace-souffle:nth-of-type(3) { animation-delay: 0.3s; }
+  .trace-souffle:nth-of-type(4) { animation-delay: 0.45s; }
+  .trace-souffle:nth-of-type(5) { animation-delay: 0.6s; }
+  .trace-souffle:nth-of-type(6) { animation-delay: 0.75s; }
+
+  /* Les deux repères arrivent après leur ligne, pas avant. */
+  .trace-repere {
+    opacity: 0;
+    animation: trace-repere-apparition 0.8s ease forwards;
+    animation-delay: 1.5s;
+  }
+
+  @keyframes trace-apparition {
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes trace-repere-apparition {
+    to { opacity: 1; }
+  }
+
+  /* Sur téléphone, la composition est trop étroite pour que le trajet se lise :
+     il devient une texture, on l'efface plutôt que de l'entasser. */
+  @media (max-width: 640px) {
+    .trace-territoire { opacity: 0.45; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .trace-route,
+    .trace-souffle {
+      stroke-dasharray: none;
+      stroke-dashoffset: 0;
+      animation: none;
+    }
+    .trace-repere { opacity: 1; animation: none; }
+  }
+
+  /* ── Pastille de wilaya (section « D'Alger à Tamanrasset ») ──
+     Un point d'entrée, pas une décoration. Trois exigences ont dicté la forme :
+
+     1. Cible tactile. Le texte nu faisait 14 px de haut : impossible à viser au
+        pouce. Hauteur portée à 44 px, la taille minimale recommandée.
+     2. Contraste. Les noms s'affichaient en barbeau #6574F8 sur nuit #0C0E45,
+        soit 4,64:1 — au-dessus du seuil, mais de justesse, pour du petit texte
+        sur fond sombre. Le texte passe à #C9D2FB : 12,11:1 mesuré. L'état
+        sélectionné inverse le rapport, blanc sur barbeau plein.
+     3. Affordance. Une bordure et un fond légèrement surélevé disent « ceci se
+        clique » avant même le survol — un texte coloré, non. */
+  .wilaya-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(101, 116, 248, 0.35);
+    background: rgba(101, 116, 248, 0.10);
+    color: #C9D2FB;                       /* 12,11:1 sur --nuit */
+    font-family: var(--font-text);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.14s ease;
+  }
+  .wilaya-pill:hover {
+    background: rgba(101, 116, 248, 0.22);
+    border-color: rgba(101, 116, 248, 0.65);
+    color: #FFFFFF;
+    transform: translateY(-1px);
+  }
+  .wilaya-pill:active { transform: translateY(0); }
+
+  /* Anneau de focus clair : sur fond sombre, le contour par défaut du navigateur
+     est souvent invisible. Il doit rester net au clavier. */
+  .wilaya-pill:focus-visible {
+    outline: 2px solid #FFFFFF;
+    outline-offset: 2px;
+  }
+
+  /* Wilaya retenue : remplissage plein dans le bleu de marque, texte en nuit.
+     Le blanc sur ce bleu ne donnait que 3,88:1 — sous le seuil. Inverser le
+     texte plutôt qu'assombrir le fond préserve la teinte exacte de la marque
+     (4,64:1 mesuré) et fait de la pastille choisie l'élément le plus lumineux
+     de la rangée : « sélectionné » se lit avant même d'avoir lu le nom. */
+  .wilaya-pill[data-active='true'] {
+    background: var(--barbeau);
+    border-color: var(--barbeau);
+    color: var(--nuit);                   /* 4,64:1 sur --barbeau */
+    font-weight: 600;
+  }
+  .wilaya-pill[data-active='true']:hover {
+    background: #8490FA;
+    border-color: #8490FA;
+    color: var(--nuit);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wilaya-pill { transition: none; }
+    .wilaya-pill:hover { transform: none; }
+  }
+
+  /* ── Secondary button ── */
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0 1rem;
+    height: 36px;
+    background: transparent;
+    color: var(--ink-2);
+    font-family: var(--font-text);
+    font-weight: 600;
+    font-size: 0.875rem;
+    border-radius: var(--r-md);
+    border: 1.5px solid var(--bg-3);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-bg); }
+
+  /* ── btn-pro (backward compat) ── */
+  .btn-pro {
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s ease;
+  }
+  .btn-pro:hover:not(:disabled) { transform: translateY(-1px); }
+  .btn-pro:active:not(:disabled) { transform: translateY(0); }
+  .btn-pro::after { display: none; }
+
+  /* ── Carte de spécialité (photographie de fond) ──
+     Le fond sombre sert de couleur de repli tant que l'image n'est pas chargée :
+     le libellé blanc reste lisible dès le premier rendu, sans clignotement. */
+  .specialty-card {
+    background: var(--nuit);
+    border: none;
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-xs);
+    cursor: pointer;
+    padding: 0;
+    transition: box-shadow 0.18s, transform 0.18s;
+  }
+  .specialty-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+  /* L'anneau de focus doit rester visible par-dessus la photo */
+  .specialty-card:focus-visible {
+    outline: 3px solid var(--barbeau);
+    outline-offset: 2px;
+  }
+
+  /* ── Nav link ── */
+  .nav-link {
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--ink-2);
+    transition: color 0.15s;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+  .nav-link:hover { color: var(--ink); }
+
+  /* ── Radius / shadow extensions ── */
+  .rounded-4xl { border-radius: 2rem; }
+  .shadow-3xl  { box-shadow: var(--shadow-lg); }
+
+  /* ── Keyframes ── */
+  @keyframes fadeIn    { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes fadeInUp  { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideDown { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Animation utilities ── */
+  .animate-fadeIn    { animation: fadeIn 0.5s ease both; }
+  .animate-fadeInUp  { animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .animate-in        { animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .animate-slideDown { animation: slideDown 0.2s ease both; }
+  .animate-float     { animation: none; }
+  .animate-floatSlow { animation: none; }
+
+  .hero-reveal         { animation: fadeInUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .hero-reveal-delay-1 { animation-delay: 0.12s; }
+  .hero-reveal-delay-2 { animation-delay: 0.24s; }
+
+  .delay-1   { animation-delay: 0.1s; }
+  .delay-2   { animation-delay: 0.2s; }
+  .delay-100 { animation-delay: 0.1s; }
+  .delay-200 { animation-delay: 0.2s; }
+  .delay-300 { animation-delay: 0.3s; }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fadeIn, .animate-fadeInUp, .animate-in, .hero-reveal, .animate-slideDown {
+      animation: none !important;
+    }
+    .btn-primary, .btn-secondary, .btn-pro, .specialty-card { transition: none; }
+  }
 }

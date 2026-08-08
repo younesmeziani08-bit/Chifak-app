@@ -9,6 +9,12 @@ interface LocationSelectorProps {
   onCommuneChange?: (name: string | null) => void;
   showWilayaLabel?: boolean;
   selectVariant?: 'default' | 'hero';
+  /**
+   * Wilaya imposée de l'extérieur (raccourcis « D'Alger à Tamanrasset »).
+   * Le composant reste maître de son état : cette valeur ne fait que le
+   * pousser vers une sélection, sans casser la navigation daïra/commune.
+   */
+  wilayaName?: string | null;
 }
 
 interface Wilaya {
@@ -36,6 +42,7 @@ export default function LocationSelector({
   onCommuneChange,
   showWilayaLabel = true,
   selectVariant = 'default',
+  wilayaName = null,
 }: LocationSelectorProps) {
   const { language } = useLanguage();
   const [selectedWilaya, setSelectedWilaya] = useState<Wilaya | null>(null);
@@ -103,6 +110,20 @@ export default function LocationSelector({
       onLocationChangeRef.current(wilayaName);
     }
   }, [selectedCommune, selectedWilaya, selectedDaira, isArabic]);
+
+  /* Synchronisation avec un choix venu d'ailleurs sur la page. On compare par
+     nom — la seule donnée que le raccourci connaisse — et on ne réagit que si
+     la wilaya diffère réellement, sinon on effacerait la daïra et la commune
+     que l'utilisateur vient de choisir. */
+  useEffect(() => {
+    if (!wilayaName) return;
+    if (selectedWilaya?.name === wilayaName) return;
+    const trouvee = wilayas.find((w) => w.name === wilayaName) || null;
+    if (!trouvee) return;
+    setSelectedWilaya(trouvee);
+    setSelectedDaira(null);
+    setSelectedCommune(null);
+  }, [wilayaName, wilayas, selectedWilaya]);
 
   const handleWilayaChange = (wilayaCode: string) => {
     const wilaya = wilayas.find(w => String(w.code) === wilayaCode) || null;

@@ -69,6 +69,15 @@ export default function Header({
         WebkitBackdropFilter: 'blur(20px)',
         borderBottom: scrolled ? '1px solid rgba(0,0,0,0.08)' : '1px solid transparent',
         transition: 'background-color 0.2s, border-color 0.2s',
+        // On gère nous-mêmes la zone sûre (cf. contentInset: 'never' côté
+        // Capacitor iOS) plutôt que de laisser WKWebView ajuster les insets,
+        // ce qui cassait le suivi du header en `position: sticky` au scroll.
+        paddingTop: 'env(safe-area-inset-top)',
+        // Force un layer composité GPU : sur WebKit iOS, un header `sticky`
+        // avec `backdrop-filter` peut sinon rester visuellement figé un
+        // instant avant de « rattraper » le scroll.
+        transform: 'translateZ(0)',
+        WebkitTransform: 'translateZ(0)',
       }}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-8">

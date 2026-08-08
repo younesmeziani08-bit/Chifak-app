@@ -40,7 +40,6 @@ export const assistantLimiter = rateLimit({
   message: { reply: 'Vous envoyez des messages trop vite. Patientez un instant avant de réessayer.' },
   ...magasin('assistant'),
 });
-app.use('/api/assistant', assistantLimiter);
 
 /* Limiteur propre à la réservation : la route est publique (pas de compte
    exigé pour prendre rendez-vous), mais sans plafond dédié un script pouvait
@@ -53,4 +52,17 @@ export const bookingLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Trop de réservations depuis cette connexion. Réessayez plus tard.' },
   ...magasin('booking'),
+});
+
+/* Dépôt de demande d'inscription praticien. Route publique qui écrit en base :
+   sans plafond, un script remplirait la file d'examen de fausses demandes et
+   noierait les vraies. Trois par heure et par adresse IP — un praticien n'en
+   dépose qu'une. */
+export const applicationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: Number(process.env.APPLICATION_RATE_LIMIT_MAX) || 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de demandes depuis cette connexion. Réessayez plus tard.' },
+  ...magasin('application'),
 });

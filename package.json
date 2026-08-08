@@ -22,7 +22,8 @@
     "clsx": "2.1.1",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "tailwind-merge": "3.4.0"
+    "tailwind-merge": "3.4.0",
+    "@vladmandic/human": "^3.3.5"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
