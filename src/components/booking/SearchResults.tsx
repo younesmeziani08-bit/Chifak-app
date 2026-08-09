@@ -38,7 +38,7 @@ function Icon({ name, className = 'w-5 h-5', strokeWidth = 1.75 }: { name: strin
 
 interface SearchResultsProps {
   searchQuery: { specialty: string; location: string; date: string };
-  onDoctorSelect: (doctor: Doctor) => void;
+  onDoctorSelect: (doctor: Doctor, date?: string, time?: string, consultationType?: 'cabinet' | 'video') => void;
   onBackToHome: () => void;
   onDoctorClick?: () => void;
   onOpenLogin: () => void;
@@ -361,7 +361,7 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
                 isArabic={isArabic}
                 slots={freeSlotsFor(doctor)}
                 nextDay={nextAvailableDay(doctor, days, activeDay)}
-                onSelect={() => onDoctorSelect(doctor)}
+                onSelect={(time) => onDoctorSelect(doctor, activeDay, time, videoOnly ? 'video' : 'cabinet')}
                 onPickDay={(iso) => setActiveDay(iso)}
               />
             ))}
@@ -379,7 +379,7 @@ function DoctorCard({
   isArabic: boolean;
   slots: string[];
   nextDay: DayInfo | null;
-  onSelect: () => void;
+  onSelect: (time?: string) => void;
   onPickDay: (iso: string) => void;
 }) {
   const mapsLink = doctor.mapsUrl
@@ -439,7 +439,7 @@ function DoctorCard({
                 {slots.slice(0, 10).map((slot) => (
                   <button
                     key={slot}
-                    onClick={onSelect}
+                    onClick={() => onSelect(slot)}
                     className="px-4 py-2 bg-blue-50 hover:bg-blue-600 text-blue-700 hover:!text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     {slot}
@@ -447,14 +447,14 @@ function DoctorCard({
                 ))}
                 {slots.length > 10 && (
                   <button
-                    onClick={onSelect}
+                    onClick={() => onSelect()}
                     className="px-3 py-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
                   >
                     +{slots.length - 10}
                   </button>
                 )}
                 <button
-                  onClick={onSelect}
+                  onClick={() => onSelect()}
                   className="btn-pro ltr:ml-auto rtl:mr-auto px-5 py-2 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors"
                 >
                   {isArabic ? 'حجز موعد' : 'Prendre RDV'}

@@ -50,6 +50,11 @@ const IconCheck = ({ className = '' }: { className?: string }) => (
 
 interface BookingPageProps {
   doctor: Doctor;
+  /** Créneau déjà choisi dans la liste de résultats — évite de le redemander
+      à un patient connecté (cf. App.tsx, prefilledSlot). */
+  initialDate?: string;
+  initialTime?: string;
+  initialConsultationType?: 'cabinet' | 'video';
   onBookingComplete: (booking: Booking) => Promise<void> | void;
   onBack: () => void;
   onBackToHome: () => void;
@@ -66,12 +71,12 @@ const DAYS_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأرب
 const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
 const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
-export default function BookingPage({ doctor, onBookingComplete, onBack, onBackToHome, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, patientUser, onLogout }: BookingPageProps) {
+export default function BookingPage({ doctor, initialDate, initialTime, initialConsultationType, onBookingComplete, onBack, onBackToHome, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, patientUser, onLogout }: BookingPageProps) {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
 
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedTime, setSelectedTime] = useState('');
+  const [selectedDate, setSelectedDate] = useState(initialDate || '');
+  const [selectedTime, setSelectedTime] = useState(initialTime || '');
   const [step, setStep] = useState<1 | 2>(1);
   const [form, setForm] = useState({ name: '', email: '', phone: '', reason: '' });
 
@@ -91,7 +96,14 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
   }, []);
 
   // Fenêtre de 7 jours que l'on peut faire glisser librement jusqu'à un an à l'avance.
-  const [weekOffset, setWeekOffset] = useState(0);
+  // Part sur la semaine du créneau déjà choisi, s'il y en a un.
+  const [weekOffset, setWeekOffset] = useState(() => {
+    if (!initialDate) return 0;
+    const diff = Math.floor(
+      (new Date(`${initialDate}T00:00:00`).getTime() - new Date(`${todayIso()}T00:00:00`).getTime()) / 86400000
+    );
+    return Math.max(0, Math.floor(diff / 7));
+  });
 
   const isoOf = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -133,7 +145,7 @@ export default function BookingPage({ doctor, onBookingComplete, onBack, onBackT
   const isWorkingDate = (dateIso: string) => isWorkingDateShared(doctor, dateIso);
   /* Mode de consultation. Il pilote la liste des créneaux : en vidéo, seules
      les heures que le praticien a ouvertes à la téléconsultation. */
-  const [consultationType, setConsultationType] = useState<'cabinet' | 'video'>('cabinet');
+  const [consultationType, setConsultationType] = useState<'cabinet' | 'video'>(initialConsultationType || 'cabinet');
 
   const daySlots = selectedDate ? slotsForDay(doctor, selectedDate, consultationType) : [];
 

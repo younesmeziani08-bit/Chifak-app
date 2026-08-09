@@ -73,6 +73,12 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'search' | 'booking' | 'confirmation' | 'admin' | 'doctor' | 'account'>('home');
   const [searchQuery, setSearchQuery] = useState({ specialty: '', location: '', date: '' });
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  /* Créneau déjà cliqué dans la liste de résultats, à reporter tel quel sur
+     la page de réservation. Un patient connecté ne doit choisir sa date et
+     son heure qu'une seule fois ; un invité, en revanche, passe par la
+     connexion avant de revenir ici, et ce détour lui fait de toute façon
+     perdre le contexte de la recherche — autant le laisser resélectionner. */
+  const [prefilledSlot, setPrefilledSlot] = useState<{ date: string; time: string; consultationType: 'cabinet' | 'video' } | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
   const [authModal, setAuthModal] = useState<'login' | 'signup' | null>(null);
   const [isProModalOpen, setIsProModalOpen] = useState(false);
@@ -133,7 +139,7 @@ export default function App() {
     setCurrentPage('search');
   };
 
-  const handleDoctorSelect = (doctor: Doctor) => {
+  const handleDoctorSelect = (doctor: Doctor, date?: string, time?: string, consultationType?: 'cabinet' | 'video') => {
     const patientToken = localStorage.getItem('chifak_patient_token');
     if (!patientToken) {
       setPendingDoctor(doctor);
@@ -142,6 +148,7 @@ export default function App() {
     }
 
     setSelectedDoctor(doctor);
+    setPrefilledSlot(date && time ? { date, time, consultationType: consultationType || 'cabinet' } : null);
     setCurrentPage('booking');
   };
 
@@ -195,6 +202,7 @@ export default function App() {
       });
 
       setBooking(bookingData);
+      setPrefilledSlot(null);
       setCurrentPage('confirmation');
     } catch (error) {
       alert('Erreur lors de l\'enregistrement du rendez-vous. Réessayez.');
@@ -205,12 +213,14 @@ export default function App() {
     setCurrentPage('home');
     setSearchQuery({ specialty: '', location: '', date: '' });
     setSelectedDoctor(null);
+    setPrefilledSlot(null);
     setBooking(null);
   };
 
   const handleBackToSearch = () => {
     setCurrentPage('search');
     setSelectedDoctor(null);
+    setPrefilledSlot(null);
   };
 
   // Check if we're on doctor space
@@ -296,6 +306,9 @@ export default function App() {
         <PageTransition pageKey="booking">
           <BookingPage
             doctor={selectedDoctor}
+            initialDate={prefilledSlot?.date}
+            initialTime={prefilledSlot?.time}
+            initialConsultationType={prefilledSlot?.consultationType}
             onBookingComplete={handleBookingComplete}
             onBack={handleBackToSearch}
             onBackToHome={handleBackToHome}
