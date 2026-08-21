@@ -125,10 +125,21 @@ export const appointmentsAPI = {
     return await response.json();
   },
 
-  // Créneaux déjà pris un jour donné (tous médecins) -> [{ doctor_id, appointment_time }]
-  getBookedSlots: async (date: string): Promise<{ doctor_id: number; appointment_time: string }[]> => {
+  /**
+   * Créneaux déjà pris, pour les masquer.
+   *
+   * `jusquA` demande une fenêtre plutôt qu'une seule journée. La liste de
+   * résultats en a besoin : elle annonce « Prochaine disponibilité : mardi
+   * 25 », et sans connaître les réservations de ce jour-là elle pouvait
+   * désigner une journée déjà complète.
+   */
+  getBookedSlots: async (
+    date: string,
+    jusquA?: string,
+  ): Promise<{ doctor_id: number; appointment_date: string; appointment_time: string }[]> => {
     try {
-      const response = await fetch(`${API_URL}/booked-slots?date=${encodeURIComponent(date)}`);
+      const fenetre = jusquA ? `&to=${encodeURIComponent(jusquA)}` : '';
+      const response = await fetch(`${API_URL}/booked-slots?date=${encodeURIComponent(date)}${fenetre}`);
       if (!response.ok) return [];
       return await response.json();
     } catch {

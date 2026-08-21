@@ -281,19 +281,51 @@ router.post('/api/appointments', bookingLimiter, async (req, res) => {
   }
 });
 
-// GET /api/booked-slots?date=YYYY-MM-DD - Créneaux déjà pris ce jour-là (tous médecins)
+/**
+ * GET /api/booked-slots — créneaux déjà pris, pour les masquer.
+ *
+ *   ?date=AAAA-MM-JJ            un seul jour
+ *   ?date=AAAA-MM-JJ&to=AAAA-MM-JJ   une fenêtre
+ *
+ * ── Pourquoi une fenêtre ──
+ *
+ * La liste de résultats annonce « Prochaine disponibilité : mardi 25 ». Elle
+ * la calculait à partir des seuls horaires déclarés par le praticien, sans
+ * savoir lesquels étaient déjà réservés — puisqu'elle ne connaissait que le
+ * jour affiché. Elle pouvait donc désigner une journée entièrement complète :
+ * le patient cliquait, ne trouvait rien, et recommençait.
+ *
+ * La fenêtre est plafonnée à trente-et-un jours : au-delà, la réponse
+ * grossirait sans que personne ne regarde si loin.
+ */
 router.get('/api/booked-slots', async (req, res) => {
   try {
-    const { date } = req.query;
+    const { date, to } = req.query;
     if (!isValidDate(date)) {
       return res.status(400).json({ error: 'Paramètre date invalide (format AAAA-MM-JJ)' });
     }
+
+    // Sans « to », on garde le comportement d'origine : une seule journée.
+    let fin = date;
+    if (to !== undefined) {
+      if (!isValidDate(to) || to < date) {
+        return res.status(400).json({ error: 'Paramètre « to » invalide.' });
+      }
+      const ecart = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86400000;
+      if (ecart > 31) {
+        return res.status(400).json({ error: 'Fenêtre trop large (31 jours maximum).' });
+      }
+      fin = to;
+    }
+
+    /* La date est renvoyée avec chaque ligne : sans elle, le navigateur ne
+       saurait pas à quel jour rattacher un horaire dans une fenêtre. */
     const rows = await db.prepare(`
-      SELECT doctor_id, appointment_time
+      SELECT doctor_id, appointment_date, appointment_time
       FROM appointments
-      WHERE appointment_date = ? AND status != 'cancelled'
+      WHERE appointment_date BETWEEN ? AND ? AND status != 'cancelled'
       LIMIT 20000
-    `).all(date);
+    `).all(date, fin);
     res.json(rows);
   } catch (error) {
     console.error('Erreur récupération créneaux pris:', error);

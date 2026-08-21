@@ -394,20 +394,31 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
     );
   });
 
-  // Fetch doctor slots for next appointment
+  /* Créneaux proposés pour un rendez-vous de suivi.
+     Ils reprenaient les horaires déclarés sans en retirer les rendez-vous
+     déjà pris : le praticien proposait à son patient une heure occupée par un
+     autre, et la réservation échouait au dernier moment — devant le patient,
+     en fin de consultation. On croise donc avec l'agenda réel. */
   useEffect(() => {
-    if (isAuthenticated && doctorInfo && selectedDate) {
-      const fetchSlots = async () => {
-        try {
-          const doctor = await doctorsAPI.getById(doctorInfo.id);
-          // Mêmes créneaux que ceux vus par le patient (durée de consultation appliquée)
-          setAvailableSlots(slotsForDay(doctor, selectedDate));
-        } catch (err) {
-          console.error('Erreur slots:', err);
-        }
-      };
-      fetchSlots();
-    }
+    if (!isAuthenticated || !doctorInfo || !selectedDate) return;
+    let vivant = true;
+    (async () => {
+      try {
+        const [doctor, pris] = await Promise.all([
+          doctorsAPI.getById(doctorInfo.id),
+          appointmentsAPI.getBookedSlots(selectedDate),
+        ]);
+        if (!vivant) return;
+        const occupes = new Set(
+          pris.filter((p) => p.doctor_id === doctorInfo.id).map((p) => p.appointment_time)
+        );
+        // Mêmes créneaux que ceux vus par le patient (durée de consultation appliquée)
+        setAvailableSlots(slotsForDay(doctor, selectedDate).filter((t) => !occupes.has(t)));
+      } catch (err) {
+        console.error('Erreur slots:', err);
+      }
+    })();
+    return () => { vivant = false; };
   }, [isAuthenticated, doctorInfo, selectedDate]);
 
   const handleConsultationSubmit = async (e: React.FormEvent) => {

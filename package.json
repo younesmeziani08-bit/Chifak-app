@@ -7,6 +7,7 @@
     "dev": "vite",
     "dev:admin": "vite --config vite.admin.config.ts",
     "build": "vite build",
+    "contrats": "node scripts/contrats.mjs",
     "build:admin": "vite build --config vite.admin.config.ts",
     "build:tout": "npm run build && npm run build:admin",
     "preview": "vite preview",

@@ -5,7 +5,7 @@ import Header from '../shared/Header';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useDoctors } from '../../contexts/DoctorsContext';
 import { appointmentsAPI } from '../../services/api';
-import { slotsForDay } from '../../utils/slots';
+import { slotsForDay, type ConsultationMode } from '../../utils/slots';
 import DoctorAvatar from '../shared/DoctorAvatar';
 
 const NAVY = '#00264c';
@@ -75,15 +75,33 @@ function buildDays(count: number, isArabic: boolean): DayInfo[] {
   });
 }
 
-/* Next day (within the strip window) where the doctor has availability */
-function nextAvailableDay(doctor: Doctor, days: DayInfo[], fromISO: string): DayInfo | null {
-  const start = days.findIndex((d) => d.full === fromISO);
-  const from = start === -1 ? 0 : start;
-  for (let i = from + 1; i < days.length; i++) {
-    if (slotsForDay(doctor, days[i].full).length > 0) return days[i];
-  }
-  for (let i = 0; i < from; i++) {
-    if (slotsForDay(doctor, days[i].full).length > 0) return days[i];
+/**
+ * Prochain jour où ce praticien a réellement un créneau libre.
+ *
+ * Deux erreurs corrigées ici. La fonction ne connaissait pas les créneaux
+ * déjà réservés — elle ne regardait que les horaires déclarés par le
+ * praticien — et pouvait donc annoncer « Prochaine disponibilité : mardi 25 »
+ * pour une journée entièrement complète. Le patient cliquait, ne trouvait
+ * rien, et recommençait.
+ *
+ * Elle ignorait aussi le mode : sous le filtre « téléconsultation », elle
+ * désignait des jours où le praticien ne reçoit qu'au cabinet.
+ *
+ * Elle ne cherche plus qu'en AVANT. L'ancienne version rebouclait sur les
+ * jours précédents, et proposait donc des dates passées.
+ */
+function nextAvailableDay(
+  doctor: Doctor,
+  days: DayInfo[],
+  fromISO: string,
+  mode: ConsultationMode,
+  estPris: (doctorId: number, iso: string, heure: string) => boolean,
+): DayInfo | null {
+  const depart = Math.max(0, days.findIndex((d) => d.full === fromISO));
+  for (let i = depart + 1; i < days.length; i++) {
+    const libres = slotsForDay(doctor, days[i].full, mode)
+      .filter((t) => !estPris(doctor.id, days[i].full, t));
+    if (libres.length > 0) return days[i];
   }
   return null;
 }
@@ -112,16 +130,23 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
     stripRef.current?.scrollBy({ left: dir * 240, behavior: 'smooth' });
   };
 
-  // Créneaux déjà réservés ce jour-là (pour les masquer) : clé "doctorId|HH:MM"
+  /* Créneaux déjà réservés sur TOUTE la fenêtre affichée, clé
+     « médecin|date|heure ». On les chargeait jour par jour, ce qui suffisait
+     pour masquer les horaires du jour sélectionné mais laissait la mention
+     « Prochaine disponibilité » travailler à l'aveugle sur les autres jours.
+     Une seule requête pour les trente jours coûte moins qu'une par clic. */
   const [bookedSet, setBookedSet] = useState<Set<string>>(new Set());
   useEffect(() => {
     let alive = true;
-    appointmentsAPI.getBookedSlots(activeDay).then((rows) => {
+    appointmentsAPI.getBookedSlots(days[0].full, days[days.length - 1].full).then((rows) => {
       if (!alive) return;
-      setBookedSet(new Set(rows.map((r) => `${r.doctor_id}|${r.appointment_time}`)));
+      setBookedSet(new Set(rows.map((r) => `${r.doctor_id}|${r.appointment_date}|${r.appointment_time}`)));
     });
     return () => { alive = false; };
-  }, [activeDay]);
+  }, [days]);
+
+  const estPris = (doctorId: number, iso: string, heure: string) =>
+    bookedSet.has(`${doctorId}|${iso}|${heure}`);
 
   /* Le mode suit le filtre : si le patient a demandé la téléconsultation,
      les horaires proposés doivent être ceux ouverts à la vidéo. Sans cela,
@@ -129,7 +154,7 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
      rendez-vous partait en présentiel. */
   const freeSlotsFor = (doctor: Doctor) =>
     slotsForDay(doctor, activeDay, videoOnly ? 'video' : 'cabinet')
-      .filter((t) => !bookedSet.has(`${doctor.id}|${t}`));
+      .filter((t) => !estPris(doctor.id, activeDay, t));
 
   /* Deux requêtes serveur : la liste affichée, et le nombre de praticiens en
      téléconsultation. La seconde alimente le compteur du filtre, qui doit être
@@ -363,7 +388,7 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
                 doctor={doctor}
                 isArabic={isArabic}
                 slots={freeSlotsFor(doctor)}
-                nextDay={nextAvailableDay(doctor, days, activeDay)}
+                nextDay={nextAvailableDay(doctor, days, activeDay, videoOnly ? 'video' : 'cabinet', estPris)}
                 onSelect={(time) => onDoctorSelect(doctor, activeDay, time, videoOnly ? 'video' : 'cabinet')}
                 onPickDay={(iso) => setActiveDay(iso)}
               />

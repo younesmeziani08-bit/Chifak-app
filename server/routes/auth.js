@@ -575,59 +575,19 @@ router.put('/api/patient/profile', authenticatePatientToken, async (req, res) =>
   }
 });
 
-/* POST /api/patient/recharge — recharge du solde patient.
+/* La route /api/patient/recharge a été supprimée.
 
-   ⚠️  Cette route crédite un compte SANS aucun paiement : elle additionne le
-   montant que le navigateur lui envoie. En production, n'importe quel patient
-   connecté pouvait donc se créditer la somme de son choix, indéfiniment, avec
-   une seule requête.
+   Elle créditait un compte SANS aucun paiement : elle additionnait le montant
+   que le navigateur lui envoyait. N'importe quel patient connecté pouvait
+   donc se créditer la somme de son choix, indéfiniment, avec une requête.
+   Elle n'était appelée par aucun écran — c'était une porte ouverte sur rien.
 
-   Elle reste utile pour éprouver le parcours en développement, mais elle est
-   désormais fermée en production. Pour l'ouvrir, il faut d'abord un
-   prestataire de paiement : le solde ne doit augmenter qu'après confirmation
-   reçue DU prestataire, jamais sur la parole du client. */
-router.post('/api/patient/recharge', authenticatePatientToken, async (req, res) => {
-  try {
-    if (process.env.NODE_ENV === 'production') {
-      return res.status(501).json({
-        error: 'Le rechargement en ligne n\'est pas encore disponible.',
-      });
-    }
+   Le jour où le rechargement existera, il ne ressemblera pas à ceci : le
+   solde ne devra augmenter qu'après confirmation reçue DU prestataire de
+   paiement, jamais sur la parole du client. La colonne `balance` reste en
+   base, elle n'a rien fait de mal.
 
-    const amount = Number(req.body.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ error: 'Montant invalide' });
-    }
-
-    /* Le solde est incrémenté PAR LA BASE, pas calculé ici. La séquence
-       « lire le solde, ajouter, réécrire » perd une écriture dès que deux
-       requêtes se croisent : les deux lisent 1000, les deux écrivent 1500, et
-       l'une des recharges disparaît. `balance = balance + ?` laisse
-       PostgreSQL sérialiser les deux additions sur la ligne.
-
-       Le montant est borné : sans plafond, une valeur démesurée dépasse la
-       capacité d'un entier et fait échouer la requête. */
-    const montant = Math.min(Math.round(amount), 1_000_000);
-    const maj = await db.prepare(`
-      UPDATE patients SET balance = COALESCE(balance, 0) + ?, updated_at = CURRENT_TIMESTAMP
-      WHERE email = ?
-      RETURNING balance
-    `).get(montant, req.user.email);
-
-    if (!maj) {
-      return res.status(404).json({ error: 'Patient non trouvé' });
-    }
-
-    res.json({
-      message: 'Recharge effectuée avec succès',
-      balance: maj.balance,
-      addedAmount: montant,
-    });
-  } catch (error) {
-    console.error('Erreur recharge solde patient:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
+   Repérée par scripts/contrats.mjs — « déclarée, jamais appelée ». */
 
 // ==================== ROUTES OAUTH ====================
 

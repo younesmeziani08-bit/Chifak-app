@@ -5,7 +5,7 @@ import FloatingShapes from '../home/FloatingShapes';
 import DoctorAvatar from '../shared/DoctorAvatar';
 import DoctorReviews from './DoctorReviews';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { patientAPI } from '../../services/api';
+import { patientAPI, appointmentsAPI } from '../../services/api';
 import { slotsForDay, isWorkingDate as isWorkingDateShared, todayIso, maxBookingIso } from '../../utils/slots';
 
 const IconStar = ({ className = '' }: { className?: string }) => (
@@ -175,12 +175,44 @@ export default function BookingPage({ doctor, initialDate, initialTime, initialC
      les heures que le praticien a ouvertes à la téléconsultation. */
   const [consultationType, setConsultationType] = useState<'cabinet' | 'video'>(initialConsultationType || 'cabinet');
 
-  const daySlots = selectedDate ? slotsForDay(doctor, selectedDate, consultationType) : [];
+  /* ── Créneaux déjà pris par d'autres patients ──
+     Cette page ne les connaissait pas. Elle affichait donc les horaires
+     déclarés par le praticien sans en retirer les rendez-vous existants : le
+     patient choisissait une heure, remplissait tout le formulaire, cliquait
+     sur « Finaliser » — et découvrait « ce créneau vient d'être réservé ».
+     La liste de résultats les masquait pourtant déjà ; c'est ici, au moment
+     où le choix devient définitif, que cela comptait le plus.
+
+     La fenêtre couvre les sept jours affichés, pas seulement le jour choisi :
+     le calendrier grise les journées sans disponibilité, et il lui faut donc
+     la même information. */
+  const [prisParAutres, setPrisParAutres] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let vivant = true;
+    const debut = days[0]?.full;
+    const fin = days[days.length - 1]?.full;
+    if (!debut || !fin) return;
+    appointmentsAPI.getBookedSlots(debut, fin).then((lignes) => {
+      if (!vivant) return;
+      setPrisParAutres(new Set(
+        lignes
+          .filter((l) => l.doctor_id === doctor.id)
+          .map((l) => `${l.appointment_date}|${l.appointment_time}`)
+      ));
+    });
+    return () => { vivant = false; };
+  }, [doctor.id, weekOffset]);
+
+  /** Créneaux réellement réservables un jour donné, dans un mode donné. */
+  const creneauxLibres = (iso: string, mode: 'cabinet' | 'video') =>
+    slotsForDay(doctor, iso, mode).filter((t) => !prisParAutres.has(`${iso}|${t}`));
+
+  const daySlots = selectedDate ? creneauxLibres(selectedDate, consultationType) : [];
 
   /* Disponibilités par mode pour la date choisie : le patient doit pouvoir
      comparer avant de basculer, sans découvrir une liste vide après coup. */
-  const cabinetCount = selectedDate ? slotsForDay(doctor, selectedDate, 'cabinet').length : 0;
-  const videoCount = selectedDate ? slotsForDay(doctor, selectedDate, 'video').length : 0;
+  const cabinetCount = selectedDate ? creneauxLibres(selectedDate, 'cabinet').length : 0;
+  const videoCount = selectedDate ? creneauxLibres(selectedDate, 'video').length : 0;
 
   /* Le choix du mode occupe l'étape 1 lorsqu'il existe : les étapes suivantes
      se décalent d'un cran, sinon la numérotation afficherait deux « 1 ». */
@@ -439,7 +471,9 @@ export default function BookingPage({ doctor, initialDate, initialTime, initialC
                       const working = isWorkingDate(d.full) && !d.isPast && !d.beyondHorizon
                         // Un jour sans créneau DANS LE MODE CHOISI est désactivé :
                         // en vidéo, les jours purement « cabinet » deviennent gris.
-                        && slotsForDay(doctor, d.full, consultationType).length > 0;
+                        // Les créneaux déjà pris comptent : une journée complète
+                        // ne doit plus se présenter comme cliquable.
+                        && creneauxLibres(d.full, consultationType).length > 0;
                       const active = selectedDate === d.full;
                       return (
                         <button
