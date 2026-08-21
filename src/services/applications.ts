@@ -1,6 +1,13 @@
-import { API_URL, getAuthHeaders } from './http';
+import { API_URL } from './http';
 
 /**
+ * Dépôt d'une demande d'inscription — partie PUBLIQUE.
+ *
+ * La file d'examen, l'acceptation et le refus vivent dans l'application
+ * d'administration (admin/services/applications.ts). Les garder ici les
+ * faisait voyager dans le paquet livré à chaque patient, où ils
+ * documentaient l'API d'administration à qui ouvrait la console.
+ *
  * Demandes d'inscription des praticiens.
  *
  * Un médecin ne crée pas sa fiche : il dépose une demande qu'un administrateur
@@ -13,12 +20,12 @@ export interface ApplicationInput {
   kind: ApplicationKind;
   fullName: string;
   specialty: string;
+  /** Wilaya et commune, issues du même référentiel que la recherche patient. */
   city: string;
-  address?: string;
+  /** Rue et numéro. C'est ce que le patient lit pour se rendre au cabinet. */
+  address: string;
   phone: string;
   email: string;
-  licenseNumber?: string;
-  message?: string;
   /** Uniquement pour une inscription : le praticien choisit son mot de passe. */
   password?: string;
   /* Résultat du contrôle facial fait dans le navigateur du praticien.
@@ -35,6 +42,8 @@ export interface Application {
   specialty: string;
   city: string;
   address: string | null;
+  /** Code de connexion du praticien, une fois la demande acceptée. */
+  doctor_code?: string | null;
   phone: string;
   email: string;
   license_number: string | null;
@@ -60,38 +69,5 @@ export const applicationsAPI = {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "Erreur lors de l'envoi de la demande");
     return data;
-  },
-
-  /** File d'examen, réservée à l'administration. */
-  list: async (status: Application['status'] = 'pending'): Promise<Application[]> => {
-    const response = await fetch(`${API_URL}/admin/applications?status=${status}`, {
-      headers: getAuthHeaders(),
-    });
-    if (!response.ok) throw new Error('Erreur lors de la récupération des demandes');
-    return await response.json();
-  },
-
-  /** Acceptation : crée la fiche du praticien et renvoie son code de connexion. */
-  approve: async (id: number, note?: string): Promise<{ doctorId: number; doctorCode: string }> => {
-    const response = await fetch(`${API_URL}/admin/applications/${id}/approve`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ note }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || "Erreur lors de l'acceptation");
-    return data;
-  },
-
-  /** Refus. Le motif est obligatoire côté serveur. */
-  reject: async (id: number, note: string): Promise<{ message: string }> => {
-    const response = await fetch(`${API_URL}/admin/applications/${id}/reject`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ note }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || 'Erreur lors du refus');
-    return data;
-  },
+  }
 };

@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useAdminAuth } from '../../contexts/AdminAuthContext';
-import { useDoctors } from '../../contexts/DoctorsContext';
-import { useLanguage } from '../../contexts/LanguageContext';
-import LanguageToggle from '../shared/LanguageToggle';
+import { useAdminAuth } from '../AdminAuthContext';
+import { useDoctors } from '../../src/contexts/DoctorsContext';
+import { useLanguage } from '../../src/contexts/LanguageContext';
+import LanguageToggle from '../../src/components/shared/LanguageToggle';
 import AddDoctorForm from './AddDoctorForm';
 import DoctorsList from './DoctorsList';
 import EmployeesPanel from './EmployeesPanel';
 import EmployeeFeedbackPanel from './EmployeeFeedbackPanel';
 import ApplicationsPanel from './ApplicationsPanel';
-import { appointmentsAPI } from '../../services/api';
+import SecuritePanel from './SecuritePanel';
+import { appointmentsAPI } from '../services/api';
 
-type Tab = 'add' | 'list' | 'applications' | 'staff' | 'staffFeedback';
+type Tab = 'add' | 'list' | 'applications' | 'staff' | 'staffFeedback' | 'securite';
 
 interface AdminDashboardProps {
   onBackToHome: () => void;
@@ -79,12 +80,22 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   /* Les deux onglets « personnel » n'apparaissent que pour un administrateur.
      Le masquage est un confort : les routes correspondantes exigent déjà le
      rôle admin côté serveur, un employé curieux n'obtiendrait rien. */
+  /* « Demandes d'inscription » rejoint les onglets réservés à l'administration.
+     Il était proposé à tout le personnel, alors que ses trois routes — lire la
+     file, accepter, refuser — exigent le rôle admin. Un employé cliquait donc
+     sur un onglet qui ne pouvait que lui répondre « accès refusé » : il en
+     concluait une panne, et le signalait. */
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'add', label: isArabic ? 'إضافة طبيب' : 'Ajouter un médecin', icon: '➕' },
     { key: 'list', label: isArabic ? 'قائمة الأطباء' : 'Liste des médecins', icon: '📋' },
-    { key: 'applications', label: isArabic ? 'طلبات التسجيل' : 'Demandes d’inscription', icon: '📨' },
+    /* Ouvert à tout le personnel : chacun protège SON compte, et la route ne
+       lit que le compte porté par le jeton. Un employé a autant besoin d'un
+       second facteur qu'un administrateur — il inscrit des praticiens et voit
+       leurs coordonnées. */
+    { key: 'securite', label: isArabic ? 'الأمان' : 'Sécurité', icon: '🔒' },
     ...(adminUser?.role === 'admin'
       ? ([
+          { key: 'applications' as Tab, label: isArabic ? 'طلبات التسجيل' : 'Demandes d’inscription', icon: '📨' },
           { key: 'staff' as Tab, label: isArabic ? 'الموظفون' : 'Employés', icon: '👥' },
           { key: 'staffFeedback' as Tab, label: isArabic ? 'آراء واقتراحات' : 'Retours & suggestions', icon: '💬' },
         ])
@@ -204,6 +215,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
             {activeTab === 'add' ? <AddDoctorForm />
               : activeTab === 'applications' ? <ApplicationsPanel />
               : activeTab === 'staff' ? <EmployeesPanel />
+              : activeTab === 'securite' ? <SecuritePanel />
               : activeTab === 'staffFeedback' ? <EmployeeFeedbackPanel />
               : <DoctorsList />}
           </div>

@@ -61,6 +61,72 @@ d'authentification. Si le domaine n'existe pas : nouveau fichier dans
   `database.js`).
 - Les secrets ne sont jamais écrits dans les logs ni dans les réponses.
 - Toute nouvelle requête de liste porte un `LIMIT`.
+- Un message technique d'erreur ne remonte jamais au client, même sur une route
+  d'administration : il décrit la base à qui provoque l'erreur.
+- Rattacher un compte social à un compte existant exige que le fournisseur
+  atteste l'adresse (`adresseAttestee`). Sans cela, créer un compte Facebook au
+  nom d'une victime suffit à entrer dans son dossier.
+- Définir le mot de passe d'un praticien est réservé au rôle `admin` : c'est un
+  accès direct à l'agenda et aux remarques médicales.
+
+### Invariants de concurrence (à ne jamais casser)
+
+Le service tourne derrière un répartiteur, et plusieurs requêtes arrivent au
+même instant. **Vérifier puis écrire n'est jamais sûr** : entre les deux, une
+autre requête passe. Trois formes correctes, et aucune autre.
+
+1. **Laisser la base trancher.** Une contrainte d'unicité, puis interception du
+   code `23505`. C'est le seul moyen de garantir qu'un créneau n'est pris
+   qu'une fois — voir `routes/appointments.js` et `insererAvecUnicite()`.
+2. **Réserver avant d'agir.** `UPDATE … WHERE id = ? AND status = 'pending'`
+   ne réussit que pour un seul appelant ; celui qui n'obtient aucune ligne
+   s'arrête. Voir l'acceptation d'une demande praticien.
+3. **Calculer dans l'ordre SQL.** `balance = balance + ?` plutôt que lire,
+   additionner, réécrire. `UPDATE … FROM (SELECT …)` pour recalculer une note.
+   Toute séquence lire-puis-écrire perd une écriture sous charge.
+
+Corollaire : ne jamais réintroduire `SELECT … ; if (libre) INSERT …`. Le code
+paraît juste, se teste bien à un utilisateur, et échoue en production.
+
+## Deux applications, un dépôt
+
+| Dossier | Application | Build | Sortie |
+|---|---|---|---|
+| `src/` | Patients et praticiens | `npm run build` | `dist/` |
+| `admin/` | Administration | `npm run build:admin` | `dist-admin/` |
+
+En développement : `npm run dev` (port 5173) et `npm run dev:admin` (5174),
+contre le même backend.
+
+**Elles se déploient sur deux domaines distincts.** Servir l'administration
+sous `/admin` du site public ne séparerait rien : même origine, mêmes cookies,
+même surface exposée.
+
+### Ce que la séparation apporte, et ce qu'elle n'apporte pas
+
+Elle retire 3 250 lignes du paquet livré à chaque patient — et surtout, elle
+cesse de publier la carte de l'administration. Le bundle public documentait
+`/admin/employees`, `/admin/employees/:id/regenerate-login`,
+`/admin/applications/:id/approve`, avec les contrôles de rôle en clair. Un
+attaquant n'avait pas à deviner : il lisait.
+
+Elle ne protège PAS l'API. `/api/admin/*` reste joignable depuis n'importe où,
+et ces chemins se devinent. **La séparation seule ne change rien à la sécurité
+réelle** : elle rend possibles les mesures qui, elles, comptent — origine
+autorisée distincte, plafonds propres, et surtout la double authentification
+(voir `server/lib/totp.js`).
+
+### Règle à ne pas casser
+
+Un import de `admin/` vers `src/` est permis pour le socle commun — styles,
+langue, types métier, couche réseau, annuaire des praticiens. **L'inverse ne
+l'est jamais.** Le jour où un fichier de `src/` importe quelque chose de
+`admin/`, tout revient dans le paquet public et le travail est défait.
+
+Les services le disent déjà : `src/services/applications.ts` ne porte que le
+dépôt public, `admin/services/applications.ts` la file d'examen ; de même,
+`src/services/feedback.ts` porte le dépôt d'avis (page publique atteinte par
+QR code) et `admin/services/staff.ts` leur lecture.
 
 ## Frontend (`src/`)
 

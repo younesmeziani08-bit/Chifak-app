@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Doctor } from '../../App';
-import { useDoctors } from '../../contexts/DoctorsContext';
-import { useLanguage } from '../../contexts/LanguageContext';
-import { appointmentsAPI } from '../../services/api';
-import DoctorAvatar from '../shared/DoctorAvatar';
+import { Doctor } from '../../src/types/metier';
+import { useDoctors } from '../../src/contexts/DoctorsContext';
+import { useLanguage } from '../../src/contexts/LanguageContext';
+import { appointmentsAPI } from '../services/api';
+import DoctorAvatar from '../../src/components/shared/DoctorAvatar';
 import AddDoctorForm from './AddDoctorForm';
 
 export default function DoctorsList() {
@@ -105,7 +105,11 @@ export default function DoctorsList() {
       try {
         await deleteDoctor(id);
       } catch (error) {
-        alert(isArabic ? 'خطأ في حذف الطبيب' : 'Erreur lors de la suppression');
+        // Message du serveur : « Accès réservé aux administrateurs » est une
+        // information utile, « Erreur lors de la suppression » ne l'est pas.
+        alert(error instanceof Error && error.message
+          ? error.message
+          : (isArabic ? 'خطأ في حذف الطبيب' : 'Erreur lors de la suppression'));
         console.error(error);
       }
     }

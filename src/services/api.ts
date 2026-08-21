@@ -18,5 +18,7 @@ export * from './doctorSpace';
 export * from './patient';
 export * from './consultations';
 export * from './stats';
-export * from './staff';
+/* Seule la partie publique des demandes reste ici — le dépôt. La file
+   d'examen, l'acceptation et le refus vivent dans admin/services. */
 export * from './applications';
+export * from './feedback';

@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react';
-import { Doctor } from '../../App';
-import { useDoctors } from '../../contexts/DoctorsContext';
-import { useLanguage } from '../../contexts/LanguageContext';
-import LocationSelector from '../home/LocationSelector';
-import DoctorAvatar from '../shared/DoctorAvatar';
-import { preparerPhoto, poidsApproximatif, ImageTropLourdeError } from '../../utils/imageUpload';
+import { Doctor } from '../../src/types/metier';
+import { useDoctors } from '../../src/contexts/DoctorsContext';
+import { useLanguage } from '../../src/contexts/LanguageContext';
+import LocationSelector from '../../src/components/home/LocationSelector';
+import DoctorAvatar from '../../src/components/shared/DoctorAvatar';
+import { preparerPhoto, poidsApproximatif, ImageTropLourdeError } from '../utils/imageUpload';
 
 interface AddDoctorFormProps {
   /** Fiche à corriger. Absent = création. */
@@ -160,7 +160,13 @@ export default function AddDoctorForm({ doctor, onDone }: AddDoctorFormProps = {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
-      alert(isArabic ? 'خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement');
+      /* Le message du serveur, et non un libellé figé. Il dit précisément ce
+         qui bloque — code médecin déjà attribué, photo trop lourde, mot de
+         passe réservé à l'administration. « Erreur lors de l'enregistrement »
+         laissait l'employé recommencer la fiche entière à l'aveugle. */
+      alert(error instanceof Error && error.message
+        ? error.message
+        : (isArabic ? 'خطأ أثناء الحفظ' : 'Erreur lors de l\'enregistrement'));
       console.error(error);
     }
   };

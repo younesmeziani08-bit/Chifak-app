@@ -27,5 +27,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "vite.config.ts"]
+  /* Les deux applications sont vérifiées ensemble.
+     « admin » manquait : ses fichiers échappaient donc entièrement au
+     contrôle de types, et une erreur y serait passée inaperçue jusqu'au
+     build. */
+  "include": ["src", "admin", "vite.config.ts", "vite.admin.config.ts"]
 }

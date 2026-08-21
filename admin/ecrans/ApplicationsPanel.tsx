@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useLanguage } from '../../contexts/LanguageContext';
-import { applicationsAPI, type Application } from '../../services/api';
+import { useLanguage } from '../../src/contexts/LanguageContext';
+import { applicationsAdminAPI, type Application } from '../services/api';
 
 /**
  * File d'examen des demandes d'inscription.
@@ -24,14 +24,14 @@ export default function ApplicationsPanel() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState('');
   const [enCours, setEnCours] = useState<number | null>(null);
-  /** Code fraîchement créé, à transmettre au praticien. */
-  const [codeCree, setCodeCree] = useState<{ nom: string; code: string } | null>(null);
+  /** Code fraîchement créé, et si le praticien en a été averti par e-mail. */
+  const [codeCree, setCodeCree] = useState<{ nom: string; code: string; courrier: boolean } | null>(null);
 
   const charger = async (s: Application['status']) => {
     setChargement(true);
     setErreur('');
     try {
-      setDemandes(await applicationsAPI.list(s));
+      setDemandes(await applicationsAdminAPI.list(s));
     } catch (e) {
       setErreur(e instanceof Error ? e.message : 'Erreur de chargement.');
     } finally {
@@ -49,8 +49,8 @@ export default function ApplicationsPanel() {
 
     setEnCours(d.id);
     try {
-      const { doctorCode } = await applicationsAPI.approve(d.id);
-      setCodeCree({ nom: d.full_name, code: doctorCode });
+      const { doctorCode, emailEnvoye } = await applicationsAdminAPI.approve(d.id);
+      setCodeCree({ nom: d.full_name, code: doctorCode, courrier: emailEnvoye !== false });
       await charger(statut);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Erreur.');
@@ -70,7 +70,7 @@ export default function ApplicationsPanel() {
     }
     setEnCours(d.id);
     try {
-      await applicationsAPI.reject(d.id, motif.trim());
+      await applicationsAdminAPI.reject(d.id, motif.trim());
       await charger(statut);
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Erreur.');
@@ -99,10 +99,18 @@ export default function ApplicationsPanel() {
             <code className="font-mono text-base px-2 py-0.5 rounded" style={{ background: '#FFFFFF' }}>
               {codeCree.code}
             </code>
-            <span className="block mt-1 text-xs" style={{ color: 'var(--ink-2)' }}>
-              {isArabic
-                ? 'أرسله للطبيب. كلمة المرور هي التي اختارها عند التسجيل.'
-                : 'Transmettez-le au praticien. Son mot de passe est celui qu’il a choisi lors de sa demande.'}
+            {/* Le courrier part tout seul. On le dit — sinon l'employé
+                retéléphone au praticien pour lui redonner un code qu'il a
+                déjà reçu. Et quand l'envoi a échoué, il doit le savoir
+                immédiatement : sans lui, le praticien reste à la porte. */}
+            <span className="block mt-1 text-xs" style={{ color: codeCree.courrier ? 'var(--ink-2)' : 'var(--danger)' }}>
+              {codeCree.courrier
+                ? (isArabic
+                  ? 'أُرسل هذا الرمز تلقائيًا إلى الطبيب بالبريد. كلمة المرور هي التي اختارها عند التسجيل.'
+                  : 'Ce code vient d’être envoyé au praticien par e-mail. Son mot de passe est celui qu’il a choisi lors de sa demande.')
+                : (isArabic
+                  ? '⚠ تعذّر إرسال البريد. انسخ الرمز وأرسله للطبيب بنفسك.'
+                  : '⚠ L’e-mail n’a pas pu être envoyé. Notez ce code et transmettez-le vous-même au praticien.')}
             </span>
           </p>
           <button type="button" onClick={() => setCodeCree(null)} className="btn-secondary">
@@ -179,10 +187,39 @@ export default function ApplicationsPanel() {
                   <dt style={{ color: 'var(--ink-3)' }}>{isArabic ? 'البريد' : 'E-mail'}</dt>
                   <dd className="truncate" style={{ color: 'var(--ink)' }}>{d.email}</dd>
                 </div>
+                {/* Adresse du cabinet : c'est elle qui devient l'adresse
+                    publique du praticien à l'acceptation. La relire ici fait
+                    partie de l'examen — une adresse imprécise envoie les
+                    patients au mauvais endroit. */}
+                {d.address && (
+                  <div className="flex gap-2 sm:col-span-2 min-w-0">
+                    <dt className="flex-shrink-0" style={{ color: 'var(--ink-3)' }}>{isArabic ? 'العنوان' : 'Adresse'}</dt>
+                    <dd style={{ color: 'var(--ink)' }}>{d.address}</dd>
+                  </div>
+                )}
+                {/* Le numéro d'ordre n'est plus demandé au praticien ; on
+                    l'affiche encore pour les demandes déposées avant ce
+                    changement, qui en portent un. */}
                 {d.license_number && (
                   <div className="flex gap-2">
                     <dt style={{ color: 'var(--ink-3)' }}>{isArabic ? 'رقم النقابة' : 'N° Ordre'}</dt>
                     <dd style={{ color: 'var(--ink)' }}>{d.license_number}</dd>
+                  </div>
+                )}
+                {/* Ce que l'administration voit du mot de passe : qu'il existe.
+                    Il est chiffré au dépôt et n'est jamais sélectionné par la
+                    route d'examen — le dire à l'écran évite qu'un employé le
+                    cherche, ou croie pouvoir le communiquer au praticien. */}
+                {d.kind === 'registration' && (
+                  <div className="flex gap-2 items-center">
+                    <dt style={{ color: 'var(--ink-3)' }}>{isArabic ? 'كلمة المرور' : 'Mot de passe'}</dt>
+                    <dd className="inline-flex items-center gap-1.5" style={{ color: 'var(--ink-2)' }}>
+                      <svg className="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="5" y="11" width="14" height="10" rx="2" />
+                        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                      </svg>
+                      {isArabic ? 'مشفَّرة — غير قابلة للاطلاع' : 'Chiffré — non consultable'}
+                    </dd>
                   </div>
                 )}
               </dl>
@@ -240,13 +277,42 @@ export default function ApplicationsPanel() {
                   </button>
                 </div>
               ) : (
-                <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
-                  {d.status === 'approved'
-                    ? (isArabic ? 'مقبولة' : 'Acceptée')
-                    : (isArabic ? 'مرفوضة' : 'Refusée')}
-                  {d.reviewed_by_name && ` · ${d.reviewed_by_name}`}
-                  {d.review_note && ` · ${d.review_note}`}
-                </p>
+                <>
+                  {/* Code de connexion, consultable à tout moment.
+                      Il n'apparaissait que dans l'encadré qui suit
+                      l'acceptation : une fois refermé, plus personne ne
+                      pouvait le retrouver, et le praticien accepté restait à
+                      la porte de son propre espace. */}
+                  {d.status === 'approved' && d.doctor_code && (
+                    <div
+                      className="rounded-lg px-3 py-2.5 mb-2 flex flex-wrap items-center gap-x-2 gap-y-1"
+                      style={{ background: 'var(--accent-bg)' }}
+                    >
+                      <span className="text-xs" style={{ color: 'var(--ink-2)' }}>
+                        {isArabic ? 'رمز الدخول' : 'Code de connexion'}
+                      </span>
+                      <code
+                        className="font-mono text-sm font-semibold px-2 py-0.5 rounded"
+                        style={{ background: '#FFFFFF', color: 'var(--ink)' }}
+                      >
+                        {d.doctor_code}
+                      </code>
+                      <span className="text-xs" style={{ color: 'var(--ink-3)' }}>
+                        {isArabic
+                          ? '· كلمة المرور هي التي اختارها الطبيب.'
+                          : '· le mot de passe est celui que le praticien a choisi.'}
+                      </span>
+                    </div>
+                  )}
+
+                  <p className="text-xs" style={{ color: 'var(--ink-3)' }}>
+                    {d.status === 'approved'
+                      ? (isArabic ? 'مقبولة' : 'Acceptée')
+                      : (isArabic ? 'مرفوضة' : 'Refusée')}
+                    {d.reviewed_by_name && ` · ${d.reviewed_by_name}`}
+                    {d.review_note && ` · ${d.review_note}`}
+                  </p>
+                </>
               )}
             </li>
           ))}

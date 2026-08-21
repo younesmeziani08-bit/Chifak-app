@@ -386,6 +386,9 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
     if (!q) return true;
     return (
       (a.patient_name || '').toLowerCase().includes(q) ||
+      // Un praticien qui cherche « Yasmine » doit trouver l'enfant, pas
+      // seulement le parent au nom duquel le compte est ouvert.
+      (`${a.child_first_name || ''} ${a.child_last_name || ''}`).toLowerCase().includes(q) ||
       (a.patient_phone || '').toLowerCase().includes(q) ||
       (a.patient_email || '').toLowerCase().includes(q)
     );
@@ -448,19 +451,35 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       return;
     }
 
+    /* L'e-mail du patient est exigé.
+       Une adresse de repli commune — « rdv.suivi@chifak.dz » — était employée
+       quand le champ restait vide. Tous les rendez-vous de suivi de tous les
+       praticiens se retrouvaient donc rattachés à une seule adresse : le
+       patient concerné ne voyait jamais son rendez-vous dans son espace, ne
+       recevait aucune confirmation, et quiconque aurait pu relever le courrier
+       de cette adresse aurait lu l'agenda de tout le monde. */
+    if (!patientData.email.trim() || !patientData.name.trim()) {
+      alert(isArabic
+        ? 'اسم المريض وبريده الإلكتروني مطلوبان لحجز موعد المتابعة.'
+        : 'Le nom et l’e-mail du patient sont nécessaires pour poser un rendez-vous de suivi.');
+      return;
+    }
+
     try {
       setLoading(true);
       const appData: AppointmentCreate = {
         doctorId: doctorInfo.id,
         patientName: patientData.name,
-        patientEmail: patientData.email || 'rdv.suivi@chifak.dz', // Email par défaut pour suivi si vide
+        patientEmail: patientData.email,
         patientPhone: patientData.phone,
         appointmentDate: selectedDate,
         appointmentTime: selectedSlot,
         reason: isArabic ? 'موعد متابعة' : 'Rendez-vous de suivi',
       };
 
-      const newApp = await appointmentsAPI.create(appData);
+      // Le rendez-vous est celui du PATIENT, pas du praticien : aucun jeton
+      // patient ne doit accompagner la demande. Voir services/appointments.ts.
+      const newApp = await appointmentsAPI.create(appData, { pourSonPropreCompte: false });
       setNextAppointmentId(newApp.id);
       alert(isArabic ? 'تم حجز الموعد القادم بنجاح' : 'Prochain rendez-vous réservé avec succès');
       setShowAppointmentPicker(false);
@@ -703,12 +722,43 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                 <div key={a.id} className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="font-bold text-gray-900">{a.patient_name}</div>
-                      <div className="text-sm text-gray-500 mt-1 space-y-0.5">
-                        <div>📞 {a.patient_phone}</div>
-                        <div>✉️ {a.patient_email}</div>
-                        {a.reason && <div>📝 {a.reason}</div>}
-                      </div>
+                      {/* Rendez-vous pris par un parent pour son enfant : c'est
+                          l'enfant que le praticien va recevoir, c'est donc son
+                          nom qui domine. Le parent reste visible juste en
+                          dessous — c'est lui qu'on appelle. */}
+                      {a.child_first_name ? (
+                        <>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-gray-900">
+                              {a.child_first_name} {a.child_last_name}
+                            </span>
+                            <span
+                              className="text-[11px] px-2 py-0.5 rounded-full font-semibold"
+                              style={{ background: '#FDF3E3', color: '#9A6410' }}
+                            >
+                              {a.child_age} {isArabic ? 'سنة' : 'ans'}
+                            </span>
+                          </div>
+                          <div className="text-sm text-gray-500 mt-1 space-y-0.5">
+                            <div>
+                              {isArabic ? '👤 الوليّ : ' : '👤 Accompagnant : '}
+                              {a.patient_name}
+                            </div>
+                            <div>📞 {a.patient_phone}</div>
+                            <div>✉️ {a.patient_email}</div>
+                            {a.reason && <div>📝 {a.reason}</div>}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="font-bold text-gray-900">{a.patient_name}</div>
+                          <div className="text-sm text-gray-500 mt-1 space-y-0.5">
+                            <div>📞 {a.patient_phone}</div>
+                            <div>✉️ {a.patient_email}</div>
+                            {a.reason && <div>📝 {a.reason}</div>}
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="font-bold text-blue-700">{a.appointment_date}</div>

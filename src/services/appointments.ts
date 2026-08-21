@@ -1,10 +1,22 @@
 import { API_URL, getAuthHeaders } from './http';
 
-const DEMO_APPOINTMENTS_KEY = 'chifak_demo_appointments';
+/* La branche « démo » a été supprimée.
+   Quand le jeton valait la chaîne « demo-local-token », la réservation
+   n'atteignait jamais le serveur : elle écrivait dans le stockage local et
+   renvoyait une confirmation. Aucun code ne pose cette valeur — c'était donc
+   du code mort, mais du code mort armé : une ligne dans la console du
+   navigateur suffisait à faire croire à un patient que son rendez-vous était
+   pris, sans qu'aucun praticien ne le voie jamais. */
 
 // ==================== APPOINTMENTS ====================
 
 export interface AppointmentCreate {
+  /* Rendez-vous pris par un parent pour son enfant mineur. Le compte reste
+     celui du parent ; seul le nom affiché au praticien change. */
+  forChild?: boolean;
+  childFirstName?: string;
+  childLastName?: string;
+  childAge?: number;
   doctorId: number;
   doctorName?: string;
   doctorSpecialty?: string;
@@ -22,35 +34,47 @@ export interface AppointmentCreate {
 }
 
 export const appointmentsAPI = {
-  create: async (appointment: AppointmentCreate) => {
-    const patientToken = localStorage.getItem('chifak_patient_token');
-
-    // Mode démo local: persiste les rendez-vous sans backend patient token valide
-    if (patientToken === 'demo-local-token') {
-      const existing = JSON.parse(localStorage.getItem(DEMO_APPOINTMENTS_KEY) || '[]');
-      const demoItem = {
-        id: Date.now(),
-        doctor_name: appointment.doctorName || `Dr. #${appointment.doctorId}`,
-        specialty: appointment.doctorSpecialty || '',
-        address: appointment.doctorAddress || '',
-        city: appointment.doctorCity || '',
-        appointment_date: appointment.appointmentDate,
-        appointment_time: appointment.appointmentTime,
-        status: 'confirmed',
-      };
-      localStorage.setItem(DEMO_APPOINTMENTS_KEY, JSON.stringify([demoItem, ...existing]));
-      return demoItem;
-    }
+  /**
+   * Crée un rendez-vous.
+   *
+   * `pourSonPropreCompte` décide si le jeton du patient connecté accompagne la
+   * demande. Le serveur s'en sert pour relire les coordonnées du titulaire en
+   * base — c'est ce qui rend le compte réellement personnel — et pour
+   * autoriser un rendez-vous au nom d'un enfant mineur.
+   *
+   * Le praticien qui pose un rendez-vous de suivi pour SON patient doit passer
+   * `false`. Sinon, si un compte patient traîne dans le navigateur du cabinet
+   * — ordinateur partagé, praticien qui utilise aussi l'application pour
+   * lui-même — le serveur réattribuerait le rendez-vous au titulaire de ce
+   * compte, et le patient réellement reçu n'apparaîtrait nulle part.
+   */
+  create: async (
+    appointment: AppointmentCreate,
+    { pourSonPropreCompte = true }: { pourSonPropreCompte?: boolean } = {},
+  ) => {
+    const patientToken = pourSonPropreCompte
+      ? localStorage.getItem('chifak_patient_token')
+      : null;
 
     const response = await fetch(`${API_URL}/appointments`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(patientToken && { Authorization: `Bearer ${patientToken}` }),
+      },
       body: JSON.stringify(appointment)
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Erreur lors de la création du rendez-vous');
+      /* Une réponse d'erreur n'est pas toujours du JSON — une panne de
+         passerelle ou un plantage renvoie du HTML, et `response.json()` jette
+         alors une erreur d'analyse qui remplace le vrai problème par un
+         « Unexpected token < » incompréhensible. */
+      const detail = await response.json().catch(() => null);
+      throw new Error(
+        detail?.error
+        || `Erreur lors de la création du rendez-vous (${response.status})`
+      );
     }
 
     return await response.json();
@@ -86,10 +110,6 @@ export const appointmentsAPI = {
 
   getMy: async () => {
     const patientToken = localStorage.getItem('chifak_patient_token');
-
-    if (patientToken === 'demo-local-token') {
-      return JSON.parse(localStorage.getItem(DEMO_APPOINTMENTS_KEY) || '[]');
-    }
 
     const response = await fetch(`${API_URL}/patient/appointments`, {
       headers: {
@@ -129,18 +149,9 @@ export const appointmentsAPI = {
     return await response.json();
   },
 
-  reschedule: async (id: number, appointmentDate: string, appointmentTime: string) => {
-    const token = localStorage.getItem('chifak_patient_token');
-    const response = await fetch(`${API_URL}/patient/appointments/${id}/reschedule`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
-      body: JSON.stringify({ appointmentDate, appointmentTime }),
-    });
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({}));
-      throw new Error(error.error || 'Erreur lors de la reprogrammation');
-    }
-    return await response.json();
-  }
+  /* La reprogrammation n'existe plus : pour déplacer un rendez-vous, on
+     l'annule puis on en reprend un depuis la recherche, avec les
+     disponibilités réelles du praticien sous les yeux. Voir la note dans
+     server/routes/appointments.js. */
 };
 

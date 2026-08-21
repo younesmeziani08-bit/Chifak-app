@@ -52,27 +52,67 @@ router.post('/api/appointments', bookingLimiter, async (req, res) => {
     const { doctorId, appointmentDate, appointmentTime, language } = req.body;
 
     // ── Validation stricte de toutes les entrées (endpoint public) ──
-    const patientName = cleanString(req.body.patientName, 120);
+    let patientName = cleanString(req.body.patientName, 120);
     let patientEmail = normalizeEmail(req.body.patientEmail);
+    let patientPhone = cleanString(req.body.patientPhone, 20);
+    const reason = cleanString(req.body.reason, 1000);
 
-    /* Si le visiteur est connecté, son jeton fait foi : le rendez-vous est
-       rattaché à SON adresse, pas à celle que le formulaire prétend. Sans
-       cela, un compte connecté pouvait réserver « au nom » d'une autre
-       adresse et polluer l'historique d'un autre patient. */
+    /* ── Le compte fait foi ──
+       Pour un visiteur connecté, les coordonnées ne viennent PAS du
+       formulaire : elles sont relues en base à partir de son jeton. Le
+       navigateur ne peut donc plus les décider, quoi qu'il envoie.
+
+       C'est ce qui rend le compte réellement personnel. Un compte qui
+       permettrait de saisir librement le nom, l'adresse et le téléphone de
+       n'importe qui serait un carnet d'adresses partagé, pas un dossier
+       médical : le praticien ne saurait jamais qui il reçoit, et l'historique
+       d'un patient se remplirait de consultations qui ne sont pas les
+       siennes. */
     const enTete = req.headers['authorization'];
     const jetonBrut = enTete && enTete.split(' ')[1];
+    let titulaire = null;
     if (jetonBrut) {
       try {
         const porteur = jwt.verify(jetonBrut, process.env.JWT_SECRET, { algorithms: ['HS256'] });
         if (porteur.type === 'patient' && porteur.email) {
-          patientEmail = normalizeEmail(porteur.email);
+          titulaire = await db.prepare(
+            'SELECT name, email, phone FROM patients WHERE email = ?'
+          ).get(normalizeEmail(porteur.email));
         }
       } catch {
         /* Jeton absent ou périmé : la réservation reste possible en invité. */
       }
     }
-    const patientPhone = cleanString(req.body.patientPhone, 20);
-    const reason = cleanString(req.body.reason, 1000);
+    if (titulaire) {
+      patientName = titulaire.name || patientName;
+      patientEmail = normalizeEmail(titulaire.email);
+      patientPhone = titulaire.phone || patientPhone;
+    }
+
+    /* ── Rendez-vous pour un enfant mineur ──
+       Le rendez-vous reste rattaché au compte du parent — c'est lui qui le
+       retrouve et qui reçoit les confirmations — mais le praticien voit le
+       nom de l'enfant. Réservé aux comptes connectés : un invité ne peut pas
+       déclarer un mineur, il n'y aurait aucun adulte responsable identifié
+       derrière la réservation. */
+    let childFirstName = null;
+    let childLastName = null;
+    let childAge = null;
+    if (titulaire && req.body.forChild) {
+      childFirstName = cleanString(req.body.childFirstName, 60);
+      childLastName = cleanString(req.body.childLastName, 60);
+      childAge = toBoundedInt(req.body.childAge, { min: 0, max: 17, fallback: null });
+
+      if (!childFirstName || !childLastName) {
+        return res.status(400).json({ error: 'Nom et prénom de l\'enfant requis.' });
+      }
+      if (childAge === null) {
+        // 18 et au-delà : la personne prend rendez-vous avec son propre compte.
+        return res.status(400).json({
+          error: 'Âge de l\'enfant requis, et inférieur à 18 ans. Au-delà, la personne doit créer son propre compte.',
+        });
+      }
+    }
 
     if (!isValidId(doctorId)) {
       return res.status(400).json({ error: 'Médecin invalide' });
@@ -182,12 +222,41 @@ router.post('/api/appointments', bookingLimiter, async (req, res) => {
       ? `chifak-${crypto.randomBytes(24).toString('base64url')}`
       : null;
 
-    const result = await db.prepare(`
-      INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, consultation_type, video_room)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(doctorId, patientName, patientEmail, patientPhone, appointmentDate, appointmentTime, reason || null, consultationType, videoRoom);
+    /* L'insertion peut encore échouer ici, et c'est voulu : le contrôle
+       ci-dessus ne protège pas de deux réservations simultanées. L'index
+       unique de la base est le seul arbitre possible, et son refus se traduit
+       par le code 23505. */
+    let result;
+    try {
+      /* La langue est conservée avec le rendez-vous.
+         Elle servait à envoyer la confirmation puis était jetée. Le rappel de
+         la veille, envoyé des semaines plus tard, serait donc parti en
+         français à quelqu'un qui a fait toute sa réservation en arabe. */
+      result = await db.prepare(`
+        INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, consultation_type, video_room, child_first_name, child_last_name, child_age, language)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(doctorId, patientName, patientEmail, patientPhone, appointmentDate, appointmentTime,
+        reason || null, consultationType, videoRoom, childFirstName, childLastName, childAge,
+        language === 'ar' ? 'ar' : 'fr');
+    } catch (e) {
+      if (e && e.code === '23505') {
+        return res.status(409).json({ error: 'Ce créneau vient d\'être réservé. Choisissez-en un autre.' });
+      }
+      throw e;
+    }
 
-    const appointment = await db.prepare('SELECT * FROM appointments WHERE id = ?').get(result.lastInsertRowid);
+    /* Colonnes nommées une à une. « SELECT * » renvoyait la ligne brute, donc
+       la colonne doctor_notes — les remarques privées du praticien sur son
+       patient. Elle est vide à la création, mais la route ne doit pas être la
+       seule chose qui empêche la fuite : ce qu'on ne sélectionne pas ne peut
+       pas sortir, aujourd'hui comme après la prochaine modification. */
+    const appointment = await db.prepare(`
+      SELECT id, doctor_id, patient_name, patient_email, patient_phone,
+             appointment_date, appointment_time, reason, status,
+             consultation_type, video_room, created_at,
+             child_first_name, child_last_name, child_age
+      FROM appointments WHERE id = ?
+    `).get(result.lastInsertRowid);
 
     // Envoyer un email de confirmation
     try {
@@ -244,6 +313,7 @@ router.get('/api/patient/appointments', authenticatePatientToken, async (req, re
       SELECT a.id, a.doctor_id, a.patient_name, a.patient_email, a.patient_phone,
              a.appointment_date, a.appointment_time, a.reason, a.status,
              a.consultation_type, a.video_room, a.created_at,
+             a.child_first_name, a.child_last_name, a.child_age,
              d.name AS doctor_name, d.specialty, d.address, d.city,
              d.slot_duration, d.available_slots, d.working_days, d.off_days,
              d.blocked_slots, d.accepts_video, d.video_slots
@@ -291,40 +361,20 @@ router.patch('/api/patient/appointments/:id/cancel', authenticatePatientToken, a
   }
 });
 
-// PATCH /api/patient/appointments/:id/reschedule - Reprogrammer son rendez-vous
-router.patch('/api/patient/appointments/:id/reschedule', authenticatePatientToken, async (req, res) => {
-  try {
-    if (!isValidId(req.params.id)) {
-      return res.status(400).json({ error: 'Identifiant invalide' });
-    }
-    const id = Number(req.params.id);
-    const { appointmentDate, appointmentTime } = req.body;
-    if (!appointmentDate || !appointmentTime) {
-      return res.status(400).json({ error: 'Date et heure requises' });
-    }
-    const appt = await db.prepare('SELECT id, doctor_id, patient_email FROM appointments WHERE id = ?').get(id);
-    if (!appt) {
-      return res.status(404).json({ error: 'Rendez-vous non trouvé' });
-    }
-    if (appt.patient_email !== req.user.email) {
-      return res.status(403).json({ error: 'Ce rendez-vous ne vous appartient pas' });
-    }
-    // Le nouveau créneau est-il libre chez ce médecin ?
-    const clash = await db.prepare(`
-      SELECT id FROM appointments
-      WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND status != 'cancelled' AND id != ?
-    `).get(appt.doctor_id, appointmentDate, appointmentTime, id);
-    if (clash) {
-      return res.status(409).json({ error: 'Ce créneau est déjà pris. Choisissez-en un autre.' });
-    }
-    await db.prepare("UPDATE appointments SET appointment_date = ?, appointment_time = ?, status = 'confirmed' WHERE id = ?")
-      .run(appointmentDate, appointmentTime, id);
-    res.json(await ficheRendezVousPatient(id));
-  } catch (error) {
-    console.error('Erreur reprogrammation rendez-vous:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
+/* La reprogrammation a été retirée volontairement.
+
+   Déplacer un rendez-vous d'un geste laissait le patient choisir une date et
+   une heure sans voir l'agenda réel du praticien : il découvrait « ce créneau
+   est déjà pris » après coup, et recommençait à l'aveugle. Surtout, le
+   créneau qu'il libérait ne repartait jamais dans le circuit normal — un
+   autre patient qui cherchait ce jour-là ne le voyait pas.
+
+   Le parcours est désormais explicite : annuler, puis reprendre rendez-vous
+   depuis la recherche, avec les disponibilités à jour sous les yeux. Un
+   déplacement est un nouveau rendez-vous, pas une retouche.
+
+   Ne pas réintroduire cette route sans reprendre d'abord la question de la
+   remise en circulation du créneau libéré. */
 
 // GET /api/appointments - Récupérer tous les rendez-vous (authentification requise)
 router.get('/api/appointments', authenticateToken, async (req, res) => {
@@ -333,6 +383,7 @@ router.get('/api/appointments', authenticateToken, async (req, res) => {
       SELECT a.id, a.doctor_id, a.patient_name, a.patient_email, a.patient_phone,
              a.appointment_date, a.appointment_time, a.reason, a.status,
              a.consultation_type, a.created_at,
+             a.child_first_name, a.child_last_name, a.child_age,
              d.name AS doctor_name, d.specialty, d.address, d.city
       FROM appointments a
       JOIN doctors d ON a.doctor_id = d.id

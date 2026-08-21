@@ -9,9 +9,10 @@ import {
   isTooSimilar, isValidDoctorImage,
 } from '../security.js';
 import { sendDailyAgendas } from '../dailyAgenda.js';
+import { envoyerRappels } from '../rappels.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import { authLimiter } from '../config/limiters.js';
-import { genererIdentifiant, genererMatricule, journaliser } from '../lib/staff.js';
+import { tirerIdentifiant, prochainMatricule, insererAvecUnicite, journaliser } from '../lib/staff.js';
 
 const router = express.Router();
 
@@ -86,52 +87,60 @@ router.post('/api/admin/employees', authenticateToken, requireAdmin, async (req,
       return res.status(400).json({ error: 'Date d\'entrée invalide.' });
     }
 
-    // Identifiant tiré au sort : ni saisi, ni dérivé du nom. L'admin le
-    // communique à l'employé après création — il ne peut pas le retrouver
-    // en devinant, c'est précisément le but.
-    const username = await genererIdentifiant();
-
     const hashed = await bcrypt.hash(password, 10);
-    const staffCode = await genererMatricule();
-    // Jeton du QR code : aléatoire, jamais dérivé du matricule.
-    const feedbackToken = crypto.randomBytes(18).toString('base64url');
     const fullName = `${firstName} ${lastName}`.trim();
 
-    const result = await db.prepare(`
-      INSERT INTO users (
-        username, password, role, staff_code, full_name, first_name, last_name,
-        birth_date, birth_place, phone, address, email, position, hired_at,
-        emergency_contact, notes, feedback_token, active
-      )
-      VALUES (?, ?, 'employee', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-    `).run(
-      username, hashed, staffCode, fullName, firstName, lastName,
-      birthDate || null,
-      cleanString(req.body.birthPlace, 120) || null,
-      phone || null,
-      cleanString(req.body.address, 200) || null,
-      email || null,
-      cleanString(req.body.position, 80) || null,
-      hiredAt || null,
-      cleanString(req.body.emergencyContact, 120) || null,
-      cleanString(req.body.notes, 1000) || null,
-      feedbackToken
-    );
+    /* Identifiant, matricule et jeton du QR sont tous soumis à une contrainte
+       d'unicité. On tente l'insertion et on retire de nouvelles valeurs si la
+       base refuse : deux administrateurs qui créent un employé au même instant
+       lisaient auparavant le même matricule libre, et la seconde création
+       échouait sur « Erreur serveur ».
 
-    const created = await db.prepare(
-      `SELECT id, username, full_name, first_name, last_name, role, staff_code,
-              birth_date, birth_place, phone, address, email, position, hired_at,
-              emergency_contact, notes, feedback_token, active, created_at
-       FROM users WHERE id = ?`
-    ).get(result.lastInsertRowid);
+       L'identifiant est tiré au sort — ni saisi, ni dérivé du nom. L'admin le
+       communique à l'employé après création : il ne peut pas le retrouver en
+       devinant, c'est précisément le but. */
+    const created = await insererAvecUnicite(async () => {
+      const username = tirerIdentifiant();
+      const staffCode = await prochainMatricule();
+      const feedbackToken = crypto.randomBytes(18).toString('base64url');
+
+      const result = await db.prepare(`
+        INSERT INTO users (
+          username, password, role, staff_code, full_name, first_name, last_name,
+          birth_date, birth_place, phone, address, email, position, hired_at,
+          emergency_contact, notes, feedback_token, active
+        )
+        VALUES (?, ?, 'employee', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+      `).run(
+        username, hashed, staffCode, fullName, firstName, lastName,
+        birthDate || null,
+        cleanString(req.body.birthPlace, 120) || null,
+        phone || null,
+        cleanString(req.body.address, 200) || null,
+        email || null,
+        cleanString(req.body.position, 80) || null,
+        hiredAt || null,
+        cleanString(req.body.emergencyContact, 120) || null,
+        cleanString(req.body.notes, 1000) || null,
+        feedbackToken
+      );
+
+      return db.prepare(
+        `SELECT id, username, full_name, first_name, last_name, role, staff_code,
+                birth_date, birth_place, phone, address, email, position, hired_at,
+                emergency_contact, notes, feedback_token, active, created_at
+         FROM users WHERE id = ?`
+      ).get(result.lastInsertRowid);
+    });
 
     res.status(201).json(created);
   } catch (error) {
+    /* Le message technique n'est plus renvoyé au client. Il exposait le nom
+       des contraintes, des colonnes et des tables — une carte de la base
+       offerte à quiconque provoque une erreur, fût-il authentifié. Il reste
+       entier dans les journaux du serveur, où il sert vraiment. */
     console.error('Erreur création employé:', error);
-    res.status(500).json({
-      error: 'Création impossible.',
-      detail: String(error && error.message || error).slice(0, 300),
-    });
+    res.status(500).json({ error: 'Création impossible.' });
   }
 });
 
@@ -176,15 +185,17 @@ router.post('/api/admin/employees/:id/regenerate-login', authenticateToken, requ
       return res.status(400).json({ error: 'Réservé aux comptes employés.' });
     }
 
-    const username = await genererIdentifiant();
-    await db.prepare('UPDATE users SET username = ? WHERE id = ?').run(username, id);
+    // Même règle qu'à la création : on tente, et on retire un autre numéro si
+    // celui-ci vient d'être attribué ailleurs.
+    const username = await insererAvecUnicite(async () => {
+      const candidat = tirerIdentifiant();
+      await db.prepare('UPDATE users SET username = ? WHERE id = ?').run(candidat, id);
+      return candidat;
+    });
     res.json({ username });
   } catch (error) {
     console.error('Erreur régénération identifiant:', error);
-    res.status(500).json({
-      error: 'Régénération impossible.',
-      detail: String(error && error.message || error).slice(0, 300),
-    });
+    res.status(500).json({ error: 'Régénération impossible.' });
   }
 });
 
@@ -310,6 +321,35 @@ router.post('/api/admin/daily-agendas', authenticateToken, requireAdmin, async (
   }
 });
 
-// Route de test / vérification de déploiement.
-// `features` permet de savoir en un coup d'œil quelle version tourne
+/**
+ * POST /api/admin/rappels — déclenche les rappels à la main.
+ *
+ * Pour éprouver l'envoi sans attendre 18h. Corps facultatif :
+ *   { date: 'AAAA-MM-JJ', appointmentId: 12, forcer: true }
+ *
+ * `forcer` renvoie un rappel déjà parti — utile pour vérifier la mise en page,
+ * dangereux en exploitation : sans lui, la tâche est rejouable autant de fois
+ * qu'on veut sans qu'aucun patient ne reçoive deux fois le même message.
+ */
+router.post('/api/admin/rappels', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { date, appointmentId, forcer } = req.body || {};
+    if (date && !isValidDate(date)) {
+      return res.status(400).json({ error: 'Date invalide (format AAAA-MM-JJ).' });
+    }
+    if (appointmentId !== undefined && !isValidId(appointmentId)) {
+      return res.status(400).json({ error: 'Identifiant de rendez-vous invalide.' });
+    }
+    const resume = await envoyerRappels({
+      date,
+      appointmentId: appointmentId ? Number(appointmentId) : undefined,
+      forcer: forcer === true,
+    });
+    res.json(resume);
+  } catch (error) {
+    console.error('Erreur envoi des rappels (manuel):', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 export default router;

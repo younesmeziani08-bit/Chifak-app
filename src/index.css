@@ -301,7 +301,41 @@
   .btn-primary:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
   .btn-primary:disabled { background: var(--bg-3); color: var(--ink-3); cursor: not-allowed; }
 
-  /* ── Panneaux d'onglet du hero ──
+  /* ── Voile du hero ──
+   Assombrit la photo de fond juste assez pour que le texte blanc reste
+   lisible, sans effacer la scène.
+
+   Deux dégradés, parce que deux formats. Sur un écran large, le texte occupe
+   la gauche et la personne la droite : un dégradé HORIZONTAL protège l'un
+   sans masquer l'autre. Sur un téléphone, l'écran est étroit et haut — ce
+   même dégradé recouvre alors toute la largeur de son opacité la plus forte,
+   et la photo disparaît. On passe donc à un dégradé VERTICAL : clair en haut
+   où se tient le sujet, dense en bas où le texte commence.
+
+   Les valeurs viennent d'une mesure, pas d'une intuition : au point où
+   démarre le titre, le fond composé atteint au moins 7:1 avec du blanc. */
+.hero-voile {
+  background: linear-gradient(
+    to bottom,
+    rgba(12, 14, 69, 0.30) 0%,
+    rgba(12, 14, 69, 0.55) 34%,
+    rgba(12, 14, 69, 0.88) 62%,
+    rgba(12, 14, 69, 0.94) 100%
+  );
+}
+
+@media (min-width: 640px) {
+  .hero-voile {
+    background: linear-gradient(
+      100deg,
+      rgba(12, 14, 69, 0.93) 0%,
+      rgba(12, 14, 69, 0.80) 45%,
+      rgba(12, 14, 69, 0.38) 100%
+    );
+  }
+}
+
+/* ── Panneaux d'onglet du hero ──
      Les trois panneaux occupent la MÊME cellule de grille : le conteneur prend
      donc la hauteur du plus grand, et changer d'onglet ne déplace plus rien.
 

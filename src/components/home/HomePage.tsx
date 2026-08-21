@@ -51,20 +51,27 @@ const HERO_TABS: HeroTab[] = [
     titleAr: 'طبيبك\nعلى الشاشة.',
     subtitle: 'Résultats d’analyses, renouvellement d’ordonnance, avis rapide — sans vous déplacer.',
     subtitleAr: 'نتائج التحاليل، تجديد وصفة، رأي سريع — دون تنقّل.',
-    cta: 'Commencer',
-    ctaAr: 'ابدأ',
+    /* « Commencer » ne disait ni où l'on va, ni ce qui se passe. Le libellé
+       nomme désormais la destination : on part chercher un praticien qui
+       propose la visio. */
+    cta: 'Voir les médecins en téléconsultation',
+    ctaAr: 'عرض الأطباء المتاحين عن بُعد',
   },
   {
     id: 'pro',
     photo: 'praticien',
     label: 'Je suis praticien',
     labelAr: 'أنا طبيب',
-    title: 'Ouvrez votre agenda\nsur chifak.',
-    titleAr: 'افتح أجندتك\nعلى شفاك.',
-    subtitle: 'Vous fixez vos jours, vos horaires et vos créneaux réservés. L’agenda du jour vous arrive à 5h.',
-    subtitleAr: 'أنت تحدّد أيامك وساعاتك ومواعيدك المحجوزة. تصلك أجندة اليوم على الساعة 5:00.',
-    cta: 'Inscrire mon cabinet',
-    ctaAr: 'سجّل عيادتي',
+    /* La gratuité figure dès le titre du panneau d'accueil.
+       Elle n'apparaissait qu'en bas de page, dans le libellé d'un bouton :
+       le praticien qui ne descendait pas jusque-là repartait en supposant un
+       tarif — l'hypothèse par défaut devant tout logiciel de cabinet. */
+    title: 'Ouvrez votre agenda\ngratuitement.',
+    titleAr: 'افتح أجندتك\nمجانًا.',
+    subtitle: 'Sans abonnement et sans commission sur vos rendez-vous. Vous fixez vos jours et vos horaires ; l’agenda du jour vous arrive à 5h.',
+    subtitleAr: 'دون اشتراك ودون عمولة على مواعيدك. أنت تحدّد أيامك وساعاتك، وتصلك أجندة اليوم على الساعة 5:00.',
+    cta: 'Inscrire mon cabinet — c’est gratuit',
+    ctaAr: 'سجّل عيادتي — مجانًا',
   },
 ];
 
@@ -117,8 +124,7 @@ function Icon({ name, className = 'w-5 h-5', strokeWidth = 1.75 }: { name: strin
 }
 
 interface HomePageProps {
-  onSearch: (specialty: string, location: string, date: string) => void;
-  onAdminClick?: () => void;
+  onSearch: (specialty: string, location: string, date: string, videoOnly?: boolean) => void;
   onDoctorClick?: () => void;
   onOpenLogin: () => void;
   onOpenSignup: () => void;
@@ -128,7 +134,7 @@ interface HomePageProps {
   onLogout?: () => void;
 }
 
-export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, onOpenAccount, patientUser, onLogout }: HomePageProps) {
+export default function HomePage({ onSearch, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, onOpenAccount, patientUser, onLogout }: HomePageProps) {
   const { t, language } = useLanguage();
   const [specialty, setSpecialty] = useState('');
   const [location, setLocation] = useState('');
@@ -186,7 +192,6 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }} dir={isArabic ? 'rtl' : 'ltr'}>
       <Header
-        onAdminClick={onAdminClick}
         onDoctorClick={onDoctorClick}
         onHomeClick={() => { setSpecialty(''); setLocation(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
         onScrollToSearch={() => document.getElementById('hero-search')?.scrollIntoView({ behavior: 'smooth' })}
@@ -218,19 +223,30 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                 loading={tab.id === 'rdv' ? 'eager' : 'lazy'}
                 fetchPriority={tab.id === 'rdv' ? 'high' : 'low'}
                 className="absolute inset-0 w-full h-full object-cover transition-opacity duration-500"
-                style={{ opacity: heroTab === tab.id ? 1 : 0 }}
+                style={{
+                  opacity: heroTab === tab.id ? 1 : 0,
+                  /* Le sujet n'est pas au centre de ces photos larges. Sur un
+                     téléphone, le cadre devient étroit et « object-cover »
+                     rogne les côtés — en coupant précisément la personne.
+                     On recadre donc autour d'elle. */
+                  objectPosition: `${photo.focusX ?? 50}% center`,
+                }}
               />
             );
           })}
-          {/* Voile sombre : garantit la lisibilité du texte blanc quelle que
-              soit la photo (contraste mesuré > 7:1 sur la zone de texte). */}
-          <div
-            className="absolute inset-0"
-            style={{
-              background:
-                'linear-gradient(100deg, rgba(12,14,69,0.93) 0%, rgba(12,14,69,0.80) 45%, rgba(12,14,69,0.38) 100%)',
-            }}
-          />
+          {/* ── Voile sombre ──
+              Il garantit la lisibilité du texte blanc par-dessus la photo.
+
+              Il était en dégradé HORIZONTAL : sombre à gauche sous le texte,
+              clair à droite où se trouve la personne. Parfait sur un écran
+              large — désastreux sur un téléphone, où la largeur se réduit à
+              rien : les 93 % d'opacité du départ recouvraient alors toute
+              l'image, et on ne voyait plus personne.
+
+              Deux voiles distincts, donc, choisis par media query dans le CSS :
+              horizontal au-delà de 640 px, vertical en dessous — transparent
+              en haut où se tient le sujet, dense en bas où arrive le texte. */}
+          <div className="hero-voile absolute inset-0" />
         </div>
 
         <div className="relative max-w-7xl mx-auto px-4 sm:px-8 pt-6 pb-12 sm:pt-8 sm:pb-20">
@@ -417,12 +433,46 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                   {isArabic ? tb.subtitleAr : tb.subtitle}
                 </p>
 
+                {/* ── Le chemin, en toutes lettres ──
+                    Un visiteur qui découvre la téléconsultation ne sait pas
+                    où elle se choisit. L'ancien bouton « Commencer » l'envoyait
+                    d'ailleurs sur son compte, où il n'y a rien à réserver.
+                    Trois étapes nommées, puis un bouton qui fait la première. */}
+                {tb.id === 'visio' && (
+                  <ol className="mb-7 space-y-2.5" style={{ maxWidth: '30rem' }}>
+                    {(isArabic ? [
+                      'ابحث عن طبيب مع مُرشّح « استشارة عن بُعد ».',
+                      'اختر « عن بُعد » ثم وقتًا من الأوقات المفتوحة للفيديو.',
+                      'يوم الموعد، انضم من « حسابي » ← « مواعيدي ».',
+                    ] : [
+                      'Cherchez un médecin avec le filtre « Téléconsultation ».',
+                      'Choisissez « À distance », puis une heure ouverte à la vidéo.',
+                      'Le jour venu, rejoignez depuis « Mon compte » → « Mes rendez-vous ».',
+                    ]).map((etape, k) => (
+                      <li key={etape} className="flex gap-3 text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.82)' }}>
+                        <span
+                          className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-semibold mt-0.5"
+                          style={{ background: 'rgba(255,255,255,0.16)', color: '#FFFFFF' }}
+                          aria-hidden
+                        >
+                          {k + 1}
+                        </span>
+                        {etape}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+
                 <div className="flex flex-wrap gap-3">
                   <button
                     type="button"
                     onClick={
                       tb.id === 'visio'
-                        ? () => (patientUser ? onOpenAccount?.() : onOpenLogin())
+                        /* On lance la recherche avec le filtre visio déjà actif :
+                           le bouton fait la première étape plutôt que de la
+                           décrire. Sans spécialité — le patient la choisira
+                           dans les résultats. */
+                        ? () => onSearch('', '', todayISO, true)
                         : onOpenProfessional
                     }
                     className="btn-primary"
@@ -711,63 +761,186 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
       </section>
 
       {/* ── TELECONSULTATION ── */}
+      {/* ── TÉLÉCONSULTATION ──
+          La visio est neuve en Algérie : la plupart des visiteurs n'en ont
+          jamais fait. Une section qui se contente de vanter le service laisse
+          intacte la vraie question — « concrètement, comment ça se passe ? ».
+
+          D'où trois temps : ce que c'est et quand c'est adapté, comment
+          réserver, comment rejoindre le jour venu. Le troisième est le plus
+          important : un patient qui a réservé mais ne trouve pas le bouton
+          rate sa consultation, et c'est le praticien qui attend devant un
+          écran vide. */}
       <section id="teleconsult-section" className="max-w-7xl mx-auto px-4 sm:px-8 py-12 sm:py-20 scroll-mt-20">
         <div className="rounded-3xl overflow-hidden" style={{ background: 'var(--ink)' }}>
+
+          {/* ── Ce que c'est ── */}
           <div className="grid md:grid-cols-2">
             <div className="p-6 sm:p-10 md:p-14">
+              <span
+                className="inline-block text-xs font-semibold uppercase px-3 py-1 rounded-full mb-5"
+                style={{ background: 'rgba(101,116,248,0.18)', color: '#C9D2FB', letterSpacing: '0.08em' }}
+              >
+                {isArabic ? 'جديد في الجزائر' : 'Nouveau en Algérie'}
+              </span>
               <h2
                 className="font-semibold tracking-tight leading-tight mb-5"
                 style={{ fontSize: 'clamp(1.75rem, 3.5vw, 2.75rem)', color: '#FFFFFF', whiteSpace: 'pre-line' }}
               >
                 {isArabic ? 'طبيبك\nعلى الشاشة.' : 'Votre médecin,\nà l\'écran.'}
               </h2>
-              <p className="text-lg leading-relaxed mb-8" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              <p className="text-lg leading-relaxed mb-4" style={{ color: 'rgba(255,255,255,0.72)' }}>
                 {isArabic
-                  ? 'استشارة طبية بالفيديو من منزلك — مثالية للمتابعة والاستشارات السريعة.'
-                  : 'Consultez en visioconférence depuis chez vous. Idéal pour le suivi et les avis rapides.'}
+                  ? 'التطبيب عن بُعد استشارة حقيقية مع طبيب حقيقي، لكن بالفيديو بدل التنقّل إلى العيادة. نفس الطبيب، نفس المدّة، نفس السرّية.'
+                  : 'La téléconsultation est une vraie consultation, avec un vrai médecin — simplement en vidéo plutôt qu’au cabinet. Même praticien, même durée, même confidentialité.'}
               </p>
-              <button
-                type="button"
-                onClick={patientUser ? onOpenAccount : onOpenLogin}
-                className="btn-primary"
-                style={{ background: '#FFFFFF', color: 'var(--accent)', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
-              >
-                {patientUser
-                  ? (isArabic ? 'من مواعيدي' : 'Depuis mes rendez-vous')
-                  : (isArabic ? 'سجّل الدخول للبدء' : 'Se connecter pour commencer')}
-                <Icon name="arrow" className="w-4 h-4" strokeWidth={2} />
-              </button>
-              <p className="text-sm mt-4" style={{ color: 'rgba(255,255,255,0.5)' }}>
+              <p className="text-base leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
                 {isArabic
-                  ? 'انضم للفيديو من موعد مؤكّد، من صفحة « مواعيدي ».'
-                  : 'Rejoignez la visio depuis un rendez-vous confirmé, dans « Mes rendez-vous ».'}
+                  ? 'مفيدة خاصة إذا كنت بعيدًا عن العيادة، أو تتنقّل بصعوبة، أو لا تحتاج فحصًا بدنيًا.'
+                  : 'Particulièrement utile si vous habitez loin d’un cabinet, si vous vous déplacez difficilement, ou quand un examen physique n’est pas nécessaire.'}
               </p>
             </div>
-            {/* Ce qui se passe concrètement, plutôt qu'une icône décorative */}
+
+            {/* Quand c'est adapté, et quand ça ne l'est pas. Le second point
+                compte autant : promettre que la visio remplace tout ferait
+                perdre du temps à des patients qui ont besoin d'un examen. */}
             <div
-              className="hidden md:flex flex-col justify-center gap-5 p-10 md:p-14"
+              className="flex flex-col justify-center gap-5 p-6 sm:p-10 md:p-14"
               style={{ background: 'rgba(255,255,255,0.03)', borderInlineStart: '1px solid rgba(255,255,255,0.07)' }}
             >
+              <div>
+                <p className="text-sm font-semibold mb-2" style={{ color: '#9FE1CB' }}>
+                  {isArabic ? 'مناسبة لـ' : 'Adaptée pour'}
+                </p>
+                <ul className="space-y-1.5">
+                  {(isArabic
+                    ? ['قراءة نتائج التحاليل', 'تجديد وصفة طبية', 'متابعة بعد استشارة', 'رأي سريع قبل التنقّل']
+                    : ['Lire des résultats d’analyses', 'Renouveler une ordonnance', 'Un suivi après consultation', 'Un avis rapide avant de se déplacer']
+                  ).map((x) => (
+                    <li key={x} className="text-sm leading-relaxed flex gap-2" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                      <span aria-hidden style={{ color: '#9FE1CB' }}>✓</span>{x}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="text-sm font-semibold mb-2" style={{ color: '#FDA29B' }}>
+                  {isArabic ? 'غير مناسبة لـ' : 'Pas adaptée pour'}
+                </p>
+                <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  {isArabic
+                    ? 'ما يتطلّب فحصًا بدنيًا، وكلّ حالة استعجالية. في حالة الطوارئ اتصل بالحماية المدنية 14 أو الإسعاف 115.'
+                    : 'Tout ce qui demande un examen physique, et toute urgence. En cas d’urgence, appelez la Protection Civile 14 ou le SAMU 115.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Comment ça marche, en deux temps ── */}
+          <div className="border-t p-6 sm:p-10 md:p-14" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+            <h3 className="text-xl font-semibold mb-8" style={{ color: '#FFFFFF' }}>
+              {isArabic ? 'كيف تجري الأمور' : 'Comment ça se passe'}
+            </h3>
+
+            <div className="grid md:grid-cols-2 gap-10">
               {[
                 {
-                  t: isArabic ? 'لا تثبيت' : 'Rien à installer',
-                  d: isArabic ? 'الاستشارة تفتح في المتصفّح مباشرة.' : 'La consultation s’ouvre directement dans le navigateur.',
+                  titre: isArabic ? 'حجز موعد بالفيديو' : 'Réserver en téléconsultation',
+                  etapes: isArabic ? [
+                    'ابحث عن طبيب كالعادة، حسب التخصص والولاية.',
+                    'فعّل مُرشّح « استشارة عن بُعد » : تظهر فقط العيادات التي تقترحها.',
+                    'في صفحة الحجز، اختر « عن بُعد » في الخطوة الأولى.',
+                    'اختر تاريخًا وساعة من الأوقات المفتوحة للفيديو، ثم أكّد.',
+                  ] : [
+                    'Cherchez un médecin comme d’habitude, par spécialité et par wilaya.',
+                    'Activez le filtre « Téléconsultation » : seuls les praticiens qui la proposent s’affichent.',
+                    'Sur la page de réservation, choisissez « À distance » à la première étape.',
+                    'Prenez une date et une heure parmi les créneaux ouverts à la vidéo, puis confirmez.',
+                  ],
+                  note: isArabic
+                    ? 'الأوقات المعروضة للفيديو تخصّ الفيديو وحده: الطبيب هو من يحدّدها.'
+                    : 'Les horaires proposés en vidéo sont propres à la vidéo : c’est le praticien qui les ouvre.',
                 },
                 {
-                  t: isArabic ? 'رابط خاص بكل موعد' : 'Un lien par rendez-vous',
-                  d: isArabic ? 'الغرفة مرتبطة بموعدك وحده.' : 'La salle est liée à votre rendez-vous, et à lui seul.',
+                  titre: isArabic ? 'الانضمام يوم الموعد' : 'Rejoindre le jour du rendez-vous',
+                  etapes: isArabic ? [
+                    'افتح « حسابي » من الأعلى، ثم « مواعيدي ».',
+                    'ابحث عن موعدك في القائمة.',
+                    'اضغط على زر « انضم للفيديو » الأزرق.',
+                    'اسمح بالكاميرا والميكروفون عند طلب المتصفّح.',
+                  ] : [
+                    'Ouvrez « Mon compte » en haut de la page, puis « Mes rendez-vous ».',
+                    'Retrouvez votre rendez-vous dans la liste.',
+                    'Appuyez sur le bouton bleu « Rejoindre la visio ».',
+                    'Autorisez la caméra et le micro quand le navigateur le demande.',
+                  ],
+                  note: isArabic
+                    ? 'الزرّ يظهر فقط في مواعيد الفيديو. الرابط خاص بك وبطبيبك وحدكما.'
+                    : 'Le bouton n’apparaît que sur les rendez-vous en vidéo. Le lien n’est accessible qu’à vous et à votre médecin.',
                 },
-                {
-                  t: isArabic ? 'مناسب للمتابعة' : 'Adapté au suivi',
-                  d: isArabic ? 'نتائج التحاليل، تجديد وصفة، رأي سريع.' : 'Résultats d’analyses, renouvellement d’ordonnance, avis rapide.',
-                },
-              ].map((f) => (
-                <div key={f.t}>
-                  <p className="text-sm font-semibold mb-1" style={{ color: '#FFFFFF' }}>{f.t}</p>
-                  <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.5)' }}>{f.d}</p>
+              ].map((bloc, i) => (
+                <div key={bloc.titre}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <span
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-semibold flex-shrink-0"
+                      style={{ background: 'var(--barbeau)', color: 'var(--nuit)' }}
+                    >
+                      {i + 1}
+                    </span>
+                    <h4 className="font-semibold" style={{ color: '#FFFFFF' }}>{bloc.titre}</h4>
+                  </div>
+                  <ol className="space-y-2.5 mb-4">
+                    {bloc.etapes.map((e, k) => (
+                      <li key={e} className="flex gap-3 text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.72)' }}>
+                        <span
+                          className="flex-shrink-0 font-mono text-xs pt-0.5"
+                          style={{ color: 'rgba(255,255,255,0.35)' }}
+                          aria-hidden
+                        >
+                          {k + 1}.
+                        </span>
+                        {e}
+                      </li>
+                    ))}
+                  </ol>
+                  <p
+                    className="text-xs leading-relaxed rounded-lg px-3 py-2"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.55)' }}
+                  >
+                    {bloc.note}
+                  </p>
                 </div>
               ))}
             </div>
+
+            {/* Ce dont on a besoin, dit simplement. « Rien à installer » est
+                le point qui lève le plus de réticences. */}
+            <div
+              className="mt-10 pt-8 flex flex-wrap gap-x-8 gap-y-3"
+              style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}
+            >
+              {(isArabic
+                ? ['لا تحتاج لتثبيت أي تطبيق', 'يكفي هاتف أو حاسوب بكاميرا', 'اتصال أنترنت عادي']
+                : ['Aucune application à installer', 'Un téléphone ou un ordinateur avec caméra', 'Une connexion internet ordinaire']
+              ).map((x) => (
+                <span key={x} className="text-sm flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                  <Icon name="check" className="w-4 h-4" strokeWidth={2.5} />
+                  {x}
+                </span>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={patientUser ? onOpenAccount : onOpenLogin}
+              className="btn-primary mt-8"
+              style={{ background: '#FFFFFF', color: 'var(--accent)', height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
+            >
+              {patientUser
+                ? (isArabic ? 'اذهب إلى مواعيدي' : 'Aller à mes rendez-vous')
+                : (isArabic ? 'سجّل الدخول للبدء' : 'Se connecter pour commencer')}
+              <Icon name="arrow" className="w-4 h-4 rtl:rotate-180" strokeWidth={2} />
+            </button>
           </div>
         </div>
       </section>
@@ -780,12 +953,61 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
         >
           <div className="grid md:grid-cols-2 gap-10 items-center">
             <div>
+              {/* ── Pastille « gratuit » ──
+                  Placée avant le titre, donc lue en premier. Le mot était
+                  jusqu'ici enfoui dans le libellé du bouton, tout en bas :
+                  un praticien qui parcourt la page en diagonale ne le voyait
+                  jamais, et supposait un tarif — c'est l'hypothèse par défaut
+                  devant tout logiciel de cabinet. */}
+              <span
+                className="inline-flex items-center gap-2 rounded-full ps-2 pe-3.5 py-1.5 mb-5"
+                style={{ background: '#DCF2E6', border: '1px solid rgba(31,122,77,0.28)' }}
+              >
+                <span
+                  className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center"
+                  style={{ background: 'var(--success)', color: '#FFFFFF' }}
+                >
+                  <Icon name="check" className="w-3 h-3" strokeWidth={3} />
+                </span>
+                <span
+                  className="text-sm font-bold tracking-wide"
+                  style={{ color: '#146239' }}
+                >
+                  {isArabic ? 'مجاني بالكامل' : '100 % gratuit'}
+                </span>
+              </span>
+
               <h2
-                className="font-semibold tracking-tight leading-tight mb-6"
+                className="font-semibold tracking-tight leading-tight mb-4"
                 style={{ fontSize: 'clamp(1.5rem, 3vw, 2.25rem)', color: 'var(--ink)', whiteSpace: 'pre-line' }}
               >
-                {isArabic ? 'أنت طبيب؟\nافتح أجندتك على شفاك.' : 'Vous êtes praticien ?\nOuvrez votre agenda sur chifak.'}
+                {isArabic ? 'أنت طبيب؟\nافتح أجندتك مجانًا.' : 'Vous êtes praticien ?\nOuvrez votre agenda gratuitement.'}
               </h2>
+
+              {/* La vraie question d'un praticien n'est pas « combien ? » mais
+                  « où est le piège ? ». On y répond avant qu'elle se pose. */}
+              <p className="text-[15px] leading-relaxed mb-6" style={{ color: 'var(--ink-2)' }}>
+                {isArabic
+                  ? 'دون اشتراك، ودون أي عمولة على مواعيدك. أنت تحتفظ بمرضاك وبطريقة عملك — نحن نتكفّل بالأجندة فقط.'
+                  : 'Sans abonnement, et sans aucune commission sur vos rendez-vous. Vous gardez vos patients et votre façon de travailler — nous ne prenons en charge que l’agenda.'}
+              </p>
+
+              {/* Les trois réponses aux trois craintes, énoncées séparément
+                  pour qu'aucune ne se perde dans une phrase. */}
+              <div className="flex flex-wrap gap-x-5 gap-y-2 mb-7">
+                {(isArabic
+                  ? ['بدون اشتراك', 'بدون عمولة', 'بدون بطاقة بنكية']
+                  : ['Sans abonnement', 'Sans commission', 'Sans carte bancaire']
+                ).map((item) => (
+                  <span key={item} className="inline-flex items-center gap-1.5">
+                    <span aria-hidden style={{ color: 'var(--success)' }}>
+                      <Icon name="check" className="w-4 h-4" strokeWidth={3} />
+                    </span>
+                    <span className="text-sm font-semibold" style={{ color: '#1F7A4D' }}>{item}</span>
+                  </span>
+                ))}
+              </div>
+
               <ul className="grid sm:grid-cols-2 gap-3 mb-8">
                 {(isArabic
                   ? ['أجندة اليوم بالبريد كل صباح', 'أنت تحدّد أيامك وساعاتك', 'حجز مواعيد لمرضاك المعتادين', 'استشارة بالفيديو مدمجة']
@@ -802,14 +1024,23 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                   </li>
                 ))}
               </ul>
+
               <button
                 onClick={onOpenProfessional}
                 className="btn-primary"
-                style={{ height: '48px', padding: '0 1.5rem', fontSize: '15px' }}
+                style={{ height: '52px', padding: '0 1.75rem', fontSize: '16px' }}
               >
-                {isArabic ? 'ابدأ مجانًا' : 'Démarrer gratuitement'}
-                <Icon name="arrow" className="w-4 h-4" strokeWidth={2} />
+                {isArabic ? 'أنشئ أجندتي مجانًا' : 'Créer mon agenda gratuitement'}
+                <Icon name="arrow" className="w-4 h-4 rtl:rotate-180" strokeWidth={2} />
               </button>
+
+              {/* Ce qui se passe après le clic. Un praticien hésite moins
+                  quand il sait qu'il ne s'engage à rien en appuyant. */}
+              <p className="text-[13px] mt-3" style={{ color: 'var(--ink-2)' }}>
+                {isArabic
+                  ? 'دقيقتان للتسجيل. يراجع فريقنا ملفك قبل النشر.'
+                  : 'Deux minutes pour s’inscrire. Notre équipe examine votre dossier avant publication.'}
+              </p>
             </div>
             {/* Aperçu de ce que le médecin reçoit réellement chaque matin */}
             <div className="hidden md:block">
@@ -879,16 +1110,12 @@ export default function HomePage({ onSearch, onAdminClick, onDoctorClick, onOpen
                 {' · '}
                 <a href="tel:115" className="font-semibold text-white hover:underline">115</a>
               </p>
-              {onAdminClick && (
-                <button
-                  onClick={onAdminClick}
-                  className="mt-5 flex items-center gap-2 text-sm px-4 py-2.5 rounded-xl transition-colors hover:bg-white/10"
-                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)' }}
-                >
-                  <Icon name="shield" className="w-4 h-4" />
-                  {isArabic ? 'مساحة الموظفين' : 'Portail administration'}
-                </button>
-              )}
+              {/* Le bouton « Portail administration » a été retiré du pied de
+                  page. L'administration est désormais une application servie
+                  depuis un autre domaine, qui ne se cherche pas : son adresse
+                  se communique aux personnes concernées. L'annoncer ici
+                  invitait chaque visiteur — et chaque robot — à venir frapper
+                  à la porte. */}
             </div>
 
             {/* Uniquement des liens qui mènent quelque part */}

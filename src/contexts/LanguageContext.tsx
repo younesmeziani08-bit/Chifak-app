@@ -142,33 +142,18 @@ export const translations = {
     'login.noAccount': 'Vous n\'avez pas de compte ?',
     
     // Professional Modal
-    'pro.title': 'Professionnels de santé',
-    'pro.subtitle': 'Rejoignez des milliers de praticiens qui utilisent chifak',
-    'pro.benefit1Title': 'Gestion simplifiée',
-    'pro.benefit1Desc': 'Gérez vos rendez-vous, vos patients et votre agenda en quelques clics',
-    'pro.benefit2Title': 'Plus de patients',
-    'pro.benefit2Desc': 'Augmentez votre visibilité et attirez de nouveaux patients',
-    'pro.benefit3Title': 'Réduction des absences',
-    'pro.benefit3Desc': 'Rappels automatiques par SMS et email pour vos patients',
-    'pro.benefit4Title': 'Application mobile',
-    'pro.benefit4Desc': 'Accédez à votre agenda partout, à tout moment',
-    'pro.trustUs': 'Ils nous font confiance',
-    'pro.professionals': 'Professionnels',
-    'pro.satisfaction': 'Satisfaction',
-    'pro.absences': 'Absences',
-    'pro.ourOffers': 'Nos offres',
-    'pro.free': 'Gratuit',
-    'pro.starter': 'Starter',
-    'pro.pro': 'Pro',
-    'pro.premium': 'Premium',
-    'pro.popular': 'POPULAIRE',
-    'pro.startNow': 'Commencer',
-    'pro.tryFree': 'Essayer gratuitement',
-    'pro.contactUs': 'Nous contacter',
-    'pro.ready': 'Prêt à rejoindre chifak gratuitement ?',
-    'pro.tryFree30': 'La création de compte professionnel est 100% gratuite',
-    'pro.createProAccount': 'Créer mon compte professionnel gratuitement',
-    'pro.scheduleDemo': 'Planifier une démo',
+    /* Le bloc « pro.* » a été supprimé.
+
+       Il portait des affirmations que rien ne soutient : « 300 K+
+       professionnels », « 95 % de satisfaction », « −60 % d'absences »,
+       « rejoignez des milliers de praticiens ». Ces nombres s'affichaient à
+       des médecins qu'on invitait à s'inscrire sur cette foi. Un praticien
+       qui découvre ensuite qu'il est le douzième ne revient pas, et il en
+       parle à ses confrères.
+
+       La fenêtre professionnelle porte désormais son texte en propre —
+       description de ce que le service fait réellement, et sa gratuité, qui
+       est vraie et se vérifie. Voir ProfessionalModal.tsx. */
     
     // Footer
     'footer.tagline': 'La plateforme de prise de rendez-vous médical en ligne',
@@ -317,33 +302,6 @@ export const translations = {
     'login.noAccount': 'ليس لديك حساب؟',
     
     // Professional Modal
-    'pro.title': 'المتخصصون في الصحة',
-    'pro.subtitle': 'انضم إلى آلاف الأطباء الذين يستخدمون شفاك',
-    'pro.benefit1Title': 'إدارة مبسطة',
-    'pro.benefit1Desc': 'أدر مواعيدك ومرضاك وأجندتك بنقرات قليلة',
-    'pro.benefit2Title': 'المزيد من المرضى',
-    'pro.benefit2Desc': 'زد من ظهورك واجذب مرضى جدد',
-    'pro.benefit3Title': 'تقليل الغياب',
-    'pro.benefit3Desc': 'تذكيرات تلقائية عبر الرسائل النصية والبريد الإلكتروني لمرضاك',
-    'pro.benefit4Title': 'تطبيق الجوال',
-    'pro.benefit4Desc': 'الوصول إلى جدولك في أي مكان وفي أي وقت',
-    'pro.trustUs': 'يثقون بنا',
-    'pro.professionals': 'متخصص',
-    'pro.satisfaction': 'الرضا',
-    'pro.absences': 'غياب',
-    'pro.ourOffers': 'عروضنا',
-    'pro.free': 'مجاني',
-    'pro.starter': 'البداية',
-    'pro.pro': 'محترف',
-    'pro.premium': 'مميز',
-    'pro.popular': 'شائع',
-    'pro.startNow': 'ابدأ الآن',
-    'pro.tryFree': 'جرب مجانًا',
-    'pro.contactUs': 'اتصل بنا',
-    'pro.ready': 'هل أنت مستعد للانضمام إلى شفاك مجانًا؟',
-    'pro.tryFree30': 'إنشاء الحساب المهني مجاني 100%',
-    'pro.createProAccount': 'إنشاء حسابي المهني مجانًا',
-    'pro.scheduleDemo': 'جدولة عرض توضيحي',
     
     // Footer
     'footer.tagline': 'منصة حجز المواعيد الطبية عبر الإنترنت',

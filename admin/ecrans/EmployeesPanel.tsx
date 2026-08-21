@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useLanguage } from '../../contexts/LanguageContext';
-import { employeesAPI, Employee, EmployeeStats } from '../../services/api';
+import { useLanguage } from '../../src/contexts/LanguageContext';
+import { employeesAPI, Employee, EmployeeStats } from '../services/api';
 
 /**
  * Gestion du personnel : création, suppression, activité par période,

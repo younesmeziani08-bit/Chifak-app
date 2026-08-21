@@ -37,7 +37,10 @@ function Icon({ name, className = 'w-5 h-5', strokeWidth = 1.75 }: { name: strin
 }
 
 interface SearchResultsProps {
-  searchQuery: { specialty: string; location: string; date: string };
+  /* `videoOnly` permet d'arriver ici avec le filtre téléconsultation déjà
+     actif — depuis l'onglet « Téléconsultation » de l'accueil. Sans lui, le
+     patient qui vient d'annoncer vouloir une visio devait la redemander. */
+  searchQuery: { specialty: string; location: string; date: string; videoOnly?: boolean };
   onDoctorSelect: (doctor: Doctor, date?: string, time?: string, consultationType?: 'cabinet' | 'video') => void;
   onBackToHome: () => void;
   onDoctorClick?: () => void;
@@ -96,7 +99,7 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
   const [activeDay, setActiveDay] = useState(initialDay);
   const [sortBy, setSortBy] = useState<'availability' | 'rating'>('availability');
   /** N'afficher que les praticiens qui acceptent la téléconsultation. */
-  const [videoOnly, setVideoOnly] = useState(false);
+  const [videoOnly, setVideoOnly] = useState(Boolean(searchQuery.videoOnly));
 
   const stripRef = useRef<HTMLDivElement>(null);
   const activeBtnRef = useRef<HTMLButtonElement>(null);

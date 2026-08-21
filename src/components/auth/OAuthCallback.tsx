@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { API_URL } from '../../config';
-import { parseJwtPayload } from '../../utils/auth';
+/* `parseJwtPayload` n'est plus utilisé ici : l'identité vient de la réponse du
+   serveur, pas du contenu du jeton. Lire un jeton côté navigateur ne prouve
+   rien — sa charge utile se lit sans clé, et se réécrit tout aussi bien. */
 
 interface OAuthCallbackProps {
   onComplete: () => void;
@@ -18,11 +20,14 @@ export default function OAuthCallback({ onComplete }: OAuthCallbackProps) {
     const authError = params.get('auth_error');
 
     if (authError) {
-      setError(
-        isArabic
-          ? 'فشل تسجيل الدخول. حاول مرة أخرى أو استخدم البريد الإلكتروني.'
-          : 'Échec de la connexion. Réessayez ou utilisez votre email.'
-      );
+      /* Le serveur joint désormais un motif quand il en a un — par exemple
+         qu'un compte existe déjà avec cette adresse et qu'il faut passer par
+         le mot de passe. Sans lui, la personne relance indéfiniment la même
+         connexion sociale qui ne peut pas aboutir. */
+      const motif = params.get('motif');
+      setError(motif || (isArabic
+        ? 'فشل تسجيل الدخول. حاول مرة أخرى أو استخدم البريد الإلكتروني.'
+        : 'Échec de la connexion. Réessayez ou utilisez votre e-mail.'));
       return;
     }
 
@@ -32,38 +37,42 @@ export default function OAuthCallback({ onComplete }: OAuthCallbackProps) {
     }
 
     const finish = async () => {
-      localStorage.setItem('chifak_patient_token', token);
+      /* ── Le jeton est éprouvé AVANT d'être conservé ──
+         L'ancienne version l'enregistrait dès son arrivée, puis tentait de
+         lire le profil. Deux conséquences. Un jeton refusé restait en place :
+         l'application se croyait connectée et chaque appel repartait en 403,
+         sans que rien n'explique pourquoi. Et n'importe quelle adresse de la
+         forme « /auth/callback?token=… » suffisait à déposer un jeton dans le
+         navigateur de quelqu'un — un lien envoyé par message, et la victime
+         se retrouvait dans le compte de l'expéditeur sans s'en apercevoir.
 
-      const nameFromUrl = params.get('name');
-      const emailFromUrl = params.get('email');
-      const payload = parseJwtPayload(token);
-
-      let user = {
-        id: payload?.id as number | undefined,
-        email: emailFromUrl || (payload?.email as string) || '',
-        name: nameFromUrl || '',
-      };
-
+         Ici, le jeton n'est retenu que si le serveur reconnaît son porteur.
+         L'identité affichée vient de cette réponse, jamais de l'adresse : les
+         paramètres « name » et « email » de l'URL se réécrivent d'un clic. */
+      let profil: { id: number; email: string; name?: string } | null = null;
       try {
-        const profileRes = await fetch(`${API_URL}/patient/profile`, {
+        const reponse = await fetch(`${API_URL}/patient/profile`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (profileRes.ok) {
-          const profile = await profileRes.json();
-          user = {
-            id: profile.id,
-            email: profile.email,
-            name: profile.name || user.name,
-          };
-        }
+        if (reponse.ok) profil = await reponse.json();
       } catch {
-        // Profil optionnel si l'API est indisponible
+        /* Réseau injoignable : traité comme un échec ci-dessous. */
       }
 
-      if (!user.name && user.email) {
-        user.name = user.email.split('@')[0];
+      if (!profil) {
+        setError(isArabic
+          ? 'تعذّر إتمام تسجيل الدخول. حاول مرة أخرى.'
+          : 'La connexion n’a pas pu être finalisée. Réessayez.');
+        return;
       }
 
+      const user = {
+        id: profil.id,
+        email: profil.email,
+        name: profil.name || profil.email.split('@')[0],
+      };
+
+      localStorage.setItem('chifak_patient_token', token);
       localStorage.setItem('chifak_patient_user', JSON.stringify(user));
       window.history.replaceState({}, '', '/');
       onComplete();

@@ -17,17 +17,52 @@ const router = express.Router();
 // POST /api/consultations - Créer une consultation (réservé aux médecins)
 router.post('/api/consultations', authenticateDoctorToken, async (req, res) => {
   try {
-    const { patientName, patientPhone, patientEmail, stateDescription, progressNotes, nextAppointmentId } = req.body;
     const doctorId = req.user.id;
 
-    if (!patientName) {
+    /* Toutes les entrées étaient reprises telles quelles : ni nettoyage, ni
+       bornes. Un champ de deux mégaoctets partait donc en base à chaque appel,
+       et les caractères de contrôle avec. Le reste de l'application passe par
+       cleanString ; il n'y a aucune raison que le dossier médical — la donnée
+       la plus sensible du service — soit le seul endroit sans contrôle. */
+    const patientName = cleanString(req.body.patientName, 120);
+    const patientPhone = cleanString(req.body.patientPhone, 20);
+    const patientEmail = normalizeEmail(req.body.patientEmail);
+    const stateDescription = cleanString(req.body.stateDescription, 5000);
+    const progressNotes = cleanString(req.body.progressNotes, 5000);
+
+    if (!patientName || patientName.length < 2) {
       return res.status(400).json({ error: 'Nom du patient requis' });
+    }
+    if (patientPhone && !isValidPhone(patientPhone)) {
+      return res.status(400).json({ error: 'Numéro de téléphone invalide' });
+    }
+    if (patientEmail && !isValidEmail(patientEmail)) {
+      return res.status(400).json({ error: 'Adresse e-mail invalide' });
+    }
+
+    /* Le rendez-vous rattaché doit appartenir à CE praticien.
+       L'identifiant venait du client sans aucun contrôle : un médecin pouvait
+       lier son dossier au rendez-vous d'un confrère, et la lecture ci-dessous
+       — qui joint la table des rendez-vous — lui renvoyait alors la date et
+       l'heure d'une consultation qui ne le concernait pas. */
+    let nextAppointmentId = null;
+    if (req.body.nextAppointmentId !== undefined && req.body.nextAppointmentId !== null && req.body.nextAppointmentId !== '') {
+      if (!isValidId(req.body.nextAppointmentId)) {
+        return res.status(400).json({ error: 'Rendez-vous lié invalide' });
+      }
+      const candidat = Number(req.body.nextAppointmentId);
+      const appt = await db.prepare('SELECT id FROM appointments WHERE id = ? AND doctor_id = ?')
+        .get(candidat, doctorId);
+      if (!appt) {
+        return res.status(403).json({ error: 'Ce rendez-vous ne figure pas dans votre agenda.' });
+      }
+      nextAppointmentId = candidat;
     }
 
     const result = await db.prepare(`
       INSERT INTO consultations (doctor_id, patient_name, patient_phone, patient_email, state_description, progress_notes, next_appointment_id)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(doctorId, patientName, patientPhone || null, patientEmail || null, stateDescription || null, progressNotes || null, nextAppointmentId || null);
+    `).run(doctorId, patientName, patientPhone || null, patientEmail || null, stateDescription || null, progressNotes || null, nextAppointmentId);
 
     res.status(201).json({ id: result.lastInsertRowid, message: 'Consultation enregistrée' });
   } catch (error) {

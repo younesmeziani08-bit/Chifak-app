@@ -12,10 +12,11 @@ import { authenticateToken, requireAdmin } from '../middleware/auth.js';
 import { urlPhoto, empreintePhoto } from '../lib/photos.js';
 import { horairesBloquesPublics } from '../lib/publicData.js';
 import { journaliser } from '../lib/staff.js';
+import { photoLimiter } from '../config/limiters.js';
 
 const router = express.Router();
 
-router.get('/api/doctors/:id/photo', async (req, res) => {
+router.get('/api/doctors/:id/photo', photoLimiter, async (req, res) => {
   try {
     if (!isValidId(req.params.id)) return res.status(400).end();
     const row = await db.prepare('SELECT image, photo_hash FROM doctors WHERE id = ?')
@@ -204,14 +205,31 @@ router.post('/api/doctors', authenticateToken, async (req, res) => {
     const slots = JSON.stringify(availableSlots || ['08:00', '09:00', '10:00', '11:00', '14:00', '15:00', '16:00', '17:00']);
     const serializedWorkingDays = JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5]);
 
-    // Mot de passe défini par l'admin : haché + changement obligatoire à la 1re connexion
-    // Le mot de passe initial fixé par l'admin doit lui aussi être robuste
+    /* Mot de passe initial : réservé à l'administration, comme à la
+       modification. Un employé qui crée une fiche avec un mot de passe qu'il
+       choisit dispose ensuite d'un accès complet à cet espace praticien. */
     if (password) {
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Seule l\'administration peut définir le mot de passe d\'un praticien.',
+        });
+      }
       const pwdError = passwordStrengthError(password);
       if (pwdError) return res.status(400).json({ error: pwdError });
     }
     const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
     const mustChange = password ? 1 : 0;
+
+    /* Le code médecin porte une contrainte d'unicité : c'est lui qui sert
+       d'identifiant de connexion au praticien. Une saisie en double renvoyait
+       « Erreur serveur », et l'employé recommençait la fiche entière sans
+       comprendre que seul ce champ posait problème. */
+    const codeDejaPris = doctorCode
+      ? await db.prepare('SELECT id FROM doctors WHERE doctor_code = ?').get(doctorCode)
+      : null;
+    if (codeDejaPris) {
+      return res.status(409).json({ error: 'Ce code médecin est déjà attribué à un autre praticien.' });
+    }
 
     const result = await db.prepare(`
       INSERT INTO doctors (name, specialty, address, city, phone, email, doctor_code, image, photo_hash, available_slots, next_available, slot_duration, working_days, latitude, longitude, maps_url, password, must_change_password)
@@ -242,8 +260,12 @@ router.post('/api/doctors', authenticateToken, async (req, res) => {
     // Trace : qui a inscrit ce médecin, et quand.
     await journaliser(req.user, 'doctor_created', newDoctor);
 
+    // Même règle qu'à la modification : la liste brute des créneaux réservés
+    // ne sort jamais, elle peut contenir les coordonnées de patients.
+    const { blocked_slots: _brut, ...ficheCreee } = newDoctor;
+
     res.status(201).json({
-      ...newDoctor,
+      ...ficheCreee,
       password: undefined,
       // Adresse de la photo, comme dans la liste : renvoyer la data URL ferait
       // remonter 200 Ko pour rien, et le formulaire la réécrirait à l'identique.
@@ -295,13 +317,34 @@ router.put('/api/doctors/:id', authenticateToken, async (req, res) => {
         ? JSON.stringify(Array.isArray(workingDays) && workingDays.length ? workingDays : [1, 2, 3, 4, 5])
         : doctor.working_days;
 
-    // Réinitialisation du mot de passe par l'admin : haché + changement obligatoire à la prochaine connexion
+    /* ── Réinitialiser un mot de passe est réservé à l'administration ──
+       Cette route est ouverte à tout le personnel, employés compris. Le champ
+       « password » permettait donc à n'importe quel employé de fixer le mot de
+       passe d'un praticien, puis de se connecter à son espace : agenda,
+       coordonnées de tous ses patients, et remarques médicales privées.
+
+       Ce n'est pas un abus de droit théorique : c'est le chemin le plus court
+       vers le dossier médical, et il ne laissait aucune trace lisible. */
     if (password) {
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({
+          error: 'Seule l\'administration peut définir le mot de passe d\'un praticien.',
+        });
+      }
       const pwdError = passwordStrengthError(password);
       if (pwdError) return res.status(400).json({ error: pwdError });
     }
     const newHashed = password ? await bcrypt.hash(password, 10) : doctor.password;
     const mustChange = password ? 1 : (doctor.must_change_password || 0);
+
+    // Même garde qu'à la création : le code doit rester unique, et le dire.
+    if (doctorCode !== undefined && doctorCode && doctorCode !== doctor.doctor_code) {
+      const conflit = await db.prepare('SELECT id FROM doctors WHERE doctor_code = ? AND id <> ?')
+        .get(doctorCode, doctorId);
+      if (conflit) {
+        return res.status(409).json({ error: 'Ce code médecin est déjà attribué à un autre praticien.' });
+      }
+    }
 
     await db.prepare(`
       UPDATE doctors
@@ -336,9 +379,17 @@ router.put('/api/doctors/:id', authenticateToken, async (req, res) => {
 
     const updatedDoctor = await db.prepare('SELECT * FROM doctors WHERE id = ?').get(doctorId);
 
+    /* blocked_slots est retiré de la réponse. L'étalement de la ligne brute le
+       renvoyait tel quel : or une entrée peut porter le nom, le téléphone,
+       l'e-mail et une note sur le patient à qui le praticien réserve la plage.
+       Ces informations n'ont rien à faire dans un écran d'administration de
+       fiches, et elles ne doivent sortir que par horairesBloquesPublics. */
+    const { blocked_slots, ...ficheAdmin } = updatedDoctor;
+
     res.json({
-      ...updatedDoctor,
+      ...ficheAdmin,
       password: undefined,
+      blockedSlots: horairesBloquesPublics(blocked_slots),
       image: urlPhoto(req, updatedDoctor),
       hasPassword: !!updatedDoctor.password,
       availableSlots: JSON.parse(updatedDoctor.available_slots),

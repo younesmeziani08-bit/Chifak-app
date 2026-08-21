@@ -16,20 +16,24 @@ interface DoctorsContextType {
 }
 
 const DoctorsContext = createContext<DoctorsContextType | undefined>(undefined);
-const LOCAL_DOCTORS_KEY = 'chifak_local_doctors';
 
-const getLocalDoctors = (): Doctor[] => {
-  try {
-    const raw = localStorage.getItem(LOCAL_DOCTORS_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveLocalDoctors = (doctors: Doctor[]) => {
-  localStorage.setItem(LOCAL_DOCTORS_KEY, JSON.stringify(doctors));
-};
+/* ── Le « repli hors ligne » a été supprimé ──
+ *
+ * Quand l'enregistrement d'un praticien échouait — jeton expiré, droits
+ * insuffisants, serveur endormi — l'application fabriquait une fiche dans le
+ * stockage local du navigateur et annonçait « médecin créé ». L'employé
+ * pouvait en saisir dix ; si son jeton avait expiré à la première, les neuf
+ * suivantes n'existaient que chez lui, et disparaissaient au premier
+ * nettoyage du navigateur. Aucun message, aucune trace.
+ *
+ * Pire : la recherche fusionnait ces fiches fantômes dans les résultats
+ * présentés aux patients. Un praticien qui n'existe nulle part apparaissait
+ * comme disponible, et la réservation échouait ensuite sur « médecin non
+ * trouvé » — sans que personne comprenne pourquoi.
+ *
+ * Une écriture qui échoue doit se voir. C'est tout ce qu'on attend d'elle.
+ */
+const CLE_FICHES_LOCALES = 'chifak_local_doctors';
 
 const normalizeDoctor = (doctor: any): Doctor => ({
   id: doctor.id,
@@ -67,13 +71,11 @@ export function DoctorsProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       setError(null);
-      const data = await doctorsAPI.getAll();
-      const local = getLocalDoctors();
-      setDoctors([...data.map(normalizeDoctor), ...local.map(normalizeDoctor)]);
+      setDoctors((await doctorsAPI.getAll()).map(normalizeDoctor));
     } catch (err) {
-      // Fallback local si API indisponible
-      const local = getLocalDoctors();
-      setDoctors(local.map(normalizeDoctor));
+      // Liste vide et message d'erreur : mieux vaut « annuaire indisponible »
+      // qu'un annuaire partiel qu'on croit complet.
+      setDoctors([]);
       setError(err instanceof Error ? err.message : 'Erreur lors du chargement des médecins');
       console.error('Erreur chargement médecins:', err);
     } finally {
@@ -82,69 +84,28 @@ export function DoctorsProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    // Purge des fiches fantômes laissées par l'ancien repli hors ligne.
+    try { localStorage.removeItem(CLE_FICHES_LOCALES); } catch { /* stockage indisponible */ }
     refreshDoctors();
   }, []);
 
+  /* Les trois écritures propagent l'erreur. L'appelant l'affiche ; c'est la
+     seule façon qu'a un employé de savoir que sa saisie n'a pas abouti. */
   const addDoctor = async (doctorData: DoctorCreate) => {
-    try {
-      const newDoctor = await doctorsAPI.create(doctorData);
-      setDoctors([...doctors, normalizeDoctor(newDoctor)]);
-    } catch (err) {
-      // Fallback local pour mode démo / API non dispo
-      const localDoctor: Doctor = normalizeDoctor({
-        id: Date.now(),
-        name: doctorData.name,
-        specialty: doctorData.specialty,
-        address: doctorData.address,
-        city: doctorData.city,
-        rating: 5,
-        reviewCount: 0,
-        image: doctorData.image || '👨‍⚕️',
-        availableSlots: doctorData.availableSlots || [],
-        nextAvailable: doctorData.nextAvailable || 'Disponible maintenant',
-        slotDuration: doctorData.slotDuration || 30,
-        workingDays: doctorData.workingDays || [1, 2, 3, 4, 5],
-        latitude: doctorData.latitude,
-        longitude: doctorData.longitude,
-        mapsUrl: doctorData.mapsUrl,
-      });
-
-      const local = getLocalDoctors();
-      const updatedLocal = [...local, localDoctor];
-      saveLocalDoctors(updatedLocal);
-      setDoctors((prev) => [...prev, localDoctor]);
-    }
+    const newDoctor = await doctorsAPI.create(doctorData);
+    setDoctors((prev) => [...prev, normalizeDoctor(newDoctor)]);
   };
 
   const updateDoctor = async (id: number, doctorData: Partial<DoctorCreate>) => {
-    try {
-      const updatedDoctor = await doctorsAPI.update(id, doctorData);
-      setDoctors(doctors.map(doctor => 
-        doctor.id === id ? normalizeDoctor(updatedDoctor) : doctor
-      ));
-    } catch (err) {
-      throw err;
-    }
+    const updatedDoctor = await doctorsAPI.update(id, doctorData);
+    setDoctors((prev) => prev.map((doctor) => (
+      doctor.id === id ? normalizeDoctor(updatedDoctor) : doctor
+    )));
   };
 
   const deleteDoctor = async (id: number) => {
-    try {
-      await doctorsAPI.delete(id);
-      setDoctors(doctors.filter(doctor => doctor.id !== id));
-    } catch (err) {
-      // Fallback local pour les médecins ajoutés en mode démo/offline
-      const local = getLocalDoctors();
-      const existsLocally = local.some((doctor) => Number(doctor.id) === Number(id));
-
-      if (existsLocally) {
-        const updatedLocal = local.filter((doctor) => Number(doctor.id) !== Number(id));
-        saveLocalDoctors(updatedLocal);
-        setDoctors((prev) => prev.filter((doctor) => Number(doctor.id) !== Number(id)));
-        return;
-      }
-
-      throw err;
-    }
+    await doctorsAPI.delete(id);
+    setDoctors((prev) => prev.filter((doctor) => doctor.id !== id));
   };
 
   /* Recherche déléguée à la base. Le filtrage en mémoire ne portait que sur les
@@ -153,16 +114,7 @@ export function DoctorsProvider({ children }: { children: ReactNode }) {
      requête du patient. Ici, c'est PostgreSQL qui filtre et pagine. */
   const searchDoctors = async (specialty: string, location: string, videoOnly?: boolean): Promise<Doctor[]> => {
     const data = await doctorsAPI.getAll(specialty || undefined, location || undefined, videoOnly);
-    const remote = data.map(normalizeDoctor);
-    // Les fiches créées hors ligne restent filtrées côté client : elles ne sont
-    // pas en base, le serveur ne peut donc pas les connaître.
-    const local = getLocalDoctors().map(normalizeDoctor).filter((d) => {
-      const okSpec = !specialty || d.specialty.toLowerCase().includes(specialty.toLowerCase());
-      const okCity = !location || d.city.toLowerCase().includes(location.toLowerCase());
-      const okVideo = !videoOnly || (d.acceptsVideo && (d.videoSlots?.length ?? 0) > 0);
-      return okSpec && okCity && okVideo;
-    });
-    return [...remote, ...local];
+    return data.map(normalizeDoctor);
   };
 
   const getDoctorsBySpecialtyAndLocation = (specialty: string, location: string): Doctor[] => {

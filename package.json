@@ -5,12 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:admin": "vite --config vite.admin.config.ts",
     "build": "vite build",
+    "build:admin": "vite build --config vite.admin.config.ts",
+    "build:tout": "npm run build && npm run build:admin",
     "preview": "vite preview",
     "cap:assets": "capacitor-assets generate --iconBackgroundColor #ffffff --iconBackgroundColorDark #ffffff --splashBackgroundColor #ffffff --splashBackgroundColorDark #ffffff",
     "cap:sync": "npm run build && npx cap sync",
     "cap:ios": "npx cap open ios",
-    "cap:android": "npx cap open android"
+    "cap:android": "npx cap open android",
+    "cap:live": "node scripts/live.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

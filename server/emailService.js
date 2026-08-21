@@ -415,3 +415,251 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
     return false;
   }
 }
+
+/* ── Réponses aux demandes d'inscription des praticiens ──
+ *
+ * Un praticien déposait sa demande, lisait « vous recevrez votre code de
+ * connexion par e-mail », et n'entendait plus jamais parler de personne :
+ * aucun envoi n'existait, ni à l'acceptation, ni au refus. Sa fiche pouvait
+ * être en ligne depuis des semaines sans qu'il le sache, et le motif d'un
+ * refus — que l'administration est pourtant obligée d'écrire — ne quittait
+ * jamais la base.
+ *
+ * Ces deux courriers ferment la boucle. Ils reprennent la même mise en page
+ * sobre que les autres envois du service.
+ */
+
+/** Enveloppe commune : même cadre, même pied, dans les deux langues. */
+function gabaritPraticien({ ar, titre, intro, corps, pied }) {
+  return `<!DOCTYPE html>
+<html dir="${ar ? 'rtl' : 'ltr'}" lang="${ar ? 'ar' : 'fr'}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:24px;background:#F3F6FD;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;background:#FFFFFF;border-radius:14px;overflow:hidden;border:1px solid #DDE5F5;">
+    <div style="padding:22px 28px;border-bottom:1px solid #EEF2FB;">
+      <span style="font-size:19px;font-weight:bold;color:#07008F;letter-spacing:-0.3px;">chifak</span>
+    </div>
+    <div style="padding:28px;">
+      <h1 style="margin:0 0 14px;font-size:21px;line-height:1.3;color:#0C0E45;">${titre}</h1>
+      <p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#454A73;">${intro}</p>
+      ${corps}
+      <p style="margin:22px 0 0;font-size:14px;line-height:1.65;color:#6B7096;">${pied}</p>
+    </div>
+    <div style="padding:16px 28px;background:#F8FAFE;border-top:1px solid #EEF2FB;">
+      <p style="margin:0;font-size:12px;color:#6B7096;">
+        ${ar ? 'هذه رسالة آلية، لا داعي للرد عليها.' : 'Message automatique, merci de ne pas y répondre.'}
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/** Envoi mutualisé : mode démo, journalisation, et jamais d'exception remontée. */
+async function envoyerAuPraticien(email, subject, html, etiquette) {
+  if (!isEmailConfigured()) {
+    console.log(`\n📧 [MODE DÉMO] ${etiquette} — destinataire : ${email}\n`);
+    return true;
+  }
+  try {
+    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html });
+    console.log(`✅ ${etiquette} envoyé à ${email}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Erreur envoi ${etiquette} à ${email}:`, error.message);
+    return false;
+  }
+}
+
+/**
+ * Demande acceptée : la fiche est en ligne, voici le code de connexion.
+ *
+ * Le mot de passe n'est PAS rappelé, et ne peut pas l'être : il n'existe
+ * qu'en empreinte. C'est celui que le praticien a choisi lui-même — le lui
+ * redire suffit, l'écrire serait impossible et dangereux.
+ */
+export async function sendDoctorApproval(email, { doctorName, doctorCode, language = 'fr' }) {
+  const ar = language === 'ar';
+  const subject = ar
+    ? `شفاك - تم قبول طلبك (${doctorCode})`
+    : `chifak - Votre inscription est acceptée (${doctorCode})`;
+
+  const corps = `
+      <div style="background:#F3F6FD;border-radius:10px;padding:18px;text-align:center;">
+        <p style="margin:0 0 8px;font-size:13px;color:#6B7096;">
+          ${ar ? 'رمز الدخول الخاص بك' : 'Votre code de connexion'}
+        </p>
+        <p style="margin:0;font-size:26px;font-weight:bold;letter-spacing:2px;color:#07008F;font-family:monospace;">
+          ${escapeHtml(doctorCode)}
+        </p>
+      </div>
+      <p style="margin:18px 0 0;font-size:15px;line-height:1.65;color:#454A73;">
+        ${ar
+          ? 'استعمل هذا الرمز مع كلمة المرور التي اخترتها عند التسجيل للدخول إلى فضائك.'
+          : 'Utilisez ce code avec le mot de passe que vous avez choisi lors de votre demande pour accéder à votre espace.'}
+      </p>`;
+
+  return envoyerAuPraticien(email, subject, gabaritPraticien({
+    ar,
+    titre: ar ? 'تم قبول طلبك' : 'Votre inscription est acceptée',
+    intro: ar
+      ? `مرحبًا ${escapeHtml(doctorName)}، ملفك الآن منشور ويمكن للمرضى العثور عليك وحجز مواعيد لديك.`
+      : `Bonjour ${escapeHtml(doctorName)}, votre fiche est désormais publiée : les patients peuvent vous trouver et réserver un rendez-vous.`,
+    corps,
+    pied: ar
+      ? 'ننصحك بضبط أيامك وساعاتك من فضاءك قبل استقبال أول موعد.'
+      : 'Pensez à régler vos jours et vos horaires depuis votre espace avant votre premier rendez-vous.',
+  }), 'Acceptation praticien');
+}
+
+/**
+ * Demande refusée, avec le motif écrit par l'administration.
+ *
+ * Le motif est obligatoire à la saisie précisément pour être transmis ici.
+ * Sans cet envoi, il restait en base sans jamais atteindre l'intéressé, qui
+ * ne pouvait ni comprendre ni corriger son dossier.
+ */
+export async function sendDoctorRejection(email, { doctorName, reason, language = 'fr' }) {
+  const ar = language === 'ar';
+  const subject = ar ? 'شفاك - بخصوص طلب تسجيلك' : 'chifak - Concernant votre demande d’inscription';
+
+  const corps = `
+      <div style="background:#F8FAFE;border-inline-start:3px solid #6B7096;border-radius:0;padding:14px 16px;">
+        <p style="margin:0 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#6B7096;">
+          ${ar ? 'السبب' : 'Motif'}
+        </p>
+        <p style="margin:0;font-size:15px;line-height:1.65;color:#0C0E45;">${escapeHtml(reason)}</p>
+      </div>`;
+
+  return envoyerAuPraticien(email, subject, gabaritPraticien({
+    ar,
+    titre: ar ? 'لم نتمكن من قبول طلبك' : 'Nous n’avons pas pu retenir votre demande',
+    intro: ar
+      ? `مرحبًا ${escapeHtml(doctorName)}، بعد فحص ملفك، لم نتمكن من قبوله في هذه المرحلة.`
+      : `Bonjour ${escapeHtml(doctorName)}, après examen de votre dossier, nous n’avons pas pu le retenir à ce stade.`,
+    corps,
+    pied: ar
+      ? 'يمكنك إيداع طلب جديد بعد تصحيح ما ورد أعلاه.'
+      : 'Vous pouvez déposer une nouvelle demande après avoir corrigé le point ci-dessus.',
+  }), 'Refus praticien');
+}
+
+/**
+ * Rappel de rendez-vous, envoyé la veille au soir.
+ *
+ * ── Pourquoi c'est la fonction qui manquait le plus ──
+ *
+ * Le praticien recevait son agenda chaque matin. Le patient, lui, n'avait plus
+ * aucune nouvelle après la confirmation initiale. Un rendez-vous pris trois
+ * semaines à l'avance s'oublie — et l'absence au rendez-vous est précisément
+ * le problème que cette plateforme est censée résoudre pour les cabinets.
+ *
+ * ── Ce que le message contient, et pourquoi ──
+ *
+ * L'heure et le lieu, évidemment. Mais aussi le lien pour annuler : un patient
+ * empêché qui ne trouve pas comment le dire ne prévient personne, et le
+ * créneau est perdu pour tout le monde. Lui rendre l'annulation facile n'est
+ * pas une faveur, c'est ce qui remet le créneau en circulation.
+ *
+ * Le rappel d'apporter carte et dossier ne s'affiche qu'au cabinet : on ne
+ * demande pas d'« apporter » quelque chose à quelqu'un qui ne se déplace pas.
+ */
+export async function sendAppointmentReminder(email, {
+  patientName, doctorName, specialty, date, time, address,
+  consultationType = 'cabinet', childName = null, language = 'fr',
+}) {
+  const ar = language === 'ar';
+  const visio = consultationType === 'video';
+
+  const jour = (() => {
+    try {
+      return new Date(`${date}T12:00:00`).toLocaleDateString(ar ? 'ar-DZ' : 'fr-FR', {
+        weekday: 'long', day: 'numeric', month: 'long',
+      });
+    } catch { return date; }
+  })();
+
+  const subject = ar
+    ? `شفاك - تذكير: موعدك غدًا على الساعة ${time}`
+    : `chifak - Rappel : votre rendez-vous demain à ${time}`;
+
+  /* Le nom qui figure en tête est celui de la personne RÉELLEMENT attendue.
+     Un parent qui a pris rendez-vous pour son fils doit lire le nom de son
+     fils, sinon il croit qu'il s'agit du sien et se présente seul. */
+  const attendu = childName
+    ? escapeHtml(childName)
+    : escapeHtml(patientName);
+
+  const lieu = visio
+    ? (ar
+      ? 'من المنزل — بالفيديو'
+      : 'Depuis chez vous — en visioconférence')
+    : escapeHtml(address);
+
+  const consigne = visio
+    ? (ar
+      ? 'يظهر رابط الاتصال في « حسابي › مواعيدي » يوم الموعد. حضّر بطاقتك وملفك الطبي بقربك، وتأكد من اتصالك بالإنترنت.'
+      : 'Le lien d’appel apparaît dans « Mon compte › Mes rendez-vous » le jour venu. Préparez votre carte et votre dossier médical à portée de main, et vérifiez votre connexion internet.')
+    : (ar
+      ? 'لا تنسَ بطاقتك الصحية وملفك الطبي.'
+      : 'N’oubliez pas votre carte et votre dossier médical.');
+
+  const front = process.env.FRONTEND_URL || 'https://chifak.dz';
+
+  const html = `<!DOCTYPE html>
+<html dir="${ar ? 'rtl' : 'ltr'}" lang="${ar ? 'ar' : 'fr'}">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:24px;background:#F3F6FD;font-family:Arial,Helvetica,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;background:#FFFFFF;border-radius:14px;overflow:hidden;border:1px solid #DDE5F5;">
+    <div style="padding:22px 28px;border-bottom:1px solid #EEF2FB;">
+      <span style="font-size:19px;font-weight:bold;color:#07008F;letter-spacing:-0.3px;">chifak</span>
+    </div>
+    <div style="padding:28px;">
+      <h1 style="margin:0 0 6px;font-size:21px;line-height:1.3;color:#0C0E45;">
+        ${ar ? 'موعدك غدًا' : 'Votre rendez-vous, c’est demain'}
+      </h1>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.65;color:#454A73;">
+        ${ar ? `مرحبًا ${escapeHtml(patientName)}،` : `Bonjour ${escapeHtml(patientName)},`}
+      </p>
+
+      <div style="background:#F3F6FD;border-radius:10px;padding:18px;">
+        <p style="margin:0 0 10px;font-size:22px;font-weight:bold;color:#07008F;">${jour} · ${escapeHtml(time)}</p>
+        <p style="margin:0 0 4px;font-size:15px;color:#0C0E45;"><strong>${escapeHtml(doctorName)}</strong> — ${escapeHtml(specialty)}</p>
+        <p style="margin:0;font-size:15px;color:#454A73;">${lieu}</p>
+        ${childName ? `<p style="margin:10px 0 0;font-size:14px;color:#454A73;">${ar ? 'الموعد باسم' : 'Au nom de'} : <strong>${attendu}</strong></p>` : ''}
+      </div>
+
+      <p style="margin:18px 0 0;font-size:15px;line-height:1.65;color:#454A73;">${consigne}</p>
+
+      <div style="margin:24px 0 0;padding:16px;background:#FFFAEB;border-radius:10px;">
+        <p style="margin:0 0 6px;font-size:14px;font-weight:bold;color:#93370D;">
+          ${ar ? 'هل طرأ ما يمنعك؟' : 'Un empêchement ?'}
+        </p>
+        <p style="margin:0;font-size:14px;line-height:1.65;color:#93370D;">
+          ${ar
+            ? `ألغِ موعدك من <a href="${front}" style="color:#93370D;">حسابك</a> حتى يستفيد منه مريض آخر.`
+            : `Annulez depuis <a href="${front}" style="color:#93370D;">votre compte</a> pour qu’un autre patient puisse en profiter.`}
+        </p>
+      </div>
+    </div>
+    <div style="padding:16px 28px;background:#F8FAFE;border-top:1px solid #EEF2FB;">
+      <p style="margin:0;font-size:12px;color:#6B7096;">
+        ${ar ? 'هذه رسالة آلية، لا داعي للرد عليها.' : 'Message automatique, merci de ne pas y répondre.'}
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  if (!isEmailConfigured()) {
+    console.log(`\n📧 [MODE DÉMO] Rappel — ${email} · ${date} ${time} · ${doctorName}\n`);
+    return true;
+  }
+  try {
+    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html });
+    return true;
+  } catch (error) {
+    console.error(`❌ Erreur envoi rappel à ${email}:`, error.message);
+    return false;
+  }
+}

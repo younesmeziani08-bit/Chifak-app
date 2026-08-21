@@ -34,10 +34,13 @@ export default function ProfessionalForm({ kind, isArabic, onDone }: Props) {
   const [fullName, setFullName] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [lieu, setLieu] = useState('');
+  /* Adresse précise du cabinet : rue et numéro. Elle manquait, et le serveur
+     retombait alors sur la seule wilaya au moment de créer la fiche — le
+     patient recevait « Alger » en guise d'adresse et devait téléphoner pour
+     savoir où se présenter. */
+  const [adresse, setAdresse] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [licenseNumber, setLicenseNumber] = useState('');
-  const [message, setMessage] = useState('');
   const [password, setPassword] = useState('');
 
   /* Résultat du contrôle facial. Uniquement le verdict et le score : aucune
@@ -58,10 +61,9 @@ export default function ProfessionalForm({ kind, isArabic, onDone }: Props) {
         fullName,
         specialty,
         city: lieu,
+        address: adresse,
         phone,
         email,
-        licenseNumber: licenseNumber || undefined,
-        message: message || undefined,
         password: inscription ? password : undefined,
         identityChecked: verification?.verifie ?? undefined,
         identityScore: verification?.score ?? undefined,
@@ -148,12 +150,30 @@ export default function ProfessionalForm({ kind, isArabic, onDone }: Props) {
 
         <div className="sm:col-span-2">
           <label className={etiquette} style={{ color: 'var(--ink-3)' }}>
-            {isArabic ? 'مكان العيادة' : 'Où exercez-vous ?'}
+            {isArabic ? 'الولاية والبلدية' : 'Wilaya et commune'}
           </label>
           {/* Même sélecteur que la recherche patient : les lieux saisis par les
               praticiens et ceux cherchés par les patients viennent alors du
-              même référentiel, et se correspondent forcément. */}
+              même référentiel, et se correspondent forcément. Une saisie libre
+              produirait « Alger », « alger », « Alger-Centre » — trois
+              praticiens introuvables par la même recherche. */}
           <LocationSelector onLocationChange={setLieu} showWilayaLabel={false} />
+        </div>
+
+        <div className="sm:col-span-2">
+          <label htmlFor="pro-adresse" className={etiquette} style={{ color: 'var(--ink-3)' }}>
+            {isArabic ? 'العنوان الدقيق للعيادة' : 'Adresse exacte du cabinet'}
+          </label>
+          <input
+            id="pro-adresse" className="field" required value={adresse} autoComplete="street-address"
+            onChange={(e) => setAdresse(e.target.value)}
+            placeholder={isArabic ? '15 شارع ديدوش مراد' : '15 rue Didouche Mourad'}
+          />
+          <p className="text-xs mt-1.5" style={{ color: 'var(--ink-3)' }}>
+            {isArabic
+              ? 'هذا ما يقرأه المريض ليجدك. اذكر الرقم والشارع، وأضف الطابق إن لزم.'
+              : 'C’est ce que lit le patient pour vous trouver. Indiquez le numéro et la rue, et l’étage si besoin.'}
+          </p>
         </div>
 
         <div>
@@ -176,36 +196,51 @@ export default function ProfessionalForm({ kind, isArabic, onDone }: Props) {
           />
         </div>
 
-        {inscription && (
-          <>
-            <div>
-              <label htmlFor="pro-ordre" className={etiquette} style={{ color: 'var(--ink-3)' }}>
-                {isArabic ? 'رقم التسجيل في نقابة الأطباء' : 'Numéro d’inscription à l’Ordre'}
-                <span className="normal-case font-normal ms-1.5" style={{ color: 'var(--ink-3)' }}>
-                  ({isArabic ? 'اختياري' : 'facultatif'})
-                </span>
-              </label>
-              <input
-                id="pro-ordre" className="field" value={licenseNumber}
-                onChange={(e) => setLicenseNumber(e.target.value)}
-              />
-            </div>
+        {/* ── Mot de passe ──
+            Il est chiffré dès l'envoi, avant même d'être enregistré : ce qui
+            arrive en base est une empreinte, dont on ne peut pas remonter au
+            mot de passe. L'administration voit qu'une demande existe, jamais
+            ce secret — et il n'est pas non plus dans la fiche qu'elle consulte.
 
-            <div>
-              <label htmlFor="pro-mdp" className={etiquette} style={{ color: 'var(--ink-3)' }}>
-                {isArabic ? 'كلمة المرور' : 'Mot de passe'}
-              </label>
-              <input
-                id="pro-mdp" type="password" className="field" required value={password}
-                autoComplete="new-password" onChange={(e) => setPassword(e.target.value)}
-              />
-              <p className="text-xs mt-1.5" style={{ color: 'var(--ink-3)' }}>
+            Le dire ici, et pas seulement dans le code : un praticien à qui on
+            demande de choisir un mot de passe dans un formulaire qu'un tiers
+            va examiner a le droit de savoir qui pourra le lire.
+
+            Le numéro d'inscription à l'Ordre a été retiré : il était facultatif
+            et n'était utilisé nulle part. C'est l'administration qui attribue
+            le code de connexion, à l'acceptation, et qui le communique. */}
+        {inscription && (
+          <div className="sm:col-span-2">
+            <label htmlFor="pro-mdp" className={etiquette} style={{ color: 'var(--ink-3)' }}>
+              {isArabic ? 'كلمة المرور' : 'Mot de passe'}
+            </label>
+            <input
+              id="pro-mdp" type="password" className="field" required value={password}
+              autoComplete="new-password" onChange={(e) => setPassword(e.target.value)}
+            />
+            <p className="text-xs mt-1.5" style={{ color: 'var(--ink-3)' }}>
+              {isArabic
+                ? '8 أحرف على الأقل، مع حروف وأرقام.'
+                : '8 caractères minimum, lettres et chiffres.'}
+            </p>
+
+            <div
+              className="mt-2.5 rounded-lg px-3 py-2.5 flex gap-2.5"
+              style={{ background: 'var(--bg-2)' }}
+            >
+              <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--accent)' }} aria-hidden>
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="5" y="11" width="14" height="10" rx="2" />
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                </svg>
+              </span>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--ink-2)' }}>
                 {isArabic
-                  ? '8 أحرف على الأقل، مع حروف وأرقام.'
-                  : '8 caractères minimum, lettres et chiffres.'}
+                  ? 'كلمة المرور تُشفَّر فور إرسالها. لا يمكن لأي شخص الاطلاع عليها — ولا حتى إدارة شفاك. أنت وحدك تعرفها.'
+                  : 'Votre mot de passe est chiffré dès l’envoi. Personne ne peut le lire — pas même l’administration de chifak. Vous seul le connaissez.'}
               </p>
             </div>
-          </>
+          </div>
         )}
 
         {inscription && (
@@ -213,19 +248,6 @@ export default function ProfessionalForm({ kind, isArabic, onDone }: Props) {
             <VerificationIdentite isArabic={isArabic} onResultat={setVerification} />
           </div>
         )}
-
-        <div className="sm:col-span-2">
-          <label htmlFor="pro-message" className={etiquette} style={{ color: 'var(--ink-3)' }}>
-            {isArabic ? 'رسالة' : 'Message'}
-            <span className="normal-case font-normal ms-1.5" style={{ color: 'var(--ink-3)' }}>
-              ({isArabic ? 'اختياري' : 'facultatif'})
-            </span>
-          </label>
-          <textarea
-            id="pro-message" className="field resize-none" rows={3} value={message}
-            onChange={(e) => setMessage(e.target.value)}
-          />
-        </div>
       </div>
 
       {erreur && (

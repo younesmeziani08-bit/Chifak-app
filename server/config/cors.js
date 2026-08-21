@@ -27,10 +27,16 @@ export const allowedOrigins = (process.env.ALLOWED_ORIGINS || process.env.FRONTE
  * l'appareil le peut.
  */
 const ORIGINES_APPLICATION = [
-  'capacitor://localhost',
-  'https://localhost',
-  'http://localhost',
+  'capacitor://localhost',  // iOS
+  'https://localhost',      // Android
 ];
+
+/* `http://localhost` a été retiré de la liste permanente.
+   Capacitor n'en a pas besoin — iOS emploie « capacitor:// » et Android
+   « https:// » — mais l'accepter en production ouvrait, avec credentials,
+   une origine qu'un serveur local hostile sur le poste d'un patient pouvait
+   revendiquer. Il reste autorisé en développement par la règle ci-dessous,
+   qui accepte tout hors production. */
 
 export const optionsCors = {
   origin(origin, callback) {
@@ -42,5 +48,11 @@ export const optionsCors = {
     return callback(new Error('Origine non autorisée par la politique CORS'));
   },
   credentials: true,
+  /* Méthodes et en-têtes énumérés. Par défaut, `cors` reflète ce que le
+     navigateur demande au contrôle préalable : la réponse annonce donc tout
+     ce qu'on lui présente, y compris des méthodes qu'aucune route n'expose. */
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'If-None-Match'],
+  maxAge: 600,
 };
 

@@ -23,6 +23,7 @@ export const authLimiter = rateLimit({
 });
 export const CHEMINS_SENSIBLES = [
   '/api/auth/login',
+  '/api/auth/login-2fa',     // anti-force brute du code à six chiffres
   '/api/auth/login-patient',
   '/api/auth/login-doctor',
   '/api/auth/register',
@@ -52,6 +53,23 @@ export const bookingLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Trop de réservations depuis cette connexion. Réessayez plus tard.' },
   ...magasin('booking'),
+});
+
+/* Photos des praticiens. Route publique, et la plus coûteuse en lecture :
+   chaque appel va chercher jusqu'à 220 Ko dans le stockage débordé de
+   PostgreSQL. Le plafond général de 300 requêtes par minute laissait un seul
+   client tirer 66 Mo par minute de la base, sans authentification.
+
+   Le plafond est large — une page de résultats affiche des dizaines de
+   portraits — mais il existe. Les réponses portent un ETag immuable : un
+   navigateur normal ne redemande jamais la même photo. */
+export const photoLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.PHOTO_RATE_LIMIT_MAX) || 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop d\'images demandées. Patientez un instant.' },
+  ...magasin('photo'),
 });
 
 /* Dépôt de demande d'inscription praticien. Route publique qui écrit en base :

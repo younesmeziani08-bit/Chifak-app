@@ -16,10 +16,19 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
   const [verificationCode, setVerificationCode] = useState('');
+  const [renvoi, setRenvoi] = useState('');
 
   if (!isOpen) return null;
+
+  /* Une réponse d'erreur n'est pas toujours du JSON : une passerelle en panne
+     renvoie du HTML, et `res.json()` remplace alors le vrai problème par un
+     « Unexpected token < » que personne ne peut comprendre. */
+  const lireErreur = async (res: Response, defaut: string) => {
+    const detail = await res.json().catch(() => null);
+    return detail?.error || `${defaut} (${res.status})`;
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,13 +39,21 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/auth/signup`, {
+      /* Route « register », et non « signup » : ce formulaire appelait une
+         adresse qui n'existe pas côté serveur. Toute inscription se terminait
+         donc sur « Route introuvable », quels que soient les champs saisis. */
+      const res = await fetch(`${API_URL}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          password: formData.password,
+          language,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(await lireErreur(res, 'Inscription impossible'));
       setStep(2);
     } catch (err: any) {
       setError(err.message);
@@ -50,17 +67,40 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/auth/verify`, {
+      /* « verify-code » : « /auth/verify » est la route qui contrôle un jeton
+         déjà émis, en GET. L'appeler en POST tombait sur le filet à 404. */
+      const res = await fetch(`${API_URL}/auth/verify-code`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email, code: verificationCode })
       });
+      if (!res.ok) throw new Error(await lireErreur(res, 'Code refusé'));
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      
+
       localStorage.setItem('chifak_patient_token', data.token);
       localStorage.setItem('chifak_patient_user', JSON.stringify(data.user));
       onSuccess();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* Le bouton « Renvoyer le code » n'était relié à rien. Un code perdu ou
+     expiré laissait le compte inachevé, sans aucun moyen d'aboutir. */
+  const handleResend = async () => {
+    setLoading(true);
+    setError('');
+    setRenvoi('');
+    try {
+      const res = await fetch(`${API_URL}/auth/resend-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email, language }),
+      });
+      if (!res.ok) throw new Error(await lireErreur(res, 'Envoi impossible'));
+      setRenvoi(isArabic ? 'تم إرسال رمز جديد.' : 'Un nouveau code vient d’être envoyé.');
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -118,6 +158,31 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
                       className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all text-gray-800 font-bold placeholder:text-gray-300 outline-none"
                       placeholder="karim@email.dz"
                     />
+                  </div>
+
+                  {/* ── Téléphone ──
+                      Obligatoire ici, et c'est délibéré : les coordonnées du
+                      rendez-vous sont relues sur le compte, jamais saisies au
+                      moment de réserver. Un compte sans numéro menait donc à
+                      un bouton « Finaliser » qui ne répondait pas. */}
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-blue-900/40 ml-1">
+                      {isArabic ? 'الهاتف' : 'Téléphone'}
+                    </label>
+                    <input
+                      type="tel"
+                      required
+                      autoComplete="tel"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full px-5 py-4 bg-gray-50 border-2 border-transparent rounded-2xl focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all text-gray-800 font-bold placeholder:text-gray-300 outline-none"
+                      placeholder="0555 12 34 56"
+                    />
+                    <p className="text-[11px] text-gray-400 ml-1">
+                      {isArabic
+                        ? 'يستعمله الطبيب للاتصال بك عند الحاجة.'
+                        : 'Le cabinet s’en sert pour vous joindre en cas de besoin.'}
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -200,8 +265,14 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
               </div>
 
               {error && (
-                <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-xs font-bold text-red-600">
+                <div role="alert" className="p-4 bg-red-50 border border-red-100 rounded-2xl text-xs font-bold text-red-600">
                   ⚠️ {error}
+                </div>
+              )}
+
+              {renvoi && (
+                <div role="status" className="p-4 bg-green-50 border border-green-100 rounded-2xl text-xs font-bold text-green-700">
+                  {renvoi}
                 </div>
               )}
 
@@ -212,10 +283,12 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
               >
                 {loading ? (isArabic ? 'جاري التأكيد...' : 'Vérification...') : (isArabic ? 'تأكيد' : 'Vérifier mon compte')}
               </button>
-              
+
               <button
                 type="button"
-                className="w-full text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline"
+                onClick={handleResend}
+                disabled={loading}
+                className="w-full text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline disabled:opacity-40"
               >
                 {isArabic ? 'إعادة إرسال الرمز' : 'Renvoyer le code'}
               </button>

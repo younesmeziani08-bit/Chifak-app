@@ -21,7 +21,19 @@ const patientHeaders = () => {
 export const patientAPI = {
   getProfile: async (): Promise<PatientProfile> => {
     const response = await fetch(`${API_URL}/patient/profile`, { headers: patientHeaders() });
-    if (!response.ok) throw new Error('Erreur lors de la récupération de votre profil');
+    if (!response.ok) {
+      /* Le code HTTP est porté par l'erreur. Sans lui, l'appelant ne peut pas
+         distinguer « ta session a expiré » — auquel cas il faut la refermer —
+         d'une panne réseau passagère, où déconnecter quelqu'un serait
+         gratuitement hostile. */
+      const err = new Error(
+        response.status === 401 || response.status === 403
+          ? 'Session expirée'
+          : 'Erreur lors de la récupération de votre profil'
+      ) as Error & { status?: number };
+      err.status = response.status;
+      throw err;
+    }
     return await response.json();
   },
 

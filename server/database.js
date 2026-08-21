@@ -276,6 +276,26 @@ export async function initDatabase() {
   // on le renouvelle sans changer l'identité de l'employé.
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS feedback_token TEXT');
   await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS active INTEGER DEFAULT 1');
+
+  /* ── Double authentification du personnel ──
+     Un mot de passe seul ouvrait l'accès à la liste de tous les praticiens,
+     à leurs coordonnées et aux comptes employés. C'est la porte la plus
+     précieuse du service, et elle n'avait qu'une serrure.
+
+     Le secret est stocké CHIFFRÉ : qui le lit fabrique des codes valides
+     indéfiniment, donc une sauvegarde de base égarée suffirait sinon à
+     contourner la mesure. Voir lib/totp.js.
+
+     `totp_last_counter` retient la dernière période acceptée. Sans elle, un
+     code lu par-dessus l'épaule reste utilisable une minute et demie. */
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_secret TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled INTEGER DEFAULT 0');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_last_counter BIGINT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enrolled_at TIMESTAMP');
+  /* Codes de secours, hachés, sous forme de tableau JSON. Un téléphone se
+     perd ; sans eux, le compte devient définitivement inaccessible et il faut
+     intervenir dans la base, au pire moment. */
+  await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_backup_codes TEXT DEFAULT '[]'");
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_staff_code ON users (staff_code) WHERE staff_code IS NOT NULL');
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_feedback_token ON users (feedback_token) WHERE feedback_token IS NOT NULL');
 
@@ -318,6 +338,126 @@ export async function initDatabase() {
 
   // Mode choisi par le patient : 'cabinet' (défaut) ou 'video'.
   await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS consultation_type TEXT DEFAULT 'cabinet'");
+
+  /* ── Rendez-vous pris par un parent pour son enfant mineur ──
+     Le compte reste celui du parent : c'est lui qui reçoit les confirmations
+     et qui retrouve le rendez-vous dans son espace. Mais le praticien doit
+     voir qui il va réellement recevoir — un pédiatre qui attend « Karim
+     Benali, 42 ans » et voit arriver un enfant de six ans a un problème.
+
+     Trois champs seulement, et volontairement : nom, prénom, âge. Rien de
+     plus n'est nécessaire pour tenir une consultation, et chaque donnée en
+     plus sur un mineur est une donnée à protéger sans raison. */
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS child_first_name TEXT');
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS child_last_name TEXT');
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS child_age INTEGER');
+
+  /* ── Adresses e-mail : une seule forme fait foi ──
+     L'unicité de PostgreSQL sur du texte distingue la casse. Les inscriptions
+     par formulaire normalisaient en minuscules, mais pas les connexions par
+     Google ou Facebook : « Karim@Gmail.com » créait donc un second compte à
+     côté de « karim@gmail.com ». Deux dossiers pour une seule personne, ses
+     rendez-vous répartis entre les deux, et un praticien qui ne voit jamais
+     l'historique complet.
+
+     On normalise l'existant, puis on impose l'unicité sans distinction de
+     casse pour que le problème ne puisse pas revenir. Les collisions
+     éventuelles sont signalées plutôt que fusionnées d'office : décider
+     lequel de deux dossiers médicaux survit n'est pas une décision de code. */
+  const collisions = await pool.query(`
+    SELECT LOWER(email) AS adresse, COUNT(*)::int AS n
+    FROM patients GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  `);
+  if (collisions.rows.length > 0) {
+    console.error('🚨 Comptes patients en double (même adresse, casse différente) :');
+    for (const c of collisions.rows) console.error(`🚨   ${c.adresse} — ${c.n} comptes`);
+    console.error('🚨 Fusionnez-les à la main avant que l\'unicité insensible à la casse');
+    console.error('🚨 puisse être posée. Les rendez-vous sont rattachés par e-mail.');
+  } else {
+    await pool.query('UPDATE patients SET email = LOWER(email) WHERE email <> LOWER(email)');
+    try {
+      await pool.query(
+        'CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_email_unique ON patients (LOWER(email))'
+      );
+    } catch (e) {
+      console.warn('Index d\'unicité des e-mails patients ignoré:', e.message);
+    }
+  }
+
+  /* Même règle pour les praticiens. La colonne n'avait AUCUNE contrainte
+     d'unicité : deux fiches pouvaient porter la même adresse, et la validation
+     d'une demande d'inscription s'appuie précisément sur ce champ pour
+     reconnaître un médecin déjà inscrit. */
+  const doublonsMedecins = await pool.query(`
+    SELECT LOWER(email) AS adresse, COUNT(*)::int AS n
+    FROM doctors WHERE email IS NOT NULL AND email <> ''
+    GROUP BY LOWER(email) HAVING COUNT(*) > 1
+  `);
+  if (doublonsMedecins.rows.length > 0) {
+    console.error('🚨 Fiches praticiens en double (même adresse) :');
+    for (const c of doublonsMedecins.rows) console.error(`🚨   ${c.adresse} — ${c.n} fiches`);
+  } else {
+    await pool.query("UPDATE doctors SET email = LOWER(email) WHERE email IS NOT NULL AND email <> LOWER(email)");
+    try {
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_doctors_email_unique
+        ON doctors (LOWER(email)) WHERE email IS NOT NULL AND email <> ''
+      `);
+    } catch (e) {
+      console.warn('Index d\'unicité des e-mails praticiens ignoré:', e.message);
+    }
+  }
+
+  /* ── Un créneau, un seul rendez-vous ──
+     La réservation vérifiait la disponibilité, puis insérait. Entre ces deux
+     instants, une seconde requête pouvait passer le même contrôle : deux
+     patients recevaient une confirmation pour la même heure, et le praticien
+     découvrait le doublon dans son agenda. Aucune relecture du code ne
+     corrige cela — seule la base peut trancher, parce qu'elle seule voit les
+     deux requêtes.
+
+     L'index est partiel : un rendez-vous annulé libère aussitôt son créneau,
+     et son ancienne trace ne bloque pas la nouvelle réservation. */
+  try {
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_creneau_unique
+      ON appointments (doctor_id, appointment_date, appointment_time)
+      WHERE status <> 'cancelled'
+    `);
+  } catch (e) {
+    /* Des doublons antérieurs empêchent la création de l'index. On le signale
+       sans bloquer le démarrage : le service doit rester debout, mais
+       l'exploitant doit savoir qu'il reste des doublons à arbitrer. */
+    console.error('🚨 Index anti-doublon des créneaux NON créé :', e.message);
+    console.error('🚨 Des rendez-vous en double existent déjà. Repérez-les avec :');
+    console.error("🚨   SELECT doctor_id, appointment_date, appointment_time, COUNT(*)");
+    console.error("🚨   FROM appointments WHERE status <> 'cancelled'");
+    console.error('🚨   GROUP BY 1,2,3 HAVING COUNT(*) > 1;');
+  }
+
+  /* ── Rappel de rendez-vous ──
+     Le praticien recevait son agenda chaque matin ; le patient, lui, n'avait
+     plus aucune nouvelle après la confirmation initiale. Un rendez-vous pris
+     trois semaines à l'avance s'oublie — et l'absence au rendez-vous est
+     précisément le problème que cette plateforme est censée résoudre.
+
+     `reminder_sent_at` porte la trace de l'envoi. Sans elle, un redémarrage
+     du serveur ou une double exécution de la tâche renverrait le même rappel,
+     et un patient qui reçoit trois fois le même courrier cesse de les lire.
+
+     `language` mémorise la langue choisie AU MOMENT de la réservation. Elle
+     était transmise par le navigateur puis jetée après l'envoi de la
+     confirmation : le rappel serait donc parti en français à quelqu'un qui
+     avait fait toute sa réservation en arabe. */
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP');
+  await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'fr'");
+  /* Index partiel : la tâche du soir ne cherche que les rendez-vous d'un jour
+     donné dont le rappel n'est pas encore parti. Il reste minuscule, puisqu'il
+     ignore tout l'historique déjà traité. */
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_appointments_rappel
+    ON appointments (appointment_date) WHERE reminder_sent_at IS NULL
+  `);
 
   // Nom de la salle de visioconférence, tiré au sort à la réservation.
   // Il ne dérive PAS de l'identifiant du rendez-vous : une salle nommée

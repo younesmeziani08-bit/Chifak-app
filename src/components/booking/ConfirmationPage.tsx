@@ -129,7 +129,18 @@ export default function ConfirmationPage({ booking, onBackToHome, onOpenProfessi
               'Munissez-vous de votre carte vitale et dossier médical.',
               'En cas d\'empêchement, prévenez 24h à l\'avance.'
             ]).map((tip, i) => (
-              <li key={i} className="text-xs font-bold text-blue-800 leading-relaxed bg-white/50 p-4 rounded-2xl border border-blue-100/50 shadow-sm">
+              /* Le rappel de la carte et du dossier médical porte la couleur
+                 d'alerte, comme sur la page de réservation : c'est le seul des
+                 trois dont l'oubli fait perdre la consultation. Les deux
+                 autres restent en bleu — tout mettre en rouge reviendrait à
+                 ne rien signaler du tout. */
+              <li
+                key={i}
+                className="text-xs font-bold leading-relaxed p-4 rounded-2xl shadow-sm"
+                style={i === 1
+                  ? { background: '#FEF3F2', border: '1px solid #FDA29B', color: '#912018' }
+                  : { background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(201,222,251,0.5)', color: '#0A0A6B' }}
+              >
                 {tip}
               </li>
             ))}

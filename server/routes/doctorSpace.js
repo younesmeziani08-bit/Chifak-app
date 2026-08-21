@@ -55,7 +55,7 @@ router.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
   try {
     const current = await db.prepare(`
       SELECT id, description, bio, slot_duration, off_days, blocked_slots,
-             accepts_video, video_slots, available_slots
+             accepts_video, video_slots, available_slots, working_days
       FROM doctors WHERE id = ?
     `).get(req.user.id);
     if (!current) return res.status(404).json({ error: 'Médecin non trouvé' });
@@ -100,20 +100,38 @@ router.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
         )
       : (current.blocked_slots || '[]');
 
-    // Heures vidéo : on ne garde que des « HH:MM » valides, dédoublonnés et
-    // triés. Le client ne décide pas du format stocké.
-    const newVideoSlots = JSON.stringify(
-      Array.isArray(videoSlots)
-        ? [...new Set(videoSlots.filter((t) => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)))].sort().slice(0, 200)
-        : []
-    );
+    /* Heures vidéo : on ne garde que des « HH:MM » valides, dédoublonnés et
+       triés. Le client ne décide pas du format stocké.
+
+       Champ absent = champ inchangé, comme pour le descriptif et les jours
+       d'indisponibilité juste au-dessus. Il retombait ici sur une liste vide :
+       un écran qui enregistrait le profil sans renvoyer les heures vidéo
+       effaçait toutes les plages de téléconsultation du praticien, sans le
+       prévenir et sans moyen de les retrouver. */
+    const newVideoSlots = Array.isArray(videoSlots)
+      ? JSON.stringify(
+          [...new Set(videoSlots.filter((t) => typeof t === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(t)))]
+            .sort().slice(0, 200)
+        )
+      : (current.video_slots || '[]');
+
+    // Même règle pour l'activation de la vidéo : ne rien envoyer ne doit pas
+    // valoir « je la désactive ».
+    const newAcceptsVideo = acceptsVideo === undefined
+      ? (current.accepts_video || 0)
+      : (acceptsVideo ? 1 : 0);
 
     await db.prepare('UPDATE doctors SET description = ?, bio = ?, slot_duration = ?, off_days = ?, blocked_slots = ?, accepts_video = ?, video_slots = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-      .run(newDescription, newBio, newDuration, newOff, newBlocked, acceptsVideo ? 1 : 0, newVideoSlots, req.user.id);
+      .run(newDescription, newBio, newDuration, newOff, newBlocked, newAcceptsVideo, newVideoSlots, req.user.id);
 
+    /* available_slots et working_days sont relus ici parce que la réponse les
+       renvoie. Ils manquaient : la réponse annonçait donc « aucun créneau » et
+       « lundi à vendredi » après chaque enregistrement, écrasant dans l'écran
+       les horaires réels du praticien — et les jours de ceux qui consultent le
+       samedi. */
     const d = await db.prepare(`
       SELECT description, bio, slot_duration, off_days, blocked_slots,
-             accepts_video, video_slots
+             accepts_video, video_slots, available_slots, working_days
       FROM doctors WHERE id = ?
     `).get(req.user.id);
     res.json({
@@ -138,7 +156,10 @@ router.get('/api/doctor/appointments', authenticateDoctorToken, async (req, res)
   try {
     const rows = await db.prepare(`
       SELECT id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, status, doctor_notes,
-             consultation_type, video_room
+             consultation_type, video_room,
+             -- Le praticien doit savoir qui il reçoit réellement : un rendez-vous
+             -- pris par un parent pour son enfant porte le nom de l'enfant.
+             child_first_name, child_last_name, child_age
       FROM appointments
       WHERE doctor_id = ?
       ORDER BY appointment_date DESC, appointment_time DESC

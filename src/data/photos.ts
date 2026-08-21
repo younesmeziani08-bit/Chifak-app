@@ -19,6 +19,19 @@ export interface Photo {
   alt: string;
   altAr: string;
   credit: { author: string; profile: string; source: string };
+  /**
+   * Point d'intérêt de la photo, en pourcentage horizontal.
+   *
+   * Ces images sont larges, et le sujet — la personne — n'est presque jamais
+   * au centre. Sur un écran de téléphone, le cadre devient étroit et haut :
+   * `object-fit: cover` rogne alors les côtés et coupe précisément la personne.
+   * On indique donc où elle se trouve, pour que le recadrage la garde.
+   *
+   * `50` = centre, `70` = sujet aux deux tiers vers la droite.
+   * Facultatif : les photos de spécialité, affichées en vignettes carrées,
+   * n'en ont pas besoin — le centre convient.
+   */
+  focusX?: number;
 }
 
 const UNSPLASH = 'https://images.unsplash.com';
@@ -34,6 +47,8 @@ export const PHOTOS = {
       profile: 'https://unsplash.com/@silverkblack',
       source: 'https://unsplash.com/photos/doctor-consults-with-patient-in-modern-office-7-l5EL7YHI4',
     },
+    // medecin et patiente, decales vers la droite du cadre
+    focusX: 62,
   },
 
   /** Consultation à distance — onglet « Téléconsultation ». */
@@ -46,6 +61,8 @@ export const PHOTOS = {
       profile: 'https://unsplash.com/@silverkblack',
       source: 'https://unsplash.com/photos/doctor-consulting-patient-via-video-call-on-laptop-EVX9pt2dD1o',
     },
+    // le medecin occupe la moitie droite, devant son ecran
+    focusX: 70,
   },
 
   /** Praticienne au travail — onglet « Je suis praticien ». */
@@ -58,6 +75,8 @@ export const PHOTOS = {
       profile: 'https://unsplash.com/@silverkblack',
       source: 'https://unsplash.com/photos/doctor-consults-with-patient-in-medical-office-iyeUwItlIPk',
     },
+    // la praticienne est legerement a droite du centre
+    focusX: 60,
   },
 } satisfies Record<string, Photo>;
 

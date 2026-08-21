@@ -34,7 +34,19 @@ export function registerOAuthDeepLink(onLogin: (user: PatientUser) => void): () 
     const token = params.get('token');
     if (!token) return;
 
-    const user = await persistOAuthLogin(token, params.get('name'), params.get('email'));
+    /* `persistOAuthLogin` refuse désormais un jeton que le serveur ne
+       reconnaît pas. Sans ce try, l'exception remontait dans un écouteur
+       Capacitor — donc nulle part : Safari restait ouvert par-dessus
+       l'application, et rien n'indiquait ce qui s'était passé. */
+    let user: PatientUser;
+    try {
+      user = await persistOAuthLogin(token);
+    } catch (e) {
+      try { await Browser.close(); } catch { /* déjà fermé */ }
+      alert(e instanceof Error ? e.message : 'Connexion impossible.');
+      return;
+    }
+
     try {
       await Browser.close();
     } catch {

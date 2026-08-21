@@ -30,6 +30,7 @@ import routesDoctorSpace from './routes/doctorSpace.js';
 import routesAssistant from './routes/assistant.js';
 import routesStaff from './routes/staff.js';
 import routesApplications from './routes/applications.js';
+import routesDeuxiemeFacteur from './routes/twoFactor.js';
 
 // SÉCURITÉ : on refuse de démarrer en production avec des secrets absents ou faibles.
 assertStrongSecrets();
@@ -43,10 +44,53 @@ app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 // ── 1. Protections transversales ──
-app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+/* Politique de contenu. Elle était entièrement désactivée : « ce serveur ne
+   sert que du JSON, donc elle ne sert à rien ». C'est faux sur deux points.
+   Il sert aussi des images — la route des photos de praticiens — et surtout
+   toute réponse affichée directement par un navigateur (une erreur, une
+   redirection OAuth) hérite alors d'une page sans aucune restriction.
+
+   Celle-ci est volontairement fermée : rien à charger, rien à exécuter, et
+   surtout `frame-ancestors 'none'` qui interdit d'enfermer nos réponses dans
+   un cadre — un écran de connexion OAuth encadré par un site tiers est le
+   point de départ classique d'un détournement de clic. */
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'none'"],
+      imgSrc: ["'self'", 'data:'],
+      frameAncestors: ["'none'"],
+      baseUri: ["'none'"],
+      formAction: ["'none'"],
+    },
+  },
+  // Les photos de praticiens sont lues depuis un autre domaine (le front sur
+  // Vercel, l'application mobile) : la politique par défaut les bloquerait.
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  referrerPolicy: { policy: 'no-referrer' },
+  // HSTS : une fois le site visité en HTTPS, le navigateur refuse le HTTP.
+  hsts: process.env.NODE_ENV === 'production'
+    ? { maxAge: 15552000, includeSubDomains: true }
+    : false,
+}));
 app.use(compression());
 app.use(cors(optionsCors));
-app.use(express.json({ limit: '1mb' }));
+/* Plafonds de charge utile, par usage réel.
+   1 Mo était appliqué partout, alors qu'il n'est justifié que pour la fiche
+   d'un praticien : elle porte sa photo encodée, jusqu'à 220 Ko. Partout
+   ailleurs, quelques kilo-octets suffisent — et accorder un mégaoctet à
+   chaque route revient à offrir un mégaoctet d'analyse JSON par requête à qui
+   veut occuper le processus.
+
+   Le premier `express.json` qui traite la requête pose le corps ; les
+   suivants le constatent et passent leur tour. L'ordre est donc décroissant
+   en spécificité. */
+app.use('/api/doctors', express.json({ limit: '1mb' }));
+// L'assistant transporte l'historique de la conversation : douze messages
+// bornés à 4 000 caractères, soit près de 50 Ko dans le pire des cas.
+app.use('/api/assistant', express.json({ limit: '128kb' }));
+app.use(express.json({ limit: '64kb' }));
 
 // ── 2. Limitation de débit ──
 app.use('/api/', generalLimiter);
@@ -101,6 +145,7 @@ app.use(routesDoctorSpace);   // profil et rendez-vous du praticien connecté
 app.use(routesAssistant);     // assistant santé (IA)
 app.use(routesStaff);         // comptes employés, QR d'avis, agendas manuels
 app.use(routesApplications);  // demandes d'inscription des praticiens
+app.use(routesDeuxiemeFacteur); // double authentification du personnel
 
 // ── 6. Filets ──
 app.use('/api', (req, res) => {

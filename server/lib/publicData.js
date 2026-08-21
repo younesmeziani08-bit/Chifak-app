@@ -42,6 +42,11 @@ export async function ficheRendezVousPatient(id) {
     SELECT a.id, a.doctor_id, a.patient_name, a.patient_email, a.patient_phone,
            a.appointment_date, a.appointment_time, a.reason, a.status,
            a.consultation_type, a.video_room, a.created_at,
+           -- Mêmes colonnes que la liste des rendez-vous. Sans elles, l'écran
+           -- fusionne la réponse dans la ligne affichée et le nom de l'enfant
+           -- s'efface au moment de l'annulation : le parent voit son propre
+           -- nom sur un rendez-vous qu'il avait pris pour son fils.
+           a.child_first_name, a.child_last_name, a.child_age,
            d.name AS doctor_name, d.specialty, d.address, d.city,
            d.slot_duration, d.available_slots, d.working_days, d.off_days,
            d.blocked_slots, d.accepts_video, d.video_slots

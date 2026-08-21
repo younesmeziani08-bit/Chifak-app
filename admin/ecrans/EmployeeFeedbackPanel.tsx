@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLanguage } from '../../contexts/LanguageContext';
-import { employeesAPI, EmployeeFeedback } from '../../services/api';
+import { useLanguage } from '../../src/contexts/LanguageContext';
+import { employeesAPI, EmployeeFeedback } from '../services/api';
 
 /**
  * Avis et suggestions déposés par les médecins via le QR code des employés.

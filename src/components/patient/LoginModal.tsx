@@ -13,8 +13,12 @@ interface LoginModalProps {
 export default function LoginModal({ isOpen, onClose, onOpenSignup, onLoginSuccess }: LoginModalProps) {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
-  const [email, setEmail] = useState('demo.patient@chifak.dz');
-  const [password, setPassword] = useState('patient123');
+  /* Champs vides. Ils arrivaient pré-remplis avec le compte de démonstration
+     et son mot de passe : chaque patient ouvrait la connexion sur une adresse
+     qui n'était pas la sienne, et l'identifiant de démonstration s'affichait
+     en clair à tout visiteur. */
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -78,9 +82,15 @@ export default function LoginModal({ isOpen, onClose, onOpenSignup, onLoginSucce
             </div>
 
             <div className="space-y-2">
-              <div className="flex justify-between items-center px-1">
+              {/* Le bouton « Oublié ? » a été retiré : il n'était relié à rien,
+                  et aucune route de réinitialisation n'existe côté serveur.
+                  Un bouton mort sur un écran de connexion est pire qu'absent —
+                  la personne clique, rien ne se passe, et elle conclut que
+                  l'application est cassée plutôt que d'écrire au support.
+                  À rebrancher le jour où le parcours de réinitialisation
+                  existera réellement (envoi d'un code, comme à l'inscription). */}
+              <div className="px-1">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-blue-900/40">Mot de passe</label>
-                <button type="button" className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:underline">Oublié ?</button>
               </div>
               <input
                 type="password"

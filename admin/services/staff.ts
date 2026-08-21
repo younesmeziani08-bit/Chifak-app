@@ -1,4 +1,4 @@
-import { API_URL, getAuthHeaders } from './http';
+import { API_URL, getAuthHeaders } from '../../src/services/http';
 
 // ==================== PERSONNEL (ADMIN) ====================
 
@@ -114,21 +114,3 @@ export const employeesAPI = {
   feedback: async (): Promise<EmployeeFeedback[]> =>
     attendreJson(await fetch(`${API_URL}/admin/feedback`, { headers: getAuthHeaders() }), 'Erreur de chargement'),
 };
-
-/** Formulaire public atteint par le QR code — aucun jeton d'authentification. */
-export const feedbackAPI = {
-  whoIs: async (token: string): Promise<{ name: string; staffCode: string | null }> =>
-    attendreJson(await fetch(`${API_URL}/feedback/${encodeURIComponent(token)}`), 'Lien invalide'),
-
-  submit: async (
-    token: string,
-    data: { rating: number; doctorName?: string; doctorCode?: string; comment?: string; suggestion?: string }
-  ): Promise<{ message: string }> =>
-    attendreJson(
-      await fetch(`${API_URL}/feedback/${encodeURIComponent(token)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
-      }),
-      'Envoi impossible'
-    ),
-};
-

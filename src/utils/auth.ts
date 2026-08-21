@@ -17,35 +17,48 @@ export interface PatientUser {
   name: string;
 }
 
-// Enregistre la session après une connexion OAuth (partagé web + natif).
+/**
+ * Enregistre la session après une connexion OAuth (partagé web et natif).
+ *
+ * Le jeton est éprouvé AVANT d'être conservé, et l'identité vient de la
+ * réponse du serveur — jamais des paramètres reçus.
+ *
+ * L'ancienne version faisait l'inverse : elle stockait le jeton dès son
+ * arrivée, puis tentait de lire le profil « à titre optionnel ». Un jeton
+ * refusé restait donc en place, l'application se croyait connectée, et chaque
+ * appel repartait en erreur sans que rien ne l'explique. Quant au nom et à
+ * l'adresse, ils étaient repris du lien d'arrivée : deux valeurs qu'on
+ * réécrit en modifiant l'adresse dans la barre du navigateur.
+ *
+ * Lève une erreur si le jeton n'est pas reconnu : l'appelant doit alors
+ * traiter cela comme un échec de connexion, pas comme un détail.
+ */
 export async function persistOAuthLogin(
   token: string,
-  name?: string | null,
-  email?: string | null,
+  _name?: string | null,
+  _email?: string | null,
 ): Promise<PatientUser> {
-  localStorage.setItem('chifak_patient_token', token);
-  const payload = parseJwtPayload(token);
-
-  let user: PatientUser = {
-    id: (payload?.id as number) ?? 0,
-    email: email || (payload?.email as string) || '',
-    name: name || '',
-  };
-
+  let profil: { id: number; email: string; name?: string } | null = null;
   try {
     const res = await fetch(`${API_URL}/patient/profile`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.ok) {
-      const p = await res.json();
-      user = { id: p.id, email: p.email, name: p.name || user.name };
-    }
+    if (res.ok) profil = await res.json();
   } catch {
-    // profil optionnel
+    /* Réseau injoignable : traité comme un refus ci-dessous. */
   }
 
-  if (!user.name && user.email) user.name = user.email.split('@')[0];
+  if (!profil) {
+    throw new Error('La connexion n’a pas pu être finalisée. Réessayez.');
+  }
 
+  const user: PatientUser = {
+    id: profil.id,
+    email: profil.email,
+    name: profil.name || profil.email.split('@')[0],
+  };
+
+  localStorage.setItem('chifak_patient_token', token);
   localStorage.setItem('chifak_patient_user', JSON.stringify(user));
   return user;
 }

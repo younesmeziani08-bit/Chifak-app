@@ -101,12 +101,29 @@ router.post('/api/doctors/:id/reviews', authenticatePatientToken, async (req, re
       DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, patient_name = EXCLUDED.patient_name, created_at = CURRENT_TIMESTAMP
     `).run(doctorId, req.user.email, patient ? patient.name : null, rating, comment);
 
-    // Recalcul de la note moyenne et du nombre d'avis du médecin
-    const stats = await db.prepare('SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0) AS avg FROM reviews WHERE doctor_id = ?').get(doctorId);
-    const avg = Math.round(Number(stats.avg) * 10) / 10;
-    await db.prepare('UPDATE doctors SET rating = ?, review_count = ? WHERE id = ?').run(avg, stats.count, doctorId);
+    /* Note moyenne recalculée PAR la base, en un seul ordre.
+       La séquence « lire les statistiques, puis écrire dans doctors » laissait
+       deux avis déposés au même instant écrire chacun une valeur calculée sans
+       connaître l'autre : la seconde écrasait la première, et la note affichée
+       ne correspondait plus aux avis réellement enregistrés. Ici, le calcul et
+       l'écriture ne font qu'un — le résultat est toujours celui de la table
+       des avis à cet instant. */
+    const maj = await db.prepare(`
+      UPDATE doctors d
+      SET rating = ROUND(COALESCE(s.moyenne, 0)::numeric, 1),
+          review_count = COALESCE(s.total, 0)
+      FROM (
+        SELECT COUNT(*)::int AS total, AVG(rating)::float AS moyenne
+        FROM reviews WHERE doctor_id = ?
+      ) s
+      WHERE d.id = ?
+      RETURNING d.rating, d.review_count
+    `).get(doctorId, doctorId);
 
-    res.status(201).json({ rating: avg, reviewCount: stats.count });
+    res.status(201).json({
+      rating: Number(maj?.rating ?? 0),
+      reviewCount: maj?.review_count ?? 0,
+    });
   } catch (error) {
     console.error('Erreur enregistrement avis:', error);
     res.status(500).json({ error: 'Erreur serveur' });

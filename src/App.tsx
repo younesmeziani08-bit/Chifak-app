@@ -8,54 +8,18 @@ import ConfirmationPage from './components/booking/ConfirmationPage';
 import LoginModal from './components/patient/LoginModal';
 import SignupModal from './components/auth/SignupModal';
 import OAuthCallback from './components/auth/OAuthCallback';
-import AdminLogin from './components/admin/AdminLogin';
-import AdminDashboard from './components/admin/AdminDashboard';
 import DoctorSpace from './components/doctor/DoctorSpace';
 import ProfessionalModal from './components/shared/ProfessionalModal';
 import FeedbackPage from './components/doctor/FeedbackPage';
-import { useAdminAuth } from './contexts/AdminAuthContext';
-import { appointmentsAPI } from './services/api';
+import { appointmentsAPI, patientAPI } from './services/api';
 import PageTransition from './components/shared/PageTransition';
 
-export interface Doctor {
-  id: number;
-  name: string;
-  specialty: string;
-  address: string;
-  city: string;
-  rating: number;
-  reviewCount: number;
-  image: string;
-  doctorCode?: string;
-  hasPassword?: boolean;
-  availableSlots: string[];
-  nextAvailable: string;
-  slotDuration?: number;
-  workingDays?: number[];
-  offDays?: string[];
-  blockedSlots?: string[];
-  /** Le praticien accepte-t-il les téléconsultations ? */
-  acceptsVideo?: boolean;
-  /** Heures ouvertes à la vidéo, sous-ensemble de availableSlots. */
-  videoSlots?: string[];
-  description?: string;
-  bio?: string;
-  latitude?: number;
-  longitude?: number;
-  mapsUrl?: string;
-}
-
-export interface Booking {
-  doctor: Doctor;
-  date: string;
-  time: string;
-  patientName: string;
-  patientEmail: string;
-  patientPhone: string;
-  reason: string;
-  /** Mode retenu par le patient. 'cabinet' si le praticien ne fait pas de visio. */
-  consultationType: 'cabinet' | 'video';
-}
+/* Les types Doctor et Booking vivent désormais dans types/metier.ts.
+   Les écrans d'administration les importaient d'ici, ce qui aurait entraîné
+   toute cette application dans leur paquet. Ils sont réexportés pour que les
+   imports existants continuent de fonctionner. */
+import type { Doctor, Booking } from './types/metier';
+export type { Doctor, Booking };
 
 function isOAuthCallbackPath() {
   return window.location.pathname === '/auth/callback';
@@ -68,10 +32,11 @@ function feedbackTokenFromPath(): string | null {
 }
 
 export default function App() {
-  const { isAuthenticated } = useAdminAuth();
   const [oauthDone, setOauthDone] = useState(!isOAuthCallbackPath());
-  const [currentPage, setCurrentPage] = useState<'home' | 'search' | 'booking' | 'confirmation' | 'admin' | 'doctor' | 'account'>('home');
-  const [searchQuery, setSearchQuery] = useState({ specialty: '', location: '', date: '' });
+  const [currentPage, setCurrentPage] = useState<'home' | 'search' | 'booking' | 'confirmation' | 'doctor' | 'account'>('home');
+  const [searchQuery, setSearchQuery] = useState<{
+    specialty: string; location: string; date: string; videoOnly?: boolean;
+  }>({ specialty: '', location: '', date: '' });
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   /* Créneau déjà cliqué dans la liste de résultats, à reporter tel quel sur
      la page de réservation. Un patient connecté ne doit choisir sa date et
@@ -86,26 +51,73 @@ export default function App() {
   const [patientUser, setPatientUser] = useState<{ id: number; name: string; email: string } | null>(null);
 
   useEffect(() => {
+    /* ── La session affichée doit être une session réelle ──
+       Le nom du patient était repris du stockage local et affiché tel quel,
+       sans jamais demander au serveur si le jeton valait encore quelque chose.
+       Les jetons expirent au bout de vingt-quatre heures : quelqu'un qui
+       revenait le lendemain se voyait connecté, ouvrait ses rendez-vous, et
+       tombait sur une liste vide ou une erreur — sans le moindre indice que
+       sa session avait simplement expiré.
+
+       On affiche d'abord la session mémorisée, pour ne pas faire clignoter
+       l'interface, puis on la confirme auprès du serveur. Si elle est
+       refusée, on la referme proprement. */
     const rawUser = localStorage.getItem('chifak_patient_user');
-    if (rawUser) {
+    const token = localStorage.getItem('chifak_patient_token');
+
+    if (rawUser && token) {
       try {
         setPatientUser(JSON.parse(rawUser));
-      } catch (e) {
-        console.error('Failed to parse patient user');
+      } catch {
+        localStorage.removeItem('chifak_patient_user');
       }
+    } else if (rawUser || token) {
+      // L'un sans l'autre : reste d'une session interrompue.
+      localStorage.removeItem('chifak_patient_user');
+      localStorage.removeItem('chifak_patient_token');
+    }
+
+    if (token) {
+      patientAPI.getProfile()
+        .then((profil) => {
+          const frais = { id: profil.id, email: profil.email, name: profil.name || profil.email };
+          setPatientUser(frais);
+          localStorage.setItem('chifak_patient_user', JSON.stringify(frais));
+        })
+        .catch((err: Error & { status?: number }) => {
+          /* Une panne réseau n'est pas une session invalide : on ne déconnecte
+             que si le serveur a répondu qu'il ne reconnaît pas le jeton. */
+          if (err?.status !== 401 && err?.status !== 403) return;
+          localStorage.removeItem('chifak_patient_token');
+          localStorage.removeItem('chifak_patient_user');
+          setPatientUser(null);
+        });
     }
 
     const params = new URLSearchParams(window.location.search);
     if (params.get('login') === '1' || params.get('auth_error') === '1') {
+      /* Le refus d'une connexion sociale porte parfois un motif — « un compte
+         existe déjà avec cette adresse, connectez-vous par mot de passe ».
+         Il était ignoré : la fenêtre de connexion s'ouvrait vide, et la
+         personne relançait la même connexion sociale qui ne peut pas aboutir.
+         On l'affiche avant d'ouvrir la fenêtre. */
+      const motif = params.get('motif');
+      if (motif) alert(motif);
       setAuthModal('login');
       window.history.replaceState({}, '', window.location.pathname);
     }
     const oauth = params.get('oauth');
     if (oauth === 'unconfigured') {
+      /* Le message citait le compte de démonstration et son mot de passe, en
+         clair, à tout visiteur cliquant sur « Continuer avec Google ». On
+         renvoie désormais vers l'inscription normale — la seule chose utile à
+         quelqu'un qui voulait créer un compte. */
       const provider = params.get('provider') === 'facebook' ? 'Facebook' : 'Google';
       alert(
-        `Connexion ${provider} non configurée.\nUtilisez le compte démo : demo.patient@chifak.dz / patient123`
+        `La connexion ${provider} n'est pas disponible pour le moment.\n`
+        + 'Créez un compte avec votre adresse e-mail.'
       );
+      setAuthModal('signup');
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -134,8 +146,8 @@ export default function App() {
     return <FeedbackPage token={feedbackToken} />;
   }
 
-  const handleSearch = (specialty: string, location: string, date: string) => {
-    setSearchQuery({ specialty, location, date });
+  const handleSearch = (specialty: string, location: string, date: string, videoOnly?: boolean) => {
+    setSearchQuery({ specialty, location, date, videoOnly });
     setCurrentPage('search');
   };
 
@@ -199,13 +211,28 @@ export default function App() {
         appointmentTime: bookingData.time,
         reason: bookingData.reason,
         consultationType: bookingData.consultationType,
+        forChild: bookingData.forChild,
+        childFirstName: bookingData.childFirstName,
+        childLastName: bookingData.childLastName,
+        childAge: bookingData.childAge,
       });
 
       setBooking(bookingData);
       setPrefilledSlot(null);
       setCurrentPage('confirmation');
     } catch (error) {
-      alert('Erreur lors de l\'enregistrement du rendez-vous. Réessayez.');
+      /* Le message du serveur est affiché tel quel.
+
+         L'ancien texte générique — « Erreur lors de l'enregistrement,
+         réessayez » — masquait tout : créneau déjà pris, âge d'enfant
+         invalide, session expirée. Le patient réessayait indéfiniment la même
+         chose, et personne ne pouvait diagnostiquer quoi que ce soit. Le
+         serveur formule déjà des messages clairs et sans détail technique :
+         autant les montrer. */
+      alert(error instanceof Error && error.message
+        ? error.message
+        : 'Erreur lors de l\'enregistrement du rendez-vous. Réessayez.');
+      console.error('Échec de la réservation :', error);
     }
   };
 
@@ -228,13 +255,12 @@ export default function App() {
     return <DoctorSpace onBackToHome={handleBackToHome} />;
   }
 
-  // Check if we're on admin page
-  if (currentPage === 'admin') {
-    if (!isAuthenticated) {
-      return <AdminLogin onLoginSuccess={() => setCurrentPage('admin')} onBackToHome={handleBackToHome} />;
-    }
-    return <AdminDashboard onBackToHome={handleBackToHome} />;
-  }
+  /* L'espace d'administration ne vit plus ici.
+     C'est une application distincte, servie depuis un autre domaine — voir
+     admin/. Cette page en portait les deux écrans, donc leur code partait
+     dans le navigateur de chaque patient : deux mille six cents lignes qui
+     décrivaient, à qui ouvrait la console, l'intégralité de la surface
+     d'administration. */
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -263,7 +289,6 @@ export default function App() {
         <PageTransition pageKey="home">
           <HomePage
             onSearch={handleSearch}
-            onAdminClick={() => setCurrentPage('admin')}
             onDoctorClick={() => setCurrentPage('doctor')}
             onOpenLogin={() => setAuthModal('login')}
             onOpenSignup={() => setAuthModal('signup')}
@@ -313,6 +338,10 @@ export default function App() {
             onBack={handleBackToSearch}
             onBackToHome={handleBackToHome}
             onDoctorClick={() => setCurrentPage('doctor')}
+            /* Espace patient, et non espace médecin : c'est là que se
+               corrigent le nom, l'e-mail et le téléphone que la réservation
+               relit sur le compte. */
+            onOpenAccount={() => setCurrentPage('account')}
             onOpenLogin={() => setAuthModal('login')}
             onOpenSignup={() => setAuthModal('signup')}
             onOpenProfessional={() => setIsProModalOpen(true)}

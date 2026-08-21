@@ -5,6 +5,7 @@ import FloatingShapes from '../home/FloatingShapes';
 import DoctorAvatar from '../shared/DoctorAvatar';
 import DoctorReviews from './DoctorReviews';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { patientAPI } from '../../services/api';
 import { slotsForDay, isWorkingDate as isWorkingDateShared, todayIso, maxBookingIso } from '../../utils/slots';
 
 const IconStar = ({ className = '' }: { className?: string }) => (
@@ -59,6 +60,8 @@ interface BookingPageProps {
   onBack: () => void;
   onBackToHome: () => void;
   onDoctorClick?: () => void;
+  /** Ouvre l'espace du patient, seul endroit où ses coordonnées se modifient. */
+  onOpenAccount?: () => void;
   onOpenLogin: () => void;
   onOpenSignup: () => void;
   onOpenProfessional: () => void;
@@ -71,7 +74,7 @@ const DAYS_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأرب
 const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
 const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
-export default function BookingPage({ doctor, initialDate, initialTime, initialConsultationType, onBookingComplete, onBack, onBackToHome, onDoctorClick, onOpenLogin, onOpenSignup, onOpenProfessional, patientUser, onLogout }: BookingPageProps) {
+export default function BookingPage({ doctor, initialDate, initialTime, initialConsultationType, onBookingComplete, onBack, onBackToHome, onDoctorClick, onOpenAccount, onOpenLogin, onOpenSignup, onOpenProfessional, patientUser, onLogout }: BookingPageProps) {
   const { language } = useLanguage();
   const isArabic = language === 'ar';
 
@@ -80,19 +83,44 @@ export default function BookingPage({ doctor, initialDate, initialTime, initialC
   const [step, setStep] = useState<1 | 2>(1);
   const [form, setForm] = useState({ name: '', email: '', phone: '', reason: '' });
 
+  /* ── Rendez-vous pour un enfant mineur ──
+     Le compte reste celui du parent : il retrouve le rendez-vous dans son
+     espace et reçoit les confirmations. Seul le nom présenté au praticien
+     change, pour qu'il sache qui il va recevoir. */
+  const [forChild, setForChild] = useState(false);
+  const [child, setChild] = useState({ firstName: '', lastName: '', age: '' });
+
+  /* Les coordonnées sont lues sur le compte, jamais saisies.
+
+     On interroge le serveur plutôt que le stockage local : celui-ci ne
+     contient que le nom et l'adresse retenus à la connexion, pas le
+     téléphone, et il peut dater d'une modification faite depuis un autre
+     appareil. Le compte est la seule source qui fasse foi — le serveur relit
+     d'ailleurs ces mêmes valeurs à l'enregistrement. */
   useEffect(() => {
-    const raw = localStorage.getItem('chifak_patient_user');
-    if (!raw) return;
-    try {
-      const user = JSON.parse(raw);
-      setForm((prev) => ({
-        ...prev,
-        name: prev.name || user.name || '',
-        email: prev.email || user.email || '',
-      }));
-    } catch {
-      // ignore malformed storage
+    let vivant = true;
+
+    const local = localStorage.getItem('chifak_patient_user');
+    if (local) {
+      try {
+        const user = JSON.parse(local);
+        setForm((prev) => ({ ...prev, name: user.name || '', email: user.email || '' }));
+      } catch { /* stockage abîmé : le serveur prendra le relais */ }
     }
+
+    patientAPI.getProfile()
+      .then((profil) => {
+        if (!vivant) return;
+        setForm((prev) => ({
+          ...prev,
+          name: profil.name || prev.name,
+          email: profil.email || prev.email,
+          phone: profil.phone || prev.phone,
+        }));
+      })
+      .catch(() => { /* hors ligne : on garde ce qu'on a */ });
+
+    return () => { vivant = false; };
   }, []);
 
   // Fenêtre de 7 jours que l'on peut faire glisser librement jusqu'à un an à l'avance.
@@ -158,19 +186,49 @@ export default function BookingPage({ doctor, initialDate, initialTime, initialC
      se décalent d'un cran, sinon la numérotation afficherait deux « 1 ». */
   const stepNo = (n: number) => n + 1;
 
+  const ageEnfant = Number(child.age);
+  const enfantValide = !forChild
+    || (child.firstName.trim().length > 0
+      && child.lastName.trim().length > 0
+      && Number.isFinite(ageEnfant) && ageEnfant >= 0 && ageEnfant < 18);
+
+  /* ── Compte incomplet ──
+     Les coordonnées viennent du compte et ne se saisissent pas ici. Quand
+     l'une manque — les comptes créés par Google ou Facebook n'ont jamais de
+     téléphone — la réservation est impossible, et il faut le dire.
+
+     Le formulaire se contentait de ne rien faire : le bouton restait actif,
+     le clic ne produisait aucun message, aucune erreur, aucun mouvement. La
+     personne concluait que l'application était en panne. */
+  const coordonneesManquantes = [
+    !form.name && (isArabic ? 'الاسم' : 'le nom'),
+    !form.email && (isArabic ? 'البريد الإلكتروني' : 'l’e-mail'),
+    !form.phone && (isArabic ? 'رقم الهاتف' : 'le numéro de téléphone'),
+  ].filter(Boolean) as string[];
+  const compteComplet = coordonneesManquantes.length === 0;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name || !form.email || !form.phone) return;
+    if (!compteComplet || !enfantValide) return;
     await onBookingComplete({
       doctor,
       date: selectedDate,
       time: selectedTime,
+      /* Les coordonnées viennent du compte, jamais d'une saisie. Le serveur
+         les relit d'ailleurs en base à partir du jeton : ce qui part d'ici
+         n'est qu'un affichage. */
       patientName: form.name,
       patientEmail: form.email,
       patientPhone: form.phone,
       reason: form.reason,
       // Garde-fou côté client, doublé d'une vérification serveur.
       consultationType: doctor.acceptsVideo ? consultationType : 'cabinet',
+      ...(forChild ? {
+        forChild: true,
+        childFirstName: child.firstName.trim(),
+        childLastName: child.lastName.trim(),
+        childAge: ageEnfant,
+      } : {}),
     });
   };
 
@@ -464,25 +522,164 @@ export default function BookingPage({ doctor, initialDate, initialTime, initialC
                   </h3>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {[
-                    { label: isArabic ? 'الاسم الكامل *' : 'Nom complet *', key: 'name', type: 'text', placeholder: isArabic ? 'محمد أمين' : 'Ex: Karim Benali', required: true },
-                    { label: isArabic ? 'البريد الإلكتروني *' : 'Email *', key: 'email', type: 'email', placeholder: 'karim@email.dz', required: true },
-                    { label: isArabic ? 'الهاتف *' : 'Téléphone *', key: 'phone', type: 'tel', placeholder: '05xx xx xx xx', required: true },
-                  ].map(f => (
-                    <div key={f.key} className={f.key === 'phone' ? 'sm:col-span-2' : ''}>
-                      <label className="block text-sm font-medium text-gray-600 mb-1.5">{f.label}</label>
-                      <input
-                        type={f.type}
-                        required={f.required}
-                        placeholder={f.placeholder}
-                        value={form[f.key as keyof typeof form]}
-                        onChange={e => setForm({ ...form, [f.key]: e.target.value })}
-                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all text-gray-800 placeholder:text-gray-300 outline-none"
-                      />
+                {/* ── Coordonnées, en lecture seule ──
+                    Elles viennent du compte et ne se modifient pas ici. Le
+                    serveur les relit d'ailleurs en base à partir du jeton : ce
+                    qui s'affiche est un miroir, pas une saisie. Pour les
+                    corriger, on passe par son profil — un seul endroit, une
+                    seule vérité. */}
+                <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--tint-10)' }}>
+                  <div className="px-4 py-2.5 flex items-center justify-between gap-3" style={{ background: 'var(--bg-2)' }}>
+                    <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--ink-3)' }}>
+                      {isArabic ? 'صاحب الحساب' : 'Titulaire du compte'}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink-3)' }}>
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                        <rect x="5" y="11" width="14" height="10" rx="2" />
+                        <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+                      </svg>
+                      {isArabic ? 'غير قابل للتعديل' : 'Non modifiable'}
+                    </span>
+                  </div>
+                  <dl className="divide-y" style={{ borderColor: 'var(--tint-05)' }}>
+                    {[
+                      { k: isArabic ? 'الاسم' : 'Nom', v: form.name },
+                      { k: isArabic ? 'البريد الإلكتروني' : 'E-mail', v: form.email },
+                      { k: isArabic ? 'الهاتف' : 'Téléphone', v: form.phone },
+                    ].map((l) => (
+                      <div key={l.k} className="flex items-baseline justify-between gap-4 px-4 py-2.5">
+                        <dt className="text-sm flex-shrink-0" style={{ color: 'var(--ink-3)' }}>{l.k}</dt>
+                        <dd className="text-sm font-medium text-end truncate" style={{ color: 'var(--ink)' }}>
+                          {l.v || <span style={{ color: 'var(--ink-3)' }}>—</span>}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+
+                {/* ── Ce qui manque au compte, et où le corriger ──
+                    Affiché juste sous les coordonnées, à l'endroit exact où la
+                    personne constate le tiret. Le lien renvoie vers le profil,
+                    seul endroit où ces champs se modifient. */}
+                {!compteComplet && (
+                  <div
+                    role="alert"
+                    className="mt-4 rounded-xl overflow-hidden flex"
+                    style={{ background: '#FFFAEB', border: '1px solid #FEC84B' }}
+                  >
+                    <span aria-hidden className="w-1.5 flex-shrink-0" style={{ background: '#DC6803' }} />
+                    <div className="p-3.5">
+                      <p className="text-sm font-semibold mb-1" style={{ color: '#93370D' }}>
+                        {isArabic ? 'حسابك غير مكتمل' : 'Votre compte est incomplet'}
+                      </p>
+                      <p className="text-sm leading-relaxed" style={{ color: '#93370D' }}>
+                        {isArabic
+                          ? `لإتمام الحجز، أضف ${coordonneesManquantes.join('، ')} إلى حسابك.`
+                          : `Pour réserver, ajoutez ${coordonneesManquantes.join(', ')} à votre compte.`}
+                      </p>
+                      {onOpenAccount && (
+                        <button
+                          type="button"
+                          onClick={onOpenAccount}
+                          className="mt-2 text-sm font-semibold underline"
+                          style={{ color: '#93370D' }}
+                        >
+                          {isArabic ? 'فتح حسابي' : 'Ouvrir mon compte'}
+                        </button>
+                      )}
                     </div>
-                  ))}
-                  <div className="sm:col-span-2">
+                  </div>
+                )}
+
+                {/* ── Le compte est personnel ──
+                    Placé juste sous les coordonnées verrouillées : c'est là
+                    que la question se pose, au moment précis où quelqu'un se
+                    demanderait pourquoi il ne peut pas mettre un autre nom. */}
+                <div
+                  className="mt-4 rounded-xl overflow-hidden flex"
+                  style={{ background: '#FEF3F2', border: '1px solid #FDA29B' }}
+                >
+                  <span aria-hidden className="w-1.5 flex-shrink-0" style={{ background: 'var(--danger)' }} />
+                  <p className="text-sm leading-relaxed p-3.5" style={{ color: '#912018' }}>
+                    {isArabic
+                      ? 'الحساب شخصي بحت. يُمنع منعًا باتًا حجز موعد لشخص آخر باستعمال حساب لا يخصّه.'
+                      : 'Le compte est strictement personnel. Il est strictement interdit de prendre rendez-vous pour une autre personne en utilisant un compte qui ne lui appartient pas.'}
+                  </p>
+                </div>
+
+                {/* ── Rendez-vous pour un enfant mineur ──
+                    La seule exception légitime, et elle est encadrée : le
+                    rendez-vous reste rattaché au compte du parent, seul le nom
+                    présenté au praticien change. Sans cette porte, les parents
+                    contourneraient la règle en réservant sous leur propre nom,
+                    et le pédiatre découvrirait l'enfant en salle d'attente. */}
+                <div className="mt-4 rounded-xl p-4" style={{ background: 'var(--bg-2)' }}>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={forChild}
+                      onChange={(e) => setForChild(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 flex-shrink-0 cursor-pointer"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold" style={{ color: 'var(--ink)' }}>
+                        {isArabic
+                          ? 'هذا الموعد لطفلي القاصر'
+                          : 'Ce rendez-vous est pour mon enfant mineur'}
+                      </span>
+                      <span className="block text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--ink-3)' }}>
+                        {isArabic
+                          ? 'يبقى الموعد في حسابك، ويظهر للطبيب باسم طفلك.'
+                          : 'Le rendez-vous reste dans votre compte et s’affiche au praticien au nom de votre enfant.'}
+                      </span>
+                    </span>
+                  </label>
+
+                  {forChild && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                      <div className="sm:col-span-1">
+                        <label htmlFor="child-prenom" className="block text-xs font-medium mb-1.5" style={{ color: 'var(--ink-3)' }}>
+                          {isArabic ? 'اسم الطفل *' : 'Prénom *'}
+                        </label>
+                        <input
+                          id="child-prenom" type="text" required value={child.firstName}
+                          onChange={(e) => setChild({ ...child, firstName: e.target.value })}
+                          className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 text-sm"
+                        />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <label htmlFor="child-nom" className="block text-xs font-medium mb-1.5" style={{ color: 'var(--ink-3)' }}>
+                          {isArabic ? 'اللقب *' : 'Nom *'}
+                        </label>
+                        <input
+                          id="child-nom" type="text" required value={child.lastName}
+                          onChange={(e) => setChild({ ...child, lastName: e.target.value })}
+                          className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 text-sm"
+                        />
+                      </div>
+                      <div className="sm:col-span-1">
+                        <label htmlFor="child-age" className="block text-xs font-medium mb-1.5" style={{ color: 'var(--ink-3)' }}>
+                          {isArabic ? 'العمر *' : 'Âge *'}
+                        </label>
+                        <input
+                          id="child-age" type="number" required min={0} max={17} value={child.age}
+                          onChange={(e) => setChild({ ...child, age: e.target.value })}
+                          className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 text-sm"
+                        />
+                      </div>
+                      {child.age !== '' && !enfantValide && (
+                        <p role="alert" className="sm:col-span-3 text-xs" style={{ color: 'var(--danger)' }}>
+                          {isArabic
+                            ? 'يجب أن يكون العمر أقل من 18 سنة. من 18 سنة فما فوق، على الشخص إنشاء حسابه الخاص.'
+                            : 'L’âge doit être inférieur à 18 ans. À partir de 18 ans, la personne doit créer son propre compte.'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 gap-5 mt-4">
+                  <div>
                     <label className="block text-sm font-medium text-gray-600 mb-1.5">
                       {isArabic ? 'سبب الاستشارة (اختياري)' : 'Motif de consultation (optionnel)'}
                     </label>
@@ -505,7 +702,8 @@ export default function BookingPage({ doctor, initialDate, initialTime, initialC
 
                 <button
                   type="submit"
-                  className="w-full mt-6 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-sm transition-colors active:scale-[0.99] flex items-center justify-center gap-2"
+                  disabled={!enfantValide || !compteComplet}
+                  className="w-full mt-6 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-sm transition-colors active:scale-[0.99] flex items-center justify-center gap-2"
                 >
                   <IconCheck className="w-5 h-5" />
                   {isArabic ? 'تأكيد الحجز' : 'Finaliser la réservation'}
@@ -554,26 +752,69 @@ export default function BookingPage({ doctor, initialDate, initialTime, initialC
                     </div>
                   </div>
                 )}
+                {/* Le lieu dépend du mode. En visioconférence, l'adresse du
+                    cabinet n'est pas seulement inutile : elle est trompeuse.
+                    Un patient qui la lit dans son récapitulatif se déplace. */}
                 <div className="flex items-start gap-3 py-2">
                   <span className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
                     <IconPin className="w-[18px] h-[18px] text-blue-500" />
                   </span>
                   <div>
-                    <p className="text-xs text-gray-400 mb-0.5">Lieu</p>
-                    <p className="font-medium text-gray-700 text-sm leading-snug">{doctor.address}<br />{doctor.city}</p>
+                    <p className="text-xs text-gray-400 mb-0.5">
+                      {consultationType === 'video'
+                        ? (isArabic ? 'كيفية الالتحاق' : 'Comment y accéder')
+                        : (isArabic ? 'المكان' : 'Lieu')}
+                    </p>
+                    <p className="font-medium text-gray-700 text-sm leading-snug">
+                      {consultationType === 'video'
+                        ? (isArabic
+                          ? 'من المنزل. الرابط في « حسابي › مواعيدي » يوم الموعد.'
+                          : 'Depuis chez vous. Le lien apparaît dans « Mon compte › Mes rendez-vous » le jour venu.')
+                        : <>{doctor.address}<br />{doctor.city}</>}
+                    </p>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-5 p-4 bg-blue-50/60 border border-blue-100 rounded-xl flex gap-3">
-                <IconInfo className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-blue-800 mb-1">{isArabic ? 'نصيحة' : 'Conseil'}</p>
-                  <p className="text-sm text-blue-700 leading-relaxed">
-                    {isArabic
-                      ? 'أحضر بطاقتك الصحية وملفك الطبي'
-                      : 'Pensez à apporter votre carte et votre dossier médical.'}
-                  </p>
+              {/* ── À ne pas oublier ──
+                  Ce rappel était en bleu, comme tout le reste de la page : il
+                  se fondait dans le décor et personne ne le lisait. Un patient
+                  qui se présente sans sa carte perd sa consultation.
+
+                  Le rouge est délibérément hors palette de marque. Ici c'est
+                  un signal, pas une décoration : il ne doit ressembler à rien
+                  d'autre dans l'application. La bande latérale pleine attire
+                  l'œil avant même la lecture. */}
+              <div
+                className="mt-5 rounded-xl overflow-hidden flex"
+                style={{ background: '#FEF3F2', border: '1px solid #FDA29B' }}
+              >
+                <span aria-hidden className="w-1.5 flex-shrink-0" style={{ background: 'var(--danger)' }} />
+                <div className="flex gap-3 p-4">
+                  <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--danger)' }}>
+                    <IconInfo className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <p
+                      className="text-sm font-semibold mb-1 uppercase"
+                      style={{ color: '#7A271A', letterSpacing: '0.04em' }}
+                    >
+                      {isArabic ? 'لا تنسَ' : 'À ne pas oublier'}
+                    </p>
+                    <p className="text-sm leading-relaxed" style={{ color: '#912018' }}>
+                      {/* On ne demande pas d'« apporter » quelque chose à
+                          quelqu'un qui ne se déplace pas. Le rappel garde son
+                          intention — avoir son dossier sous la main — mais
+                          dans les termes de la situation réelle. */}
+                      {consultationType === 'video'
+                        ? (isArabic
+                          ? 'حضّر بطاقتك الصحية وملفك الطبي بقربك، وتأكد من جودة اتصالك بالإنترنت.'
+                          : 'Préparez votre carte et votre dossier médical à portée de main, et vérifiez votre connexion internet.')
+                        : (isArabic
+                          ? 'أحضر بطاقتك الصحية وملفك الطبي.'
+                          : 'Pensez à apporter votre carte et votre dossier médical.')}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
