@@ -39,7 +39,14 @@ const defini = (nom) => {
  */
 function pointsDeControle() {
   const enProduction = process.env.NODE_ENV === 'production';
-  const messagerie = defini('EMAIL_HOST') || (defini('EMAIL_USER') && defini('EMAIL_PASSWORD'));
+  /* Trois voies possibles pour les courriers, et il suffit qu'une seule soit
+     ouverte : l'API d'un fournisseur, un SMTP générique, ou Gmail. */
+  const parApi = defini('EMAIL_PROVIDER')
+    && process.env.EMAIL_PROVIDER.trim().toLowerCase() !== 'smtp'
+    && defini('EMAIL_API_KEY');
+  const parSmtp = defini('EMAIL_HOST') && defini('EMAIL_USER') && defini('EMAIL_PASSWORD');
+  const parGmail = defini('EMAIL_USER') && defini('EMAIL_PASSWORD');
+  const messagerie = parApi || parSmtp || parGmail;
 
   return [
     {
@@ -55,11 +62,30 @@ function pointsDeControle() {
       absence: 'les jetons de session ne peuvent pas être signés de façon sûre.',
     },
     {
-      nom: 'Envoi des e-mails',
+      nom: parApi
+        ? `Envoi des e-mails (API ${process.env.EMAIL_PROVIDER.trim()})`
+        : parSmtp ? 'Envoi des e-mails (SMTP)'
+        : parGmail ? 'Envoi des e-mails (Gmail)'
+        : 'Envoi des e-mails',
       ok: messagerie,
       critique: true,
-      absence: 'aucune inscription possible — le code de vérification ne part pas. '
-        + 'Ni confirmation de rendez-vous, ni rappel de la veille, ni agenda praticien.',
+      absence: 'AUCUNE INSCRIPTION N\'EST POSSIBLE — le code de vérification ne part pas, '
+        + 'et la création de compte échoue en 502. Ni confirmation de rendez-vous, ni rappel '
+        + 'de la veille, ni agenda praticien.\n'
+        + '     Renseignez soit EMAIL_PROVIDER=brevo|resend + EMAIL_API_KEY (recommandé),\n'
+        + '     soit EMAIL_HOST + EMAIL_USER + EMAIL_PASSWORD pour un SMTP classique.',
+    },
+    {
+      /* Gmail fonctionne, mais plafonne à quelques centaines d'envois par jour
+         et coupe sans prévenir ce qu'il juge automatique. On le signale sans
+         le bloquer : c'est un dépannage acceptable, pas un régime de croisière. */
+      nom: 'Fournisseur d\'e-mails adapté au volume',
+      ok: !parGmail || parApi || parSmtp,
+      critique: false,
+      absence: 'les courriers partent par Gmail, qui plafonne à quelques centaines '
+        + 'd\'envois par jour et coupe les envois automatiques sans prévenir. '
+        + 'Un service transactionnel (EMAIL_PROVIDER=brevo) tient la charge et '
+        + 'donne des journaux de délivrabilité.',
     },
     {
       nom: 'Certificat de la base (DATABASE_CA)',

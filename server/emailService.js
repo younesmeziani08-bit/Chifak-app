@@ -2,10 +2,17 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { randomInt } from 'crypto';
 import { escapeHtml } from './security.js';
+import { envoyerParHttp, messagerieHttpConfiguree } from './lib/messagerieHttp.js';
 
 dotenv.config();
 
 export function isEmailConfigured() {
+  /* Deux voies possibles, et il suffit qu'une seule soit ouverte.
+     La voie API est vérifiée d'abord : quand elle est configurée, les
+     identifiants SMTP n'ont plus à l'être, et exiger les deux ferait passer
+     pour « non configurée » une messagerie qui fonctionne parfaitement. */
+  if (messagerieHttpConfiguree()) return true;
+
   const user = process.env.EMAIL_USER;
   const pass = process.env.EMAIL_PASSWORD;
   return Boolean(
@@ -40,6 +47,21 @@ const transporter = process.env.EMAIL_HOST
         pass: process.env.EMAIL_PASSWORD,
       },
     });
+
+/**
+ * Achemine un message, par l'API du fournisseur ou par SMTP.
+ *
+ * Toutes les fonctions d'envoi passent par ici. C'est le seul endroit qui sait
+ * laquelle des deux voies est ouverte — ailleurs, on compose un message et on
+ * demande qu'il parte.
+ */
+async function acheminer({ to, subject, html }) {
+  if (messagerieHttpConfiguree()) {
+    return envoyerParHttp(to, { subject, html });
+  }
+  await transporter.sendMail({ from: FROM_ADDRESS, to, subject, html });
+  return true;
+}
 
 // Générer un code de vérification à 6 chiffres.
 // SÉCURITÉ : on utilise un générateur cryptographique (crypto.randomInt) et non
@@ -164,7 +186,7 @@ export async function sendVerificationEmail(email, code, language = 'fr') {
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await acheminer(mailOptions);
     console.log(`✅ Email de vérification envoyé à ${email}`);
     return true;
   } catch (error) {
@@ -241,7 +263,7 @@ export async function sendDoctorDailyAgenda(email, doctorName, dateLabel, slots)
   }
 
   try {
-    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html: htmlContent });
+    await acheminer({ to: email, subject, html: htmlContent });
     console.log(`✅ Agenda du jour envoyé à ${doctorName} <${email}>`);
     return true;
   } catch (error) {
@@ -423,7 +445,7 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
   };
 
   try {
-    await transporter.sendMail(mailOptions);
+    await acheminer(mailOptions);
     console.log(`✅ Email de confirmation envoyé à ${email}`);
     return true;
   } catch (error) {
@@ -478,7 +500,7 @@ async function envoyerAuPraticien(email, subject, html, etiquette) {
     return true;
   }
   try {
-    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html });
+    await acheminer({ to: email, subject, html });
     console.log(`✅ ${etiquette} envoyé à ${email}`);
     return true;
   } catch (error) {
@@ -672,7 +694,7 @@ export async function sendAppointmentReminder(email, {
     return true;
   }
   try {
-    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html });
+    await acheminer({ to: email, subject, html });
     return true;
   } catch (error) {
     console.error(`❌ Erreur envoi rappel à ${email}:`, error.message);
@@ -700,7 +722,7 @@ export async function envoyerCourrier(email, { subject, html }) {
     return true;
   }
   try {
-    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html });
+    await acheminer({ to: email, subject, html });
     console.log(`✅ « ${subject} » envoyé à ${email}`);
     return true;
   } catch (error) {
