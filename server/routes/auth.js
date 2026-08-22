@@ -15,6 +15,9 @@ import {
   authenticateDoctorToken,
 } from '../middleware/auth.js';
 import { refuseSiFreine, noterEchec, oublierEchecs } from '../lib/tentatives.js';
+import {
+  NOM_TEMOIN_OAUTH, optionsTemoinOAuth, lireTemoin, fabriquerState, verifierState,
+} from '../lib/oauthState.js';
 
 const router = express.Router();
 
@@ -601,29 +604,64 @@ const isFacebookOAuthReady = () =>
   process.env.FACEBOOK_APP_ID &&
   process.env.FACEBOOK_APP_ID !== 'your_facebook_app_id';
 
+/* Le contrôle anti-falsification du retour OAuth vit dans lib/oauthState.js :
+   c'est de la logique pure, sans base ni réseau, et elle mérite ses propres
+   cas de test plutôt que d'être noyée au milieu des routes. */
+
+/** Prépare la poignée de main : pose l'aléa dans un témoin, rend le `state`. */
+const preparerState = (req, res) => {
+  const { alea, state } = fabriquerState(req.query.redirect);
+  res.cookie(NOM_TEMOIN_OAUTH, alea, optionsTemoinOAuth());
+  return state;
+};
+
+/** Contrôle le retour. Rend la destination, ou null si ce n'est pas ce navigateur. */
+const controlerRetour = (req, res) => {
+  const attendu = lireTemoin(req.headers.cookie, NOM_TEMOIN_OAUTH);
+  res.clearCookie(NOM_TEMOIN_OAUTH, { path: '/' });
+  return verifierState(req.query.state, attendu);
+};
+
 // Google OAuth
 router.get('/api/auth/google', (req, res, next) => {
   if (!isGoogleOAuthReady()) {
     return res.redirect(`${frontendUrl()}/?oauth=unconfigured&provider=google`);
   }
-  // 'app' quand la demande vient de l'app mobile -> retour par lien profond
-  const state = req.query.redirect === 'app' ? 'app' : 'web';
-  passport.authenticate('google', { scope: ['profile', 'email'], state })(req, res, next);
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    state: preparerState(req, res),
+  })(req, res, next);
 });
 
-const buildOAuthRedirect = (user, token, isApp) => {
-  const params = new URLSearchParams({
-    token,
-    email: user.email,
-    name: user.name || '',
-  });
+/**
+ * Adresse de retour vers l'application.
+ *
+ * ── Le jeton voyage dans le FRAGMENT, jamais dans la chaîne de requête ──
+ *
+ * Une chaîne de requête est journalisée partout : par l'hébergeur du site, par
+ * les caches et relais intermédiaires, et elle repart dans l'en-tête Referer
+ * de la première ressource chargée par la page. Le jeton de session d'un
+ * patient — qui ouvre son dossier médical pendant vingt-quatre heures — s'y
+ * retrouvait donc en clair, dans des journaux que personne ne surveille et
+ * que personne ne purge.
+ *
+ * Le fragment, lui, ne quitte jamais le navigateur : il n'est pas transmis au
+ * serveur, n'apparaît dans aucun journal d'accès et ne fuit par aucun Referer.
+ *
+ * L'adresse et le nom ont été retirés : l'application les ignorait déjà — elle
+ * lit le profil auprès du serveur, la seule source qui ne se réécrit pas d'un
+ * clic — et les publier ne servait qu'à exposer l'e-mail d'un patient dans une
+ * barre d'adresse.
+ */
+const buildOAuthRedirect = (token, isApp) => {
+  const fragment = new URLSearchParams({ token }).toString();
   if (isApp) {
     // Retour dans l'app native via un lien profond (custom URL scheme)
     const scheme = process.env.MOBILE_REDIRECT_URL || 'chifak://auth/callback';
-    return `${scheme}?${params.toString()}`;
+    return `${scheme}#${fragment}`;
   }
   const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
-  return `${frontend}/auth/callback?${params.toString()}`;
+  return `${frontend}/auth/callback#${fragment}`;
 };
 
 /**
@@ -639,9 +677,24 @@ const buildOAuthRedirect = (user, token, isApp) => {
  * confidentiel, seulement la marche à suivre.
  */
 const traiterRetourOAuth = (fournisseur) => (req, res, next) => {
-  passport.authenticate(fournisseur, { session: false }, (err, user, info) => {
-    const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const front = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+  /* Le contrôle du `state` vient AVANT tout le reste : avant de parler au
+     fournisseur, avant de toucher la base, avant de signer quoi que ce soit.
+     Un retour qui n'a pas été initié depuis ce navigateur n'a rien à faire
+     ici, et le message le dit sans détour — « recommencez depuis
+     l'application » — parce que c'est aussi ce que voit quelqu'un dont le
+     navigateur a simplement effacé ses témoins entre-temps. */
+  const cible = controlerRetour(req, res);
+  if (!cible) {
+    return res.redirect(
+      `${front}/?auth_error=1&motif=${encodeURIComponent(
+        'Connexion expirée ou non initiée depuis cet appareil. Recommencez depuis l\'application.',
+      )}`,
+    );
+  }
+
+  passport.authenticate(fournisseur, { session: false }, (err, user, info) => {
     if (err) {
       console.error(`Erreur OAuth ${fournisseur}:`, err);
       return res.redirect(`${front}/?auth_error=1`);
@@ -658,7 +711,7 @@ const traiterRetourOAuth = (fournisseur) => (req, res, next) => {
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
-    return res.redirect(buildOAuthRedirect(user, token, req.query.state === 'app'));
+    return res.redirect(buildOAuthRedirect(token, cible === 'app'));
   })(req, res, next);
 };
 
@@ -669,8 +722,10 @@ router.get('/api/auth/facebook', (req, res, next) => {
   if (!isFacebookOAuthReady()) {
     return res.redirect(`${frontendUrl()}/?oauth=unconfigured&provider=facebook`);
   }
-  const state = req.query.redirect === 'app' ? 'app' : 'web';
-  passport.authenticate('facebook', { scope: ['email'], state })(req, res, next);
+  passport.authenticate('facebook', {
+    scope: ['email'],
+    state: preparerState(req, res),
+  })(req, res, next);
 });
 
 router.get('/api/auth/facebook/callback', traiterRetourOAuth('facebook'));

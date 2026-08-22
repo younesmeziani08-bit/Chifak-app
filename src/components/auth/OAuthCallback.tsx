@@ -15,8 +15,19 @@ export default function OAuthCallback({ onComplete }: OAuthCallbackProps) {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    /* ── Le jeton arrive par le FRAGMENT ──
+       Une chaîne de requête est journalisée par l'hébergeur, par les caches
+       intermédiaires, et repart dans le Referer de la première ressource que
+       charge la page. Le fragment ne quitte jamais le navigateur.
+
+       La chaîne de requête reste lue en second : le serveur et l'application
+       se déploient séparément, et pendant le temps où l'un est à jour et pas
+       l'autre, personne ne doit se retrouver devant une connexion cassée.
+       Les motifs d'erreur, eux, n'ont rien de confidentiel et restent en
+       clair dans l'adresse. */
+    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
+    const token = fragment.get('token') || params.get('token');
     const authError = params.get('auth_error');
 
     if (authError) {

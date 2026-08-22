@@ -29,9 +29,13 @@ export function registerOAuthDeepLink(onLogin: (user: PatientUser) => void): () 
     'appUrlOpen',
     async ({ url }: { url: string }) => {
       if (!url || !url.includes('auth/callback')) return;
-    const query = url.split('?')[1] || '';
-    const params = new URLSearchParams(query);
-    const token = params.get('token');
+    /* Le jeton voyage dans le fragment — voir buildOAuthRedirect côté serveur.
+       La chaîne de requête reste lue en second : l'application installée sur
+       un téléphone ne se met pas à jour au même moment que le serveur, et une
+       version ancienne ne doit pas cesser de fonctionner du jour au lendemain. */
+    const fragment = new URLSearchParams(url.split('#')[1] || '');
+    const params = new URLSearchParams((url.split('?')[1] || '').split('#')[0]);
+    const token = fragment.get('token') || params.get('token');
     if (!token) return;
 
     /* `persistOAuthLogin` refuse désormais un jeton que le serveur ne
