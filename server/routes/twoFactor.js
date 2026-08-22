@@ -74,20 +74,40 @@ router.post('/api/auth/login-2fa', authLimiter, async (req, res) => {
          et demie. */
       await db.prepare('UPDATE users SET totp_last_counter = ? WHERE id = ?').run(compteur, user.id);
     } else {
-      // Code refusé : peut-être un code de secours ?
-      const restants = lireJson(user.totp_backup_codes, []);
+      /* ── Code refusé : peut-être un code de secours ? ──
+         Consommation ATOMIQUE, en un seul ordre.
+
+         La séquence « lire la liste, retirer l'élément, réécrire la liste »
+         laissait passer deux requêtes simultanées portant le même code :
+         toutes deux lisaient une liste qui le contenait encore, toutes deux
+         obtenaient une session. L'usage unique n'existait que tant que
+         personne n'essayait deux fois en même temps — c'est-à-dire qu'il
+         n'existait pas, puisque c'est précisément ce que fait un attaquant
+         qui a intercepté un code.
+
+         Ici PostgreSQL sérialise les écritures sur la ligne : la première
+         requête retire le code, la seconde ne trouve plus rien à retirer et
+         `jsonb_exists` la fait repartir sans aucune ligne.
+
+         `jsonb_exists(…)` plutôt que l'opérateur `?` : il dit exactement la
+         même chose sans dépendre de l'analyse des marqueurs (voir toPg dans
+         database.js). */
       const empreinte = empreinteCodeDeSecours(code);
-      const index = restants.indexOf(empreinte);
-      if (index === -1) {
+      const consomme = await db.prepare(`
+        UPDATE users SET totp_backup_codes = COALESCE((
+          SELECT jsonb_agg(t.c)::text
+          FROM jsonb_array_elements_text(totp_backup_codes::jsonb) AS t(c)
+          WHERE t.c <> ?
+        ), '[]')
+        WHERE id = ? AND jsonb_exists(totp_backup_codes::jsonb, ?)
+        RETURNING totp_backup_codes
+      `).get(empreinte, user.id, empreinte);
+
+      if (!consomme) {
         await noterEchec('staff', porteur.username);
         return res.status(401).json({ error: 'Code incorrect.' });
       }
-      /* Usage unique : le code est retiré de la liste avant de rendre la
-         session. Un code de secours qui resservirait n'aurait plus rien d'un
-         code de secours. */
-      restants.splice(index, 1);
-      await db.prepare('UPDATE users SET totp_backup_codes = ? WHERE id = ?')
-        .run(JSON.stringify(restants), user.id);
+      const restants = lireJson(consomme.totp_backup_codes, []);
       console.warn(`⚠️  Code de secours utilisé par ${user.username} — il en reste ${restants.length}.`);
     }
 

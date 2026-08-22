@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../src/contexts/LanguageContext';
 import { employeesAPI, Employee, EmployeeStats } from '../services/api';
+import QrCode from '../composants/QrCode';
 
 /**
  * Gestion du personnel : création, suppression, activité par période,
@@ -8,14 +9,25 @@ import { employeesAPI, Employee, EmployeeStats } from '../services/api';
  * masquer l'onglet ne suffirait pas, les routes exigent le rôle admin.
  */
 
-/** Le QR est produit par un service public : aucune dépendance à installer. */
-function qrUrl(contenu: string, taille = 220) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${taille}x${taille}&data=${encodeURIComponent(contenu)}`;
-}
-
-/** Adresse ouverte par le médecin en scannant. */
+/**
+ * Adresse ouverte par le médecin en scannant.
+ *
+ * Elle désigne l'application PATIENTE, pas celle-ci. C'est là que vit la page
+ * /avis/<jeton> (voir src/App.tsx) ; l'administration, elle, n'a aucun
+ * routage — elle affiche la connexion ou le tableau de bord, rien d'autre.
+ *
+ * Le lien était bâti sur `window.location.origin`, c'est-à-dire le domaine de
+ * l'administration, puisque c'est ici que le code s'exécute. Les deux
+ * applications se déployant sur deux domaines distincts, le médecin qui
+ * scannait arrivait sur l'écran de connexion de l'administration. La
+ * fonctionnalité d'avis du personnel ne fonctionnait donc pas en production.
+ *
+ * En développement les deux tournent sur la même machine et l'origine
+ * courante fait un repli correct.
+ */
 function lienAvis(token: string) {
-  return `${window.location.origin}/avis/${token}`;
+  const base = (import.meta.env.VITE_PATIENT_URL || window.location.origin).replace(/\/$/, '');
+  return `${base}/avis/${token}`;
 }
 
 const cls = 'px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 w-full';
@@ -357,11 +369,10 @@ export default function EmployeesPanel() {
               {/* QR code de l'employé */}
               {qrFor?.id === emp.id && emp.feedback_token && (
                 <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-start gap-5">
-                  <img
-                    src={qrUrl(lienAvis(emp.feedback_token))}
+                  <QrCode
+                    valeur={lienAvis(emp.feedback_token)}
                     alt={isArabic ? 'رمز QR للآراء' : 'QR code d’avis'}
-                    width={220}
-                    height={220}
+                    taille={220}
                     className="rounded-lg border border-gray-200 bg-white"
                   />
                   <div className="min-w-0 flex-1">

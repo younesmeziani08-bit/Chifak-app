@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import db from '../database.js';
+import { capacites } from '../config/capacites.js';
 import {
   cleanString, isValidEmail, normalizeEmail, isValidDate, isValidTime,
   isValidPhone, isValidId, toBoundedInt, passwordStrengthError,
@@ -72,14 +73,29 @@ router.get('/api/doctors', async (req, res) => {
                  FROM doctors WHERE 1=1`;
     const params = [];
 
+    /* ── Comparaison insensible aux accents ──
+       « Béchar » et « Bechar » désignent la même ville. La comparaison était
+       littérale : un patient qui choisissait « Béjaïa » dans la liste ne
+       trouvait pas un cabinet enregistré à « Bejaia ». Les deux côtés passent
+       maintenant par la même normalisation — sans_accents() en base (elle
+       abaisse aussi la casse, d'où LIKE et non ILIKE), son équivalent exact
+       ici pour la valeur saisie.
+
+       Si la fonction n'a pas pu être créée au démarrage, on repart en
+       comparaison littérale plutôt que de citer une fonction absente. */
+    const sansAccents = (v) => v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const colonne = (nom) => (capacites.sansAccents ? `sans_accents(${nom})` : nom);
+    const valeur = (v) => (capacites.sansAccents ? sansAccents(escapeLike(v)) : escapeLike(v));
+    const operateur = capacites.sansAccents ? 'LIKE' : 'ILIKE';
+
     if (specialty) {
-      query += " AND specialty ILIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(specialty)}%`);
+      query += ` AND ${colonne('specialty')} ${operateur} ? ESCAPE '\\'`;
+      params.push(`%${valeur(specialty)}%`);
     }
 
     if (location) {
-      query += " AND city ILIKE ? ESCAPE '\\'";
-      params.push(`%${escapeLike(location)}%`);
+      query += ` AND ${colonne('city')} ${operateur} ? ESCAPE '\\'`;
+      params.push(`%${valeur(location)}%`);
     }
 
     // Filtre téléconsultation appliqué en base, pas dans le navigateur.
@@ -190,7 +206,24 @@ router.get('/api/doctors/:id', async (req, res) => {
 // POST /api/doctors - Créer un médecin (authentification requise)
 router.post('/api/doctors', authenticateToken, async (req, res) => {
   try {
-    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password } = req.body;
+    const { phone, email, doctorCode, image, availableSlots, nextAvailable, workingDays, latitude, longitude, mapsUrl, password } = req.body;
+
+    /* Les quatre champs de la fiche passent par cleanString, comme partout
+       ailleurs dans ce serveur. Ils arrivaient bruts : aucune borne de
+       longueur, aucun filtrage des caractères de contrôle — alors que
+       cleanString était importé quatre lignes plus haut et appliqué à des
+       champs bien moins visibles. La route exige un jeton du personnel, mais
+       c'est une raison de tenir la règle, pas de l'excepter. */
+    const name = cleanString(req.body.name, 120);
+    const specialty = cleanString(req.body.specialty, 80);
+    const address = cleanString(req.body.address, 200);
+    const city = cleanString(req.body.city, 80);
+
+    /* Durée de consultation bornée. « Number(slotDuration) || 30 » laissait
+       passer 0, les négatifs et les valeurs absurdes ; une saisie non
+       numérique donnait NaN, que PostgreSQL refuse dans une colonne entière,
+       et l'employé lisait « Erreur serveur » sans savoir quel champ corriger. */
+    const duree = toBoundedInt(req.body.slotDuration, { min: 5, max: 240, fallback: 30 }) ?? 30;
 
     // La photo peut être une image téléversée (encodée) : on borne sa taille,
     // sinon une requête forgée pourrait stocker plusieurs mégaoctets par fiche.
@@ -245,8 +278,8 @@ router.post('/api/doctors', authenticateToken, async (req, res) => {
       image || '👨‍⚕️',
       empreintePhoto(image),
       slots,
-      nextAvailable || 'Disponible maintenant',
-      Number(slotDuration) || 30,
+      cleanString(nextAvailable, 80) || 'Disponible maintenant',
+      duree,
       serializedWorkingDays,
       latitude || null,
       longitude || null,
@@ -285,7 +318,13 @@ router.post('/api/doctors', authenticateToken, async (req, res) => {
 // PUT /api/doctors/:id - Modifier un médecin (authentification requise)
 router.put('/api/doctors/:id', authenticateToken, async (req, res) => {
   try {
-    const { name, specialty, address, city, phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password, acceptsVideo } = req.body;
+    const { phone, email, doctorCode, image, availableSlots, nextAvailable, slotDuration, workingDays, latitude, longitude, mapsUrl, password, acceptsVideo } = req.body;
+
+    // Mêmes bornes qu'à la création : voir le commentaire dans POST /api/doctors.
+    const name = cleanString(req.body.name, 120);
+    const specialty = cleanString(req.body.specialty, 80);
+    const address = cleanString(req.body.address, 200);
+    const city = cleanString(req.body.city, 80);
 
     // La photo peut être une image téléversée (encodée) : on borne sa taille,
     // sinon une requête forgée pourrait stocker plusieurs mégaoctets par fiche.
@@ -364,8 +403,13 @@ router.put('/api/doctors/:id', authenticateToken, async (req, res) => {
       // navigateurs continuerait de désigner l'ancien portrait.
       photoInchangee || !image ? doctor.photo_hash : empreintePhoto(image),
       slots,
-      nextAvailable || doctor.next_available,
-      slotDuration !== undefined ? Number(slotDuration) : (doctor.slot_duration || 30),
+      cleanString(nextAvailable, 80) || doctor.next_available,
+      /* Champ absent = on ne touche pas à la valeur existante ; champ présent
+         mais illisible = on garde aussi l'existante plutôt que d'écrire NaN,
+         que PostgreSQL rejette en renvoyant « Erreur serveur ». */
+      slotDuration !== undefined
+        ? (toBoundedInt(slotDuration, { min: 5, max: 240, fallback: null }) ?? (doctor.slot_duration || 30))
+        : (doctor.slot_duration || 30),
       serializedWorkingDays,
       latitude !== undefined ? latitude : doctor.latitude,
       longitude !== undefined ? longitude : doctor.longitude,

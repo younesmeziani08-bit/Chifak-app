@@ -58,19 +58,38 @@ interface DayInfo {
   dayNum: number;
   month: string;
   isToday: boolean;
+  /**
+   * Date entière, énoncée : « mercredi 2 septembre 2026 ».
+   *
+   * Le bouton n'affiche que des abréviations empilées — « Mer », « 2 »,
+   * « sep. » — parfaitement claires à l'œil, et muettes autrement. Ces trente
+   * boutons n'exposaient aucun nom : un lecteur d'écran annonçait trente fois
+   * « bouton », et choisir une date devenait impossible sans voir l'écran.
+   */
+  libelleComplet: string;
 }
 
 function buildDays(count: number, isArabic: boolean): DayInfo[] {
+  const enToutesLettres = new Intl.DateTimeFormat(isArabic ? 'ar' : 'fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+
   return Array.from({ length: count }, (_, i) => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() + i);
+    const date = enToutesLettres.format(d);
     return {
       full: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
       weekday: i === 0 ? (isArabic ? 'اليوم' : 'Auj.') : (isArabic ? DAYS_AR[d.getDay()] : DAYS_FR[d.getDay()]),
       dayNum: d.getDate(),
       month: isArabic ? MONTHS_AR[d.getMonth()] : MONTHS_FR[d.getMonth()],
       isToday: i === 0,
+      // « Aujourd'hui, mercredi 2 septembre 2026 » : la mention du jour même
+      // est portée visuellement par « Auj. », elle doit l'être aussi ici.
+      libelleComplet: i === 0
+        ? `${isArabic ? 'اليوم' : "Aujourd'hui"}, ${date}`
+        : date,
     };
   });
 }
@@ -253,17 +272,25 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
                 return (
                   <button
                     key={d.full}
+                    type="button"
                     ref={isActive ? activeBtnRef : undefined}
                     onClick={() => setActiveDay(d.full)}
+                    /* Le nom de la date, et l'état sélectionné : sans le
+                       second, un lecteur d'écran énonce trente dates sans
+                       jamais dire laquelle est active. */
+                    aria-label={d.libelleComplet}
+                    aria-pressed={isActive}
                     className={`flex flex-col items-center flex-shrink-0 min-w-[68px] px-3 py-2 rounded-xl border transition-colors ${
                       isActive
                         ? 'bg-blue-600 border-blue-600 text-white'
                         : 'bg-white border-gray-200 text-gray-600 hover:border-blue-300'
                     }`}
                   >
-                    <span className="text-xs font-medium capitalize">{d.weekday}</span>
-                    <span className="text-lg font-semibold leading-tight">{d.dayNum}</span>
-                    <span className={`text-[10px] ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>{d.month}</span>
+                    {/* Les trois fragments visibles sont décoratifs pour
+                        l'assistance : le bouton porte déjà son nom complet. */}
+                    <span aria-hidden="true" className="text-xs font-medium capitalize">{d.weekday}</span>
+                    <span aria-hidden="true" className="text-lg font-semibold leading-tight">{d.dayNum}</span>
+                    <span aria-hidden="true" className={`text-[10px] ${isActive ? 'text-blue-100' : 'text-gray-400'}`}>{d.month}</span>
                   </button>
                 );
               })}

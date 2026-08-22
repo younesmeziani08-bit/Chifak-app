@@ -24,11 +24,12 @@
     "@capacitor/core": "^8.4.2",
     "@capacitor/ios": "^8.4.2",
     "@dzcode-io/leblad": "^1.0.3",
+    "@vladmandic/human": "^3.3.5",
     "clsx": "2.1.1",
+    "qrcode-generator": "^2.0.4",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "tailwind-merge": "3.4.0",
-    "@vladmandic/human": "^3.3.5"
+    "tailwind-merge": "3.4.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
@@ -40,7 +41,7 @@
     "@vitejs/plugin-react": "5.1.1",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
-    "vite": "7.3.2",
+    "vite": "^7.3.6",
     "vite-plugin-singlefile": "2.3.0"
   }
 }

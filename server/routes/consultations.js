@@ -74,8 +74,18 @@ router.post('/api/consultations', authenticateDoctorToken, async (req, res) => {
 // GET /api/consultations - Récupérer les consultations du médecin connecté
 router.get('/api/consultations', authenticateDoctorToken, async (req, res) => {
   try {
+    /* Colonnes nommées une à une, comme partout ailleurs dans ce serveur.
+       C'était le dernier « SELECT * » du projet, et il portait sur les
+       dossiers de consultation — la donnée la plus sensible du service.
+
+       La requête est bien filtrée par praticien, donc rien ne fuitait. Mais
+       l'argument vaut ici comme ailleurs : ce qu'on ne sélectionne pas ne
+       peut pas sortir, aujourd'hui comme après la prochaine colonne ajoutée
+       à la table. */
     const consultations = await db.prepare(`
-      SELECT c.*, a.appointment_date as next_date, a.appointment_time as next_time
+      SELECT c.id, c.doctor_id, c.patient_name, c.patient_phone, c.patient_email,
+             c.state_description, c.progress_notes, c.next_appointment_id, c.created_at,
+             a.appointment_date AS next_date, a.appointment_time AS next_time
       FROM consultations c
       LEFT JOIN appointments a ON c.next_appointment_id = a.id
       WHERE c.doctor_id = ?

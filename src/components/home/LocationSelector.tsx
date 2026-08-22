@@ -2,6 +2,31 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import leblad from '@dzcode-io/leblad';
 import { useLanguage } from '../../contexts/LanguageContext';
 
+/**
+ * Orthographe française des wilayas mal transcrites par @dzcode-io/leblad.
+ *
+ * Les fautes viennent de la bibliothèque, pas d'ici — mais elles s'affichaient
+ * telles quelles dans la barre de recherche de la page d'accueil, à des gens
+ * qui vivent dans ces wilayas. « Saefda » pour Saïda est le cas le plus voyant :
+ * ce n'est pas une approximation d'accent, c'est un mot qui n'existe pas.
+ *
+ * Le nom arabe de la bibliothèque, lui, est correct partout — on n'y touche
+ * pas. Seule la colonne française est reprise, wilaya par wilaya, et
+ * uniquement là où c'est faux : une table de correction qui réécrirait tout
+ * finirait par diverger de la source à la première mise à jour.
+ */
+const NOMS_CORRIGES: Record<number, string> = {
+  8: 'Béchar',           // « Bechar »
+  12: 'Tébessa',         // « Tbessa »
+  20: 'Saïda',           // « Saefda »
+  22: 'Sidi Bel Abbès',  // « Sidi Bel Abbes »
+  26: 'Médéa',           // « Medea »
+  35: 'Boumerdès',       // « Boumerdes »
+  44: 'Aïn Defla',       // « Ain Defla »
+  45: 'Naâma',           // « Naama »
+  46: 'Aïn Témouchent',  // « Ain Temouchent »
+};
+
 interface LocationSelectorProps {
   onLocationChange: (location: string) => void;
   onWilayaChange?: (wilaya: { code: number; name: string; nameAr: string } | null) => void;
@@ -63,7 +88,7 @@ export default function LocationSelector({
       .filter((w: any) => Number(w.mattricule) >= 1 && Number(w.mattricule) <= 48)
       .map((w: any) => ({
         code: Number(w.mattricule),
-        name: w.name,
+        name: NOMS_CORRIGES[Number(w.mattricule)] ?? w.name,
         nameAr: w.name_ar,
       }))
       .sort((a: Wilaya, b: Wilaya) => a.code - b.code);

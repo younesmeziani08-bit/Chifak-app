@@ -70,10 +70,19 @@ router.post('/api/doctors/:id/reviews', authenticatePatientToken, async (req, re
       return res.status(400).json({ error: 'Identifiant invalide' });
     }
     const doctorId = Number(req.params.id);
-    const rating = Number(req.body.rating);
-    const comment = typeof req.body.comment === 'string' ? req.body.comment.trim() : null;
+    const rating = toBoundedInt(req.body.rating, { min: 1, max: 5, fallback: null });
 
-    if (!rating || rating < 1 || rating > 5) {
+    /* `cleanString` plutôt qu'un simple `.trim()`.
+       Le commentaire n'avait AUCUNE borne : un avis de cinquante mille
+       caractères — vérifié — s'enregistrait puis repartait dans la fiche
+       publique du praticien, donc vers chaque visiteur, indéfiniment. Les
+       caractères de contrôle passaient avec.
+
+       Deux mille caractères, comme les avis du personnel dans staff.js.
+       C'est déjà très au-delà de ce que quiconque écrit sur un médecin. */
+    const comment = cleanString(req.body.comment, 2000);
+
+    if (!rating) {
       return res.status(400).json({ error: 'Note invalide (1 à 5)' });
     }
 
