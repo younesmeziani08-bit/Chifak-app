@@ -19,6 +19,12 @@ import qrcode from 'qrcode-generator';
  * Effet de bord bienvenu : le QR s'affiche même sans réseau, et l'impression
  * ne dépend plus de la disponibilité d'un tiers.
  *
+ * Il vit dans src/components/shared/ et non dans admin/ : le QR sert
+ * désormais aux deux applications — l'administration l'imprime pour les
+ * employés, et le praticien imprime le sien depuis son espace. L'application
+ * patiente n'a pas le droit d'importer depuis admin/, et `npm run contrats`
+ * le vérifie.
+ *
  * Le rendu est un SVG d'un seul chemin — un rectangle par module noir. Plus
  * léger qu'une grille de <rect>, et net à n'importe quelle taille, ce qui
  * compte pour un code destiné à être imprimé puis scanné.

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Doctor } from '../../src/types/metier';
 import { useDoctors } from '../../src/contexts/DoctorsContext';
 import { useLanguage } from '../../src/contexts/LanguageContext';
 import { appointmentsAPI } from '../services/api';
 import DoctorAvatar from '../../src/components/shared/DoctorAvatar';
+import AffichettePorte from '../../src/components/shared/AffichettePorte';
 import AddDoctorForm from './AddDoctorForm';
 
 export default function DoctorsList() {
@@ -13,6 +14,8 @@ export default function DoctorsList() {
   const [specialtyFilter, setSpecialtyFilter] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'specialty' | 'city'>('name');
   /** Fiche en cours de correction, null si aucune. */
+  /** Praticien dont on affiche l'affichette de porte, ou null. */
+  const [qrPour, setQrPour] = useState<number | null>(null);
   const [editing, setEditing] = useState<Doctor | null>(null);
 
   /* Rendez-vous à venir par praticien : sert à prévenir avant une suppression
@@ -206,6 +209,19 @@ export default function DoctorsList() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
+                  {/* Affichette de porte : l'accueil peut l'imprimer et la
+                      remettre au praticien le jour de son inscription, sans
+                      attendre qu'il se connecte à son espace. */}
+                  <button
+                    onClick={() => setQrPour(qrPour === doctor.id ? null : doctor.id)}
+                    title={isArabic ? 'رمز QR للعيادة' : 'QR code du cabinet'}
+                    aria-pressed={qrPour === doctor.id}
+                    className={`w-10 h-10 flex items-center justify-center rounded-lg transition ${
+                      qrPour === doctor.id ? 'text-blue-600 bg-blue-50' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
+                    }`}
+                  >
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3zM19 19h2v2h-2zM14 19h2v2h-2zM19 14h2v2h-2z" /></svg>
+                  </button>
                   <button
                     onClick={() => setEditing(doctor)}
                     title={isArabic ? 'تعديل' : 'Modifier'}
@@ -257,6 +273,16 @@ export default function DoctorsList() {
                   ★ {doctor.rating} ({doctor.reviewCount})
                 </span>
               </div>
+
+              {qrPour === doctor.id && (
+                <div className="mt-3">
+                  <AffichettePorte
+                    url={`${(import.meta.env.VITE_PATIENT_URL || window.location.origin).replace(/\/$/, '')}/dr/${doctor.id}`}
+                    nomMedecin={doctor.name}
+                    specialite={doctor.specialty}
+                  />
+                </div>
+              )}
             </div>
           ))
         )}
@@ -296,7 +322,8 @@ export default function DoctorsList() {
               </tr>
             ) : (
               filteredDoctors.map((doctor) => (
-                <tr key={doctor.id} className="hover:bg-gray-50 transition">
+                <Fragment key={doctor.id}>
+                <tr className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <DoctorAvatar doctor={doctor} className="w-11 h-11 mr-3 flex-shrink-0" rounded="rounded-xl" />
@@ -343,6 +370,17 @@ export default function DoctorsList() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end gap-3">
+                      {/* Affichette de porte : l'accueil l'imprime et la remet
+                          au praticien le jour de son inscription, sans attendre
+                          qu'il se connecte à son espace. */}
+                      <button
+                        onClick={() => setQrPour(qrPour === doctor.id ? null : doctor.id)}
+                        title={isArabic ? 'رمز QR للعيادة' : 'QR code du cabinet'}
+                        aria-pressed={qrPour === doctor.id}
+                        className={`transition ${qrPour === doctor.id ? 'text-blue-600' : 'text-gray-500 hover:text-blue-600'}`}
+                      >
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><path d="M14 14h3v3h-3zM19 19h2v2h-2zM14 19h2v2h-2zM19 14h2v2h-2z" /></svg>
+                      </button>
                       <button
                         onClick={() => setEditing(doctor)}
                         title={isArabic ? 'تعديل' : 'Modifier'}
@@ -382,6 +420,21 @@ export default function DoctorsList() {
                     </div>
                   </td>
                 </tr>
+                {qrPour === doctor.id && (
+                  <tr>
+                    {/* Une ligne entière : l'affichette a besoin de largeur,
+                        et la coincer dans la colonne d'actions la rendrait
+                        illisible. */}
+                    <td colSpan={5} className="px-6 pb-5 bg-gray-50">
+                      <AffichettePorte
+                        url={`${(import.meta.env.VITE_PATIENT_URL || window.location.origin).replace(/\/$/, '')}/dr/${doctor.id}`}
+                        nomMedecin={doctor.name}
+                        specialite={doctor.specialty}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))
             )}
           </tbody>

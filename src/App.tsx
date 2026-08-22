@@ -13,6 +13,7 @@ import ProfessionalModal from './components/shared/ProfessionalModal';
 import FeedbackPage from './components/doctor/FeedbackPage';
 import AnnulationParLien from './components/booking/AnnulationParLien';
 import PagesLegales from './components/legal/PagesLegales';
+import ReservationDevantLaPorte from './components/booking/ReservationDevantLaPorte';
 import { appointmentsAPI, patientAPI } from './services/api';
 import PageTransition from './components/shared/PageTransition';
 
@@ -44,6 +45,26 @@ function feedbackTokenFromPath(): string | null {
 function jetonRendezVousDepuisUrl(): string | null {
   const m = window.location.pathname.match(/^\/rdv\/([A-Za-z0-9_-]{8,64})\/?$/);
   return m ? m[1] : null;
+}
+
+/**
+ * /dr/<id> — le QR code affiché sur la porte d'un cabinet.
+ *
+ * Quelqu'un s'est déplacé et se tient devant une porte, souvent fermée. Il
+ * scanne, voit les créneaux libres de CE praticien, en choisit un, et repart
+ * avec un rendez-vous. Pas de recherche, pas de compte, pas de code par
+ * courrier à attendre sur un trottoir.
+ *
+ * L'adresse porte l'identifiant du praticien, en clair : un QR code s'imprime
+ * une fois et reste collé des années sur une porte. Un jeton aléatoire, lui,
+ * se révoque — et le jour où l'on en révoquerait un, toutes les affiches déjà
+ * posées deviendraient muettes sans que personne ne comprenne pourquoi.
+ * Il n'y a d'ailleurs rien à protéger ici : les horaires d'un praticien sont
+ * publics, c'est même le but.
+ */
+function idMedecinDepuisUrl(): number | null {
+  const m = window.location.pathname.match(/^\/dr\/(\d{1,9})\/?$/);
+  return m ? Number(m[1]) : null;
 }
 
 /**
@@ -180,6 +201,19 @@ export default function App() {
   const feedbackToken = feedbackTokenFromPath();
   if (feedbackToken) {
     return <FeedbackPage token={feedbackToken} />;
+  }
+
+  /* Réservation depuis la porte du cabinet : avant tout le reste, sans
+     en-tête ni session. C'est le chemin le plus court qui existe dans
+     l'application, et il doit le rester. */
+  const idMedecin = idMedecinDepuisUrl();
+  if (idMedecin) {
+    return (
+      <ReservationDevantLaPorte
+        doctorId={idMedecin}
+        onRetourAccueil={() => { window.location.href = '/'; }}
+      />
+    );
   }
 
   /* Pages légales : publiques, sans session, avant tout le reste. */

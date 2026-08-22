@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../src/contexts/LanguageContext';
 import { employeesAPI, Employee, EmployeeStats } from '../services/api';
-import QrCode from '../composants/QrCode';
+import QrCode from '../../src/components/shared/QrCode';
 
 /**
  * Gestion du personnel : création, suppression, activité par période,

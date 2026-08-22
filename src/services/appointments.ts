@@ -31,6 +31,15 @@ export interface AppointmentCreate {
   /** 'cabinet' (défaut) ou 'video'. Le serveur refuse 'video' si le
    *  praticien n'a pas activé la téléconsultation sur son compte. */
   consultationType?: 'cabinet' | 'video';
+  /**
+   * Langue du patient, conservée AVEC le rendez-vous.
+   *
+   * Le serveur la lit déjà et la range en base — elle manquait seulement ici,
+   * si bien qu'aucun appelant ne pouvait la transmettre en TypeScript. Sans
+   * elle, le rappel de la veille, envoyé des semaines plus tard, partirait en
+   * français à quelqu'un qui a tout fait en arabe.
+   */
+  language?: 'fr' | 'ar';
 }
 
 export const appointmentsAPI = {

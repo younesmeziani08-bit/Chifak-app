@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import VideoCall from '../booking/VideoCall';
+import AffichettePorte from '../shared/AffichettePorte';
 import { slotsForDay, expandSlots, todayIso, maxBookingIso, blockedKey, BlockedSlotEntry } from '../../utils/slots';
 import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, annulationsAPI, AppointmentCreate } from '../../services/api';
 
@@ -943,6 +944,18 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
           </div>
         ) : activeTab === 'profile' ? (
           /* ── Mon profil ── */
+          <div className="space-y-6">
+            {/* Le QR code de la porte, en tête de l'onglet : c'est ce que le
+                praticien vient chercher une fois, puis plus jamais — autant
+                qu'il le trouve du premier coup d'oeil. */}
+            {docProfile && (
+              <AffichettePorte
+                url={`${(import.meta.env.VITE_PATIENT_URL || window.location.origin).replace(/\/$/, '')}/dr/${docProfile.id}`}
+                nomMedecin={docProfile.name}
+                specialite={docProfile.specialty}
+              />
+            )}
+
           <form onSubmit={handleProfileSave} className="space-y-6">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
               <h3 className="font-bold text-gray-900 mb-4">{isArabic ? 'المعلومات (غير قابلة للتعديل)' : 'Coordonnées (non modifiables)'}</h3>
@@ -1305,6 +1318,7 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
               )}
             </div>
           </form>
+          </div>
         ) : activeTab === 'consultation' ? (
           <form onSubmit={handleConsultationSubmit} className="space-y-8">
             {/* Section Patient */}
