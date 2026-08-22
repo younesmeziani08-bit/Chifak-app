@@ -94,6 +94,65 @@ describe('Secret chiffré au repos', () => {
   });
 });
 
+/**
+ * La clé de chiffrement était dérivée de JWT_SECRET. Faire tourner ce
+ * secret — après une fuite, un départ de prestataire, ou par simple hygiène —
+ * rendait donc TOUS les secrets TOTP indéchiffrables d'un coup : chaque
+ * membre du personnel réduit à ses codes de secours, et qui les avait perdus
+ * n'ouvrait plus l'administration.
+ *
+ * Ces cas verrouillent les deux propriétés qui comptent : les secrets déjà en
+ * base restent lisibles après le déploiement du correctif, et une rotation de
+ * JWT_SECRET n'a plus aucun effet sur eux.
+ */
+describe('Clé TOTP dédiée, indépendante de JWT_SECRET', () => {
+  const JWT_INITIAL = process.env.JWT_SECRET;
+
+  const avec = (env, action) => {
+    const avant = { JWT_SECRET: process.env.JWT_SECRET, TOTP_KEY: process.env.TOTP_KEY };
+    Object.assign(process.env, env);
+    if (env.TOTP_KEY === undefined && 'TOTP_KEY' in env) delete process.env.TOTP_KEY;
+    try { return action(); } finally {
+      process.env.JWT_SECRET = avant.JWT_SECRET;
+      if (avant.TOTP_KEY === undefined) delete process.env.TOTP_KEY;
+      else process.env.TOTP_KEY = avant.TOTP_KEY;
+    }
+  };
+
+  test('un secret de l\'ancien format reste lisible après l\'ajout de TOTP_KEY', () => {
+    // Chiffré sans TOTP_KEY : la clé vient de JWT_SECRET, comme avant.
+    const ancien = avec({ JWT_SECRET: JWT_INITIAL }, () => chiffrerSecret('JBSWY3DPEHPK3PXP'));
+
+    // On introduit la clé dédiée. Le secret existant doit survivre.
+    const relu = avec(
+      { JWT_SECRET: JWT_INITIAL, TOTP_KEY: 'cle-dediee-au-totp-assez-longue-pour-servir' },
+      () => dechiffrerSecret(ancien),
+    );
+    assert.equal(relu, 'JBSWY3DPEHPK3PXP');
+  });
+
+  test('faire tourner JWT_SECRET ne détruit plus les secrets', () => {
+    const TOTP_KEY = 'cle-dediee-au-totp-assez-longue-pour-servir';
+    const chiffre = avec({ JWT_SECRET: JWT_INITIAL, TOTP_KEY }, () => chiffrerSecret('KRSXG5CTMVRXEZLU'));
+
+    const apresRotation = avec(
+      { JWT_SECRET: 'un-secret-de-signature-tout-neuf-apres-rotation', TOTP_KEY },
+      () => dechiffrerSecret(chiffre),
+    );
+    assert.equal(apresRotation, 'KRSXG5CTMVRXEZLU');
+  });
+
+  test('une clé étrangère ne déchiffre rien', () => {
+    const TOTP_KEY = 'cle-dediee-au-totp-assez-longue-pour-servir';
+    const chiffre = avec({ JWT_SECRET: JWT_INITIAL, TOTP_KEY }, () => chiffrerSecret('MFRGGZDFMZTWQ2LK'));
+
+    avec(
+      { JWT_SECRET: JWT_INITIAL, TOTP_KEY: 'une-cle-qui-n-a-jamais-servi-a-chiffrer-ceci' },
+      () => assert.throws(() => dechiffrerSecret(chiffre), /illisible/),
+    );
+  });
+});
+
 describe('Codes de secours', () => {
   test('huit codes distincts', () => {
     const c = genererCodesDeSecours();

@@ -163,13 +163,47 @@ export function secretLisible(secret) {
    suffirait donc à contourner la double authentification — ce qui la rendrait
    décorative.
 
-   On le chiffre avec une clé dérivée de JWT_SECRET. La protection vaut ce que
-   vaut ce secret : si l'attaquant l'obtient aussi, il déchiffre. C'est une
-   défense en profondeur, pas une garantie absolue — mais elle couvre le cas
-   le plus courant, qui est la fuite de la base seule. */
-const cleChiffrement = () => crypto.createHash('sha256')
-  .update(`totp:${process.env.JWT_SECRET || ''}`)
-  .digest();
+   La protection vaut ce que vaut la clé : si l'attaquant l'obtient aussi, il
+   déchiffre. C'est une défense en profondeur, pas une garantie absolue — mais
+   elle couvre le cas le plus courant, qui est la fuite de la base seule.
+
+   ── Pourquoi une clé DÉDIÉE, et non JWT_SECRET ──
+
+   La clé était dérivée de JWT_SECRET. Cela marchait, mais liait deux durées
+   de vie qui n'ont aucune raison d'être liées : JWT_SECRET est un secret de
+   signature, qu'on fait tourner sans état d'âme — après une fuite, un départ
+   de prestataire, ou par simple hygiène. Or le jour de cette rotation, TOUS
+   les secrets TOTP devenaient indéchiffrables d'un coup. Chaque membre du
+   personnel se retrouvait devant un code refusé, réduit à ses codes de
+   secours ; et qui les avait perdus n'ouvrait plus l'administration du tout.
+
+   Une rotation d'hygiène ne doit pas enfermer l'équipe dehors. TOTP_KEY est
+   donc indépendante : elle ne tourne que si l'on décide de faire tourner les
+   secrets TOTP eux-mêmes, ce qui suppose de réinscrire chaque compte.
+
+   ── Compatibilité avec l'existant ──
+
+   Les secrets déjà en base sont chiffrés avec l'ancienne clé. On tente donc
+   la clé courante, puis l'ancienne. Un secret ancien reste lisible ; il sera
+   réécrit avec la nouvelle clé à la prochaine réinscription. Sans ce repli,
+   déployer ce correctif produirait exactement la panne qu'il cherche à
+   éviter. */
+const cleDe = (source) => crypto.createHash('sha256').update(`totp:${source}`).digest();
+
+/** Clé courante : TOTP_KEY si elle existe, sinon l'ancienne dérivation. */
+const cleChiffrement = () => cleDe(process.env.TOTP_KEY || process.env.JWT_SECRET || '');
+
+/**
+ * Clés acceptées en lecture, de la plus récente à la plus ancienne.
+ * Le doublon est écarté quand TOTP_KEY n'est pas définie.
+ */
+function clesDeLecture() {
+  const cles = [cleChiffrement()];
+  if (process.env.TOTP_KEY) {
+    cles.push(cleDe(process.env.JWT_SECRET || ''));
+  }
+  return cles;
+}
 
 export function chiffrerSecret(secret) {
   const vecteur = crypto.randomBytes(12);
@@ -181,9 +215,21 @@ export function chiffrerSecret(secret) {
 export function dechiffrerSecret(stocke) {
   const [v, tag, contenu] = String(stocke).split('.');
   if (!v || !tag || !contenu) throw new Error('Secret illisible.');
-  const dechiffreur = crypto.createDecipheriv('aes-256-gcm', cleChiffrement(), Buffer.from(v, 'base64'));
-  dechiffreur.setAuthTag(Buffer.from(tag, 'base64'));
-  return Buffer.concat([dechiffreur.update(Buffer.from(contenu, 'base64')), dechiffreur.final()]).toString('utf8');
+
+  for (const cle of clesDeLecture()) {
+    try {
+      const dechiffreur = crypto.createDecipheriv('aes-256-gcm', cle, Buffer.from(v, 'base64'));
+      dechiffreur.setAuthTag(Buffer.from(tag, 'base64'));
+      return Buffer.concat([
+        dechiffreur.update(Buffer.from(contenu, 'base64')),
+        dechiffreur.final(),
+      ]).toString('utf8');
+    } catch {
+      /* Mauvaise clé : le marqueur d'authentification GCM ne correspond pas.
+         On essaie la suivante. */
+    }
+  }
+  throw new Error('Secret illisible.');
 }
 
 /**

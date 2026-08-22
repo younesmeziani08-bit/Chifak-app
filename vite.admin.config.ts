@@ -27,6 +27,17 @@ const __dirname = path.dirname(__filename);
  */
 export default defineConfig({
   root: path.resolve(__dirname, 'admin'),
+  /* Les fichiers .env se lisent à la RACINE du dépôt, pas dans admin/.
+     Sans cette ligne, Vite les cherchait sous `root` — donc dans admin/, où
+     il n'y en a aucun. VITE_API_URL restait indéfini et l'adresse de l'API
+     retombait sur « /api », relatif au domaine de l'administration. Comme
+     les deux applications se déploient sur deux domaines distincts (voir
+     plus haut), l'administration en ligne appelait /api sur elle-même et
+     recevait 404 sur chaque requête : l'interface entière était inerte.
+
+     La compilation, elle, réussissait sans un mot. C'est le genre de panne
+     qu'on ne découvre qu'en production. */
+  envDir: __dirname,
   plugins: [react(), tailwindcss()],
   appType: 'spa',
 

@@ -2,6 +2,7 @@ import './env.js';
 import pg from 'pg';
 import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
+import { capacites } from './config/capacites.js';
 
 const { Pool } = pg;
 
@@ -10,16 +11,52 @@ const { Pool } = pg;
 // - max : plafonne le nombre de connexions simultanées (les offres gratuites en ont peu)
 // - idleTimeout : recycle les connexions inactives
 // - connectionTimeout : échoue vite plutôt que d'empiler des requêtes bloquées
+/**
+ * Réglage TLS de la connexion à PostgreSQL.
+ *
+ * En local, pas de TLS : la base est sur la même machine.
+ *
+ * À distance, le trafic porte l'intégralité des dossiers — il doit être
+ * chiffré, et le serveur en face doit être AUTHENTIFIÉ. Sans authentification,
+ * le chiffrement protège d'une écoute passive mais pas de quelqu'un placé sur
+ * le chemin, qui se présente à la place de la base et lit tout.
+ *
+ * `rejectUnauthorized: false` était donc appliqué en dur : la vérification du
+ * certificat était désactivée pour tout le monde, sans possibilité de faire
+ * autrement. Elle devient maintenant le REPLI, pas la règle :
+ *
+ *   · DATABASE_CA renseignée → le certificat est vérifié contre elle. C'est
+ *     le mode à viser. La valeur est le certificat racine de l'hébergeur, au
+ *     format PEM ; les retours à la ligne peuvent être écrits « \n », ce que
+ *     supportent mal certains panneaux de configuration.
+ *   · absente → ancien comportement, et un avertissement au démarrage pour
+ *     que ce ne soit jamais un oubli silencieux.
+ */
+function reglageSsl() {
+  const url = process.env.DATABASE_URL;
+  if (!url || /localhost|127\.0\.0\.1/.test(url)) return false;
+
+  const ca = process.env.DATABASE_CA;
+  if (ca) {
+    return { ca: ca.replace(/\\n/g, '\n'), rejectUnauthorized: true };
+  }
+
+  console.warn(
+    '⚠️  DATABASE_CA absente : le certificat de PostgreSQL n\'est PAS vérifié.\n' +
+    '    La connexion est chiffrée, mais rien ne prouve que le serveur en face\n' +
+    '    est bien la base. Renseignez le certificat racine de l\'hébergeur pour\n' +
+    '    fermer cet angle.',
+  );
+  return { rejectUnauthorized: false };
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: Number(process.env.PG_POOL_MAX) || 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
   keepAlive: true,
-  ssl:
-    process.env.DATABASE_URL && !/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL)
-      ? { rejectUnauthorized: false }
-      : false,
+  ssl: reglageSsl(),
 });
 
 // Un client du pool peut échouer (coupure réseau, redémarrage DB). On log sans tuer le process.
@@ -27,10 +64,100 @@ pool.on('error', (err) => {
   console.error('Erreur inattendue sur un client PostgreSQL inactif:', err.message);
 });
 
-// Convertit les placeholders SQLite (?) en placeholders PostgreSQL ($1, $2, ...)
-function toPg(sql) {
+/**
+ * Convertit les marqueurs SQLite (?) en marqueurs PostgreSQL ($1, $2, …).
+ *
+ * ── Pourquoi ce n'est pas un simple remplacement ──
+ *
+ * La version d'origine faisait `sql.replace(/\?/g, …)` : elle remplaçait TOUT
+ * point d'interrogation de la chaîne. Aucune requête n'en contenait hors
+ * marqueur, donc rien ne cassait — mais deux constructions parfaitement
+ * normales suffisaient à corrompre silencieusement une requête :
+ *
+ *   · un « ? » dans une chaîne littérale, par exemple
+ *     `WHERE libelle = 'Déjà vu ?'` ;
+ *   · les opérateurs jsonb de PostgreSQL — `?` (la clé existe-t-elle),
+ *     `?|` (l'une de ces clés), `?&` (toutes ces clés).
+ *
+ * Dans les deux cas la requête partait avec un marqueur de trop, et le
+ * pilote se plaignait d'un nombre de paramètres incohérent — à supposer
+ * qu'elle échoue franchement, ce qui n'est pas garanti.
+ *
+ * On parcourt donc la chaîne en sachant où l'on est : à l'intérieur d'un
+ * littéral, d'un identifiant entre guillemets, d'un commentaire, ou dans le
+ * corps de la requête. Seuls les « ? » du corps deviennent des marqueurs, et
+ * les opérateurs jsonb sont laissés intacts.
+ *
+ * Pour tester l'existence d'une clé jsonb, préférer malgré tout la forme
+ * fonctionnelle `jsonb_exists(colonne, ?)` : elle dit la même chose sans
+ * jamais dépendre de cette analyse.
+ */
+export function toPg(sql) {
+  let sortie = '';
   let i = 0;
-  return sql.replace(/\?/g, () => `$${++i}`);
+  let n = 0;
+
+  while (i < sql.length) {
+    const c = sql[i];
+    const suivant = sql[i + 1];
+
+    // Chaîne littérale : '…', où '' représente une apostrophe.
+    if (c === "'") {
+      const debut = i++;
+      while (i < sql.length) {
+        if (sql[i] === "'" && sql[i + 1] === "'") { i += 2; continue; }
+        if (sql[i] === "'") { i++; break; }
+        i++;
+      }
+      sortie += sql.slice(debut, i);
+      continue;
+    }
+
+    // Identifiant entre guillemets : "…"
+    if (c === '"') {
+      const debut = i++;
+      while (i < sql.length && sql[i] !== '"') i++;
+      i++;
+      sortie += sql.slice(debut, i);
+      continue;
+    }
+
+    // Commentaire de fin de ligne : -- …
+    if (c === '-' && suivant === '-') {
+      const debut = i;
+      while (i < sql.length && sql[i] !== '\n') i++;
+      sortie += sql.slice(debut, i);
+      continue;
+    }
+
+    // Commentaire de bloc : /* … */
+    if (c === '/' && suivant === '*') {
+      const debut = i;
+      i += 2;
+      while (i < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) i++;
+      i += 2;
+      sortie += sql.slice(debut, Math.min(i, sql.length));
+      continue;
+    }
+
+    // Opérateurs jsonb ?| et ?& : ce ne sont pas des marqueurs.
+    if (c === '?' && (suivant === '|' || suivant === '&')) {
+      sortie += c + suivant;
+      i += 2;
+      continue;
+    }
+
+    if (c === '?') {
+      sortie += `$${++n}`;
+      i++;
+      continue;
+    }
+
+    sortie += c;
+    i++;
+  }
+
+  return sortie;
 }
 
 /**
@@ -518,6 +645,52 @@ export async function initDatabase() {
     console.log('✅ Recherche par trigrammes active');
   } catch (e) {
     console.warn('pg_trgm indisponible, recherche non indexée:', e.message);
+  }
+
+  /* ── Recherche insensible aux accents ──
+
+     « Béchar » et « Bechar » désignent la même ville, et personne ne sait
+     laquelle des deux graphies a été saisie dans la fiche d'un praticien.
+     La recherche comparait pourtant les chaînes telles quelles : un patient
+     qui choisissait « Béjaïa » dans la liste ne trouvait pas un cabinet
+     enregistré à « Bejaia », et réciproquement. Sur un annuaire médical,
+     c'est un praticien qui n'existe pas pour la moitié de ses patients.
+
+     `sansAccents` est écrite en SQL immuable, donc indexable. L'index qui
+     suit porte sur la valeur normalisée : la recherche reste immédiate. Les
+     deux côtés de la comparaison passent par cette même fonction — voir
+     routes/doctors.js.
+
+     Pourquoi `translate` plutôt que l'extension `unaccent` : celle-ci n'est
+     pas installable sur tous les hébergements, et surtout ses fonctions ne
+     sont pas marquées immuables, ce qui interdit de les indexer. La table de
+     correspondance ci-dessous couvre le français et le berbère latin, seules
+     langues dans lesquelles ces fiches sont saisies. */
+  try {
+    await pool.query(`
+      CREATE OR REPLACE FUNCTION sans_accents(t text) RETURNS text AS $$
+        SELECT lower(translate(
+          COALESCE(t, ''),
+          'àâäáãåÀÂÄÁÃÅéèêëÉÈÊËíìîïÍÌÎÏóòôöõÓÒÔÖÕúùûüÚÙÛÜçÇñÑýÿÝ',
+          'aaaaaaAAAAAAeeeeEEEEiiiiIIIIoooooOOOOOuuuuUUUUcCnNyyY'
+        ))
+      $$ LANGUAGE sql IMMUTABLE STRICT
+    `);
+    await pool.query(
+      'CREATE INDEX IF NOT EXISTS idx_doctors_city_sansaccents ON doctors USING gin (sans_accents(city) gin_trgm_ops)',
+    );
+    await pool.query(
+      'CREATE INDEX IF NOT EXISTS idx_doctors_specialty_sansaccents ON doctors USING gin (sans_accents(specialty) gin_trgm_ops)',
+    );
+    capacites.sansAccents = true;
+    console.log('✅ Recherche insensible aux accents active');
+  } catch (e) {
+    /* La fonction n'emploie que `translate` et `lower`, disponibles partout ;
+       cet échec serait donc un droit manquant, pas une extension absente. On
+       le signale et la recherche repart en comparaison littérale — moins
+       tolérante, mais jamais en erreur. Le drapeau est lu par
+       routes/doctors.js : aucune requête ne cite une fonction inexistante. */
+    console.warn('Recherche sans accents indisponible, repli littéral :', e.message);
   }
 
   console.log('✅ Tables PostgreSQL prêtes');

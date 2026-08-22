@@ -4,6 +4,7 @@ server/node_modules/
 
 # Build web
 dist/
+dist-admin/
 dist-ssr/
 
 # Projets natifs générés par Capacitor
