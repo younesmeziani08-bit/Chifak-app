@@ -267,7 +267,7 @@ export async function initDatabase() {
       appointment_date TEXT NOT NULL,
       appointment_time TEXT NOT NULL,
       reason TEXT,
-      status TEXT DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed')),
+      status TEXT DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed', 'no_show')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
     )
@@ -621,6 +621,21 @@ export async function initDatabase() {
      déclenchaient sur « la date est passée » plutôt que sur « la consultation
      a eu lieu ». */
   await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS attendance_marked_at TIMESTAMP');
+
+  /* La contrainte n'admettait pas « no_show ». Sur une base déjà créée, la
+     déclaration de table ci-dessus n'est jamais rejouée — CREATE TABLE IF NOT
+     EXISTS ne modifie rien d'existant — et un praticien qui notait une absence
+     recevait « Erreur serveur » sans plus d'explication. On la remplace donc
+     explicitement.
+
+     Distinguer l'absence de l'annulation est tout l'intérêt de la manœuvre :
+     un créneau annulé se libère, un patient absent a bel et bien occupé le
+     sien, et il n'a pas à pouvoir noter une consultation qu'il a manquée. */
+  await pool.query('ALTER TABLE appointments DROP CONSTRAINT IF EXISTS appointments_status_check');
+  await pool.query(`
+    ALTER TABLE appointments ADD CONSTRAINT appointments_status_check
+    CHECK (status IN ('confirmed', 'cancelled', 'completed', 'no_show'))
+  `);
 
   /* ── Effacement d'un compte patient ──
      Le compte est anonymisé, pas supprimé : les rendez-vous passés

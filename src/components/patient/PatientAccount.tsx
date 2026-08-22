@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import Header from '../shared/Header';
 import VideoCall from '../booking/VideoCall';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { appointmentsAPI, patientAPI, reviewsAPI } from '../../services/api';
+import { appointmentsAPI, patientAPI, reviewsAPI, motDePasseAPI } from '../../services/api';
 
 const NAVY = '#00264c';
 
@@ -88,6 +88,38 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+
+  /* Changement de mot de passe. Il n'existait aucune route pour cela côté
+     patient — seuls les praticiens pouvaient changer le leur. Quelqu'un qui
+     soupçonnait que son compte avait été ouvert par un tiers n'avait donc
+     aucun geste à sa disposition. */
+  const [mdpActuel, setMdpActuel] = useState('');
+  const [mdpNouveau, setMdpNouveau] = useState('');
+  const [mdpEnCours, setMdpEnCours] = useState(false);
+  const [mdpOk, setMdpOk] = useState(false);
+  const [mdpErreur, setMdpErreur] = useState('');
+
+  const changerMotDePasse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMdpEnCours(true);
+    setMdpErreur('');
+    setMdpOk(false);
+    try {
+      const data = await motDePasseAPI.changer(mdpActuel, mdpNouveau, isArabic ? 'ar' : 'fr');
+      /* Le serveur vient de couper toutes les sessions, y compris celle-ci.
+         Sans remplacer le jeton, l'écran se déconnecterait au premier appel
+         suivant — après avoir annoncé « enregistré ». */
+      if (data.token) localStorage.setItem('chifak_patient_token', data.token);
+      setMdpActuel('');
+      setMdpNouveau('');
+      setMdpOk(true);
+      setTimeout(() => setMdpOk(false), 4000);
+    } catch (err: any) {
+      setMdpErreur(err.message || 'Erreur');
+    } finally {
+      setMdpEnCours(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -458,6 +490,74 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
               className="btn-pro mt-6 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-xl font-semibold text-sm transition-colors"
             >
               {saving ? (isArabic ? 'جاري الحفظ…' : 'Enregistrement…') : (isArabic ? 'حفظ' : 'Enregistrer')}
+            </button>
+          </form>
+        )}
+
+        {tab === 'settings' && (
+          <form onSubmit={changerMotDePasse} className="bg-white rounded-2xl border border-gray-200 p-6 max-w-lg mt-6">
+            <h3 className="font-semibold mb-1.5" style={{ color: NAVY }}>
+              {isArabic ? 'تغيير كلمة المرور' : 'Changer mon mot de passe'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-5 leading-relaxed">
+              {isArabic
+                ? 'سيتم إنهاء جلساتك الأخرى فورًا على جميع الأجهزة.'
+                : 'Vos autres sessions seront immédiatement fermées, sur tous vos appareils.'}
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="mdp-actuel" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {isArabic ? 'كلمة المرور الحالية' : 'Mot de passe actuel'}
+                </label>
+                <input
+                  id="mdp-actuel"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  value={mdpActuel}
+                  onChange={(e) => setMdpActuel(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 transition"
+                  placeholder="••••••••"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="mdp-nouveau" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  {isArabic ? 'كلمة المرور الجديدة' : 'Nouveau mot de passe'}
+                </label>
+                <input
+                  id="mdp-nouveau"
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={mdpNouveau}
+                  onChange={(e) => setMdpNouveau(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-800 transition"
+                  placeholder="••••••••"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  {isArabic ? '8 أحرف على الأقل، مع أرقام وحروف.' : 'Au moins 8 caractères, avec des lettres et des chiffres.'}
+                </p>
+              </div>
+            </div>
+
+            {mdpErreur && <p className="text-sm text-red-600 mt-4" role="alert">{mdpErreur}</p>}
+            {mdpOk && (
+              <p className="flex items-center gap-1.5 text-sm text-green-600 mt-4">
+                <Icon name="check" className="w-4 h-4" strokeWidth={2.5} />
+                {isArabic ? 'تم تغيير كلمة المرور' : 'Mot de passe changé'}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={mdpEnCours}
+              className="btn-pro mt-6 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-xl font-semibold text-sm transition-colors"
+            >
+              {mdpEnCours
+                ? (isArabic ? 'جاري الحفظ…' : 'Enregistrement…')
+                : (isArabic ? 'تغيير كلمة المرور' : 'Changer le mot de passe')}
             </button>
           </form>
         )}

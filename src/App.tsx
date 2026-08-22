@@ -11,6 +11,7 @@ import OAuthCallback from './components/auth/OAuthCallback';
 import DoctorSpace from './components/doctor/DoctorSpace';
 import ProfessionalModal from './components/shared/ProfessionalModal';
 import FeedbackPage from './components/doctor/FeedbackPage';
+import AnnulationParLien from './components/booking/AnnulationParLien';
 import { appointmentsAPI, patientAPI } from './services/api';
 import PageTransition from './components/shared/PageTransition';
 
@@ -28,6 +29,19 @@ function isOAuthCallbackPath() {
 /** /avis/<jeton> : page publique ouverte par le QR code d'un employé. */
 function feedbackTokenFromPath(): string | null {
   const m = window.location.pathname.match(/^\/avis\/([A-Za-z0-9_-]{8,64})\/?$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * /rdv/<jeton> : voir et annuler un rendez-vous SANS COMPTE.
+ *
+ * Le lien part dans l'e-mail de confirmation. Il existe parce qu'une seule
+ * route pouvait annuler un rendez-vous, et qu'elle exigeait un jeton patient :
+ * celui qui avait réservé en invité — un parcours que l'application propose
+ * délibérément — n'avait aucun moyen de se décommander.
+ */
+function jetonRendezVousDepuisUrl(): string | null {
+  const m = window.location.pathname.match(/^\/rdv\/([A-Za-z0-9_-]{8,64})\/?$/);
   return m ? m[1] : null;
 }
 
@@ -144,6 +158,18 @@ export default function App() {
   const feedbackToken = feedbackTokenFromPath();
   if (feedbackToken) {
     return <FeedbackPage token={feedbackToken} />;
+  }
+
+  /* Annulation par lien : même principe, aucune session requise. Le jeton du
+     courrier de confirmation tient lieu d'authentification. */
+  const jetonRdv = jetonRendezVousDepuisUrl();
+  if (jetonRdv) {
+    return (
+      <AnnulationParLien
+        jeton={jetonRdv}
+        onRetourAccueil={() => { window.location.href = '/'; }}
+      />
+    );
   }
 
   const handleSearch = (specialty: string, location: string, date: string, videoOnly?: boolean) => {

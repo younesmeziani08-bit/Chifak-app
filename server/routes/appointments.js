@@ -226,6 +226,12 @@ router.post('/api/appointments', bookingLimiter, async (req, res) => {
        ci-dessus ne protège pas de deux réservations simultanées. L'index
        unique de la base est le seul arbitre possible, et son refus se traduit
        par le code 23505. */
+    /* Jeton d'annulation : c'est la seule clé qu'aura un visiteur SANS COMPTE
+       pour se décommander. Sans lui, il n'avait aucun moyen de le faire — le
+       créneau restait bloqué et le praticien attendait pour rien.
+       Vingt-quatre octets tirés au sort : il n'ouvre que ce rendez-vous. */
+    const jetonAnnulation = crypto.randomBytes(24).toString('base64url');
+
     let result;
     try {
       /* La langue est conservée avec le rendez-vous.
@@ -233,11 +239,11 @@ router.post('/api/appointments', bookingLimiter, async (req, res) => {
          la veille, envoyé des semaines plus tard, serait donc parti en
          français à quelqu'un qui a fait toute sa réservation en arabe. */
       result = await db.prepare(`
-        INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, consultation_type, video_room, child_first_name, child_last_name, child_age, language)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO appointments (doctor_id, patient_name, patient_email, patient_phone, appointment_date, appointment_time, reason, consultation_type, video_room, child_first_name, child_last_name, child_age, language, cancel_token)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(doctorId, patientName, patientEmail, patientPhone, appointmentDate, appointmentTime,
         reason || null, consultationType, videoRoom, childFirstName, childLastName, childAge,
-        language === 'ar' ? 'ar' : 'fr');
+        language === 'ar' ? 'ar' : 'fr', jetonAnnulation);
     } catch (e) {
       if (e && e.code === '23505') {
         return res.status(409).json({ error: 'Ce créneau vient d\'être réservé. Choisissez-en un autre.' });
@@ -268,6 +274,11 @@ router.post('/api/appointments', bookingLimiter, async (req, res) => {
         time: appointmentTime,
         address: `${doctor.address}, ${doctor.city}`,
         consultationType,
+        /* Le lien d'annulation. Il figure dans CHAQUE confirmation, y compris
+           pour un patient connecté : c'est le chemin le plus court, et il
+           évite d'avoir à retrouver ses identifiants pour libérer un créneau
+           qu'on sait déjà ne pas pouvoir honorer. */
+        cancelUrl: `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}/rdv/${jetonAnnulation}`,
       }, language || 'fr');
     } catch (emailError) {
       console.error('Erreur envoi email confirmation:', emailError);

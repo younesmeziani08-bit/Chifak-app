@@ -10,8 +10,9 @@ import EmployeeFeedbackPanel from './EmployeeFeedbackPanel';
 import ApplicationsPanel from './ApplicationsPanel';
 import SecuritePanel from './SecuritePanel';
 import { appointmentsAPI } from '../services/api';
+import RendezVousPanel from './RendezVousPanel';
 
-type Tab = 'add' | 'list' | 'applications' | 'staff' | 'staffFeedback' | 'securite';
+type Tab = 'add' | 'list' | 'rdv' | 'applications' | 'staff' | 'staffFeedback' | 'securite';
 
 interface AdminDashboardProps {
   onBackToHome: () => void;
@@ -88,6 +89,11 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: 'add', label: isArabic ? 'إضافة طبيب' : 'Ajouter un médecin', icon: '➕' },
     { key: 'list', label: isArabic ? 'قائمة الأطباء' : 'Liste des médecins', icon: '📋' },
+    /* Ouvert à tout le personnel : c'est l'accueil qui décroche quand un
+       patient appelle pour dire qu'il ne viendra pas, et lui refuser
+       l'annulation reviendrait à ne pas annuler du tout. La route serveur
+       exige un jeton du personnel, pas le rôle administrateur. */
+    { key: 'rdv', label: isArabic ? 'المواعيد' : 'Rendez-vous', icon: '📅' },
     /* Ouvert à tout le personnel : chacun protège SON compte, et la route ne
        lit que le compte porté par le jeton. Un employé a autant besoin d'un
        second facteur qu'un administrateur — il inscrit des praticiens et voit
@@ -213,6 +219,7 @@ export default function AdminDashboard({ onBackToHome }: AdminDashboardProps) {
           </div>
           <div className="p-6">
             {activeTab === 'add' ? <AddDoctorForm />
+              : activeTab === 'rdv' ? <RendezVousPanel />
               : activeTab === 'applications' ? <ApplicationsPanel />
               : activeTab === 'staff' ? <EmployeesPanel />
               : activeTab === 'securite' ? <SecuritePanel />

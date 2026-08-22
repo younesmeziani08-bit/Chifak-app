@@ -318,6 +318,14 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
           <li>في حالة عدم القدرة على الحضور، الرجاء الإلغاء قبل 24 ساعة</li>
         </ul>
         
+        ${appointmentDetails.cancelUrl ? `
+        <div style="text-align:center;margin:24px 0 8px;">
+          <a href="${escapeHtml(appointmentDetails.cancelUrl)}" style="display:inline-block;background:#f4f4f4;color:#374151;border:1px solid #d1d5db;text-decoration:none;padding:12px 26px;border-radius:8px;font-size:14px;">
+            عرض موعدي أو إلغاؤه
+          </a>
+          <p style="color:#9ca3af;font-size:12px;margin-top:10px;">رابط شخصي — لا تشاركه مع أحد.</p>
+        </div>` : ''}
+
         <div class="footer">
           <p>© 2026 شفاك. جميع الحقوق محفوظة.</p>
         </div>
@@ -386,6 +394,14 @@ export async function sendAppointmentConfirmation(email, appointmentDetails, lan
           <li>En cas d'empêchement, annulez au moins 24h à l'avance</li>
         </ul>
         
+        ${appointmentDetails.cancelUrl ? `
+        <div style="text-align:center;margin:24px 0 8px;">
+          <a href="${escapeHtml(appointmentDetails.cancelUrl)}" style="display:inline-block;background:#f4f4f4;color:#374151;border:1px solid #d1d5db;text-decoration:none;padding:12px 26px;border-radius:8px;font-size:14px;">
+            Voir ou annuler mon rendez-vous
+          </a>
+          <p style="color:#9ca3af;font-size:12px;margin-top:10px;">Lien personnel — ne le transmettez à personne.</p>
+        </div>` : ''}
+
         <div class="footer">
           <p>© 2026 chifak. Tous droits réservés.</p>
         </div>

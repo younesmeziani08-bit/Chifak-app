@@ -91,11 +91,27 @@ router.post('/api/doctors/:id/reviews', authenticatePatientToken, async (req, re
       return res.status(404).json({ error: 'Médecin non trouvé' });
     }
 
-    // On ne peut laisser un avis qu'APRÈS la consultation (rendez-vous passé)
+    /* ── Qui a le droit de donner un avis ──
+       La condition était « un rendez-vous non annulé dont la date est
+       passée ». Elle laissait passer les absences : quelqu'un qui n'était
+       jamais venu pouvait noter un praticien qu'il n'a pas vu.
+
+       Deux cas ouvrent désormais le droit :
+       · le praticien a constaté la présence (« completed ») — c'est la
+         preuve la plus solide, et la seule qui dise vraiment que la
+         consultation a eu lieu ;
+       · à défaut, un rendez-vous encore « confirmed » dont la date est
+         passée. Ce repli existe parce que tous les praticiens ne
+         constateront pas la présence tous les jours, et qu'attendre leur
+         saisie priverait d'avis les patients réellement reçus.
+
+       « no_show » est exclu des deux côtés : c'est tout l'intérêt de le
+       distinguer d'une annulation. */
     const today = new Date().toISOString().split('T')[0];
     const hadAppt = await db.prepare(`
       SELECT id FROM appointments
-      WHERE doctor_id = ? AND patient_email = ? AND status != 'cancelled' AND appointment_date <= ?
+      WHERE doctor_id = ? AND patient_email = ?
+        AND (status = 'completed' OR (status = 'confirmed' AND appointment_date <= ?))
     `).get(doctorId, req.user.email, today);
     if (!hadAppt) {
       return res.status(403).json({ error: 'Vous pourrez laisser un avis après votre consultation.' });

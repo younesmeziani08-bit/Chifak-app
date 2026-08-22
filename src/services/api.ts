@@ -22,3 +22,5 @@ export * from './stats';
    d'examen, l'acceptation et le refus vivent dans admin/services. */
 export * from './applications';
 export * from './feedback';
+export * from './motDePasse';
+export * from './annulations';

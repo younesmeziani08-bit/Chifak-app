@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import VideoCall from '../booking/VideoCall';
 import { slotsForDay, expandSlots, todayIso, maxBookingIso, blockedKey, BlockedSlotEntry } from '../../utils/slots';
-import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, AppointmentCreate } from '../../services/api';
+import { doctorAuthAPI, consultationsAPI, doctorsAPI, appointmentsAPI, reviewsAPI, doctorAPI, annulationsAPI, AppointmentCreate } from '../../services/api';
 
 export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void }) {
   const { language } = useLanguage();
@@ -29,6 +29,13 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
   const [apptSearch, setApptSearch] = useState('');
   const [noteEdits, setNoteEdits] = useState<Record<number, string>>({});
   const [noteSavedId, setNoteSavedId] = useState<number | null>(null);
+  /* Annuler un rendez-vous et constater qui s'est présenté : le praticien ne
+     pouvait faire ni l'un ni l'autre. Malade un matin, il ne pouvait ni
+     libérer ses créneaux ni prévenir ses patients, qui se déplaçaient pour
+     rien ; et rien ne disait jamais si une consultation avait eu lieu. */
+  const [annulationCible, setAnnulationCible] = useState<number | null>(null);
+  const [motifAnnulation, setMotifAnnulation] = useState('');
+  const [actionEnCours, setActionEnCours] = useState<number | null>(null);
   const [pDesc, setPDesc] = useState('');
   const [pBio, setPBio] = useState('');
   const [pDuration, setPDuration] = useState(30);
@@ -378,6 +385,42 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
       setTimeout(() => setNoteSavedId((cur) => (cur === id ? null : cur)), 2000);
     } catch (err: any) {
       window.alert(err.message || 'Erreur');
+    }
+  };
+
+  /** Le rendez-vous a-t-il déjà eu lieu ? On ne constate pas une présence à venir. */
+  const estPasse = (date: string) => date <= new Date().toISOString().slice(0, 10);
+
+  /** Recharge la liste après une action, pour que l'écran dise le vrai. */
+  const rafraichirAgenda = async () => {
+    try {
+      setDocAppointments(await doctorAPI.getAppointments());
+    } catch { /* la liste reste telle quelle : l'action, elle, a bien eu lieu */ }
+  };
+
+  const constater = async (id: number, status: 'completed' | 'no_show') => {
+    setActionEnCours(id);
+    try {
+      await annulationsAPI.constaterPresence(id, status);
+      await rafraichirAgenda();
+    } catch (err: any) {
+      window.alert(err.message || 'Erreur');
+    } finally {
+      setActionEnCours(null);
+    }
+  };
+
+  const annulerRdv = async (id: number) => {
+    setActionEnCours(id);
+    try {
+      await annulationsAPI.parPraticien(id, motifAnnulation.trim() || undefined);
+      setAnnulationCible(null);
+      setMotifAnnulation('');
+      await rafraichirAgenda();
+    } catch (err: any) {
+      window.alert(err.message || 'Erreur');
+    } finally {
+      setActionEnCours(null);
     }
   };
 
@@ -774,8 +817,15 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                     <div className="text-right">
                       <div className="font-bold text-blue-700">{a.appointment_date}</div>
                       <div className="text-sm text-gray-500">{a.appointment_time}</div>
-                      <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${a.status === 'cancelled' ? 'bg-red-50 text-red-600' : a.status === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-green-50 text-green-700'}`}>
-                        {a.status === 'cancelled' ? (isArabic ? 'ملغى' : 'Annulé') : a.status === 'completed' ? (isArabic ? 'منتهٍ' : 'Terminé') : (isArabic ? 'مؤكد' : 'Confirmé')}
+                      <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${
+                        a.status === 'cancelled' ? 'bg-red-50 text-red-600'
+                        : a.status === 'completed' ? 'bg-emerald-50 text-emerald-700'
+                        : a.status === 'no_show' ? 'bg-amber-50 text-amber-700'
+                        : 'bg-green-50 text-green-700'}`}>
+                        {a.status === 'cancelled' ? (isArabic ? 'ملغى' : 'Annulé')
+                          : a.status === 'completed' ? (isArabic ? 'تمّت' : 'Honoré')
+                          : a.status === 'no_show' ? (isArabic ? 'لم يحضر' : 'Absent')
+                          : (isArabic ? 'مؤكد' : 'Confirmé')}
                       </span>
                     </div>
                   </div>
@@ -808,6 +858,84 @@ export default function DoctorSpace({ onBackToHome }: { onBackToHome: () => void
                       </button>
                       {noteSavedId === a.id && <span className="text-green-600 text-sm font-medium">✓ {isArabic ? 'تم الحفظ' : 'Enregistré'}</span>}
                     </div>
+
+                    {/* ── Ce que le praticien peut faire de ce rendez-vous ──
+                        Il ne pouvait rien en faire : ni l'annuler, ni dire si
+                        le patient était venu. Malade un matin, il ne pouvait
+                        ni libérer ses créneaux ni prévenir qui que ce soit ;
+                        et le service ne savait jamais si une consultation
+                        avait réellement eu lieu. */}
+                    {a.status === 'confirmed' && (
+                      <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center gap-2">
+                        {estPasse(a.appointment_date) ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => constater(a.id, 'completed')}
+                              disabled={actionEnCours === a.id}
+                              className="px-3.5 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                            >
+                              ✓ {isArabic ? 'حضر' : 'Patient venu'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => constater(a.id, 'no_show')}
+                              disabled={actionEnCours === a.id}
+                              className="px-3.5 py-2 rounded-lg text-sm font-semibold border border-amber-300 text-amber-700 hover:bg-amber-50 transition disabled:opacity-50"
+                            >
+                              {isArabic ? 'لم يحضر' : 'Absent'}
+                            </button>
+                          </>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setAnnulationCible(a.id)}
+                          disabled={actionEnCours === a.id}
+                          className="px-3.5 py-2 rounded-lg text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50 transition disabled:opacity-50 ms-auto"
+                        >
+                          {isArabic ? 'إلغاء الموعد' : 'Annuler le rendez-vous'}
+                        </button>
+                      </div>
+                    )}
+
+                    {annulationCible === a.id && (
+                      <div className="mt-3 p-4 rounded-xl bg-red-50 border border-red-100">
+                        <label htmlFor={`motif-${a.id}`} className="block text-xs font-bold text-red-800 mb-1.5">
+                          {isArabic ? 'سبب الإلغاء (يُرسل للمريض)' : 'Motif de l’annulation (transmis au patient)'}
+                        </label>
+                        <input
+                          id={`motif-${a.id}`}
+                          value={motifAnnulation}
+                          onChange={(e) => setMotifAnnulation(e.target.value)}
+                          className="w-full px-3 py-2 border border-red-200 rounded-lg text-sm mb-3"
+                          placeholder={isArabic ? 'مثال: غياب طارئ' : 'Ex. : absence imprévue du praticien'}
+                        />
+                        <p className="text-xs text-red-700/80 mb-3 leading-relaxed">
+                          {isArabic
+                            ? 'سيتم إعلام المريض بالبريد الإلكتروني، وسيتحرر الموعد فورًا.'
+                            : 'Le patient est prévenu par e-mail et le créneau redevient disponible immédiatement.'}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => annulerRdv(a.id)}
+                            disabled={actionEnCours === a.id}
+                            className="px-4 py-2 rounded-lg text-sm font-semibold bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+                          >
+                            {actionEnCours === a.id
+                              ? (isArabic ? 'جارٍ…' : 'Annulation…')
+                              : (isArabic ? 'تأكيد الإلغاء' : 'Confirmer l’annulation')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setAnnulationCible(null); setMotifAnnulation(''); }}
+                            className="px-4 py-2 rounded-lg text-sm font-semibold bg-white border border-gray-200 text-gray-600"
+                          >
+                            {isArabic ? 'تراجع' : 'Renoncer'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))
