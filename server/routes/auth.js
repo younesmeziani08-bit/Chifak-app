@@ -297,15 +297,27 @@ router.post('/api/auth/register', async (req, res) => {
       return res.json(reponseNeutre);
     }
 
-    // Générer un code de vérification
-    const code = generateVerificationCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    /* ── L'expiration se calcule DANS la base, jamais ici ──
+       Elle était produite en JavaScript puis écrite telle quelle :
+       `new Date(...).toISOString()` rend une heure UTC, que PostgreSQL range
+       sans broncher dans une colonne « sans fuseau ». La comparaison suivante
+       se fait pourtant contre NOW(), qui rend l'heure LOCALE du serveur.
 
-    // Sauvegarder le code
+       Sur un serveur à l'heure d'Alger, le code naissait donc avec deux heures
+       de retard sur l'horloge qui le juge : il était périmé à la seconde même
+       de son écriture, et PERSONNE ne pouvait valider son inscription. Le
+       défaut ne se voyait pas en production — Render tourne en UTC, où les
+       deux horloges coïncident par accident — mais il rendait tout le parcours
+       d'inscription intestable en local, et il aurait suffi d'un changement
+       d'hébergeur pour couper les inscriptions du jour au lendemain.
+
+       `NOW() + INTERVAL` supprime la question : une seule horloge, celle de la
+       base, des deux côtés de la comparaison. */
+    const code = generateVerificationCode();
     await db.prepare(`
       INSERT INTO verification_codes (email, code, expires_at)
-      VALUES (?, ?, ?)
-    `).run(email, code, expiresAt.toISOString());
+      VALUES (?, ?, NOW() + INTERVAL '10 minutes')
+    `).run(email, code);
 
     // Envoyer l'email — s'il ne part pas, on ne crée pas un compte que
     // personne ne pourra jamais vérifier.
@@ -521,14 +533,12 @@ router.post('/api/auth/resend-code', async (req, res) => {
       return res.json({ message: 'Si un compte non vérifié existe pour cette adresse, un code a été envoyé.' });
     }
 
-    // Générer un nouveau code
+    // Expiration calculée par la base : voir la note dans /api/auth/register.
     const code = generateVerificationCode();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
     await db.prepare(`
       INSERT INTO verification_codes (email, code, expires_at)
-      VALUES (?, ?, ?)
-    `).run(email, code, expiresAt.toISOString());
+      VALUES (?, ?, NOW() + INTERVAL '10 minutes')
+    `).run(email, code);
 
     await sendVerificationEmail(email, code, language || 'fr');
 

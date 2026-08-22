@@ -6,8 +6,8 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
+import db from '../database.js';
 
-// La base est initialisée au démarrage (voir en bas du fichier).
 
 // Middleware d'authentification du personnel (admin / employé).
 // SÉCURITÉ : on vérifie explicitement le type ET le rôle du jeton.
@@ -56,13 +56,54 @@ export const authenticatePatientToken = (req, res, next) => {
     return res.status(401).json({ error: 'Token manquant' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, (err, user) => {
+  jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }, async (err, user) => {
     if (err) {
       return res.status(403).json({ error: 'Token invalide' });
     }
     if (user.type !== 'patient') {
       return res.status(403).json({ error: 'Accès réservé aux patients' });
     }
+
+    /* ── Le jeton survit-il au compte ? ──
+       Un jeton vaut vingt-quatre heures et rien ne pouvait l'annuler. Deux
+       conséquences que ce contrôle referme :
+
+       · quelqu'un qui reprend la main sur son compte après une intrusion
+         laissait l'intrus dedans pour le reste de la journée. Changer son mot
+         de passe ne servait donc à rien tant que le jeton volé vivait ;
+       · un compte effacé continuait d'ouvrir toutes les routes jusqu'à
+         expiration.
+
+       Le coût est une lecture par requête authentifiée. Les routes patient ne
+       sont pas le chemin chaud du service — l'annuaire public, lui, ne passe
+       pas par ici. */
+    try {
+      const compte = await db.prepare(
+        'SELECT deleted_at, password_changed_at FROM patients WHERE email = ?',
+      ).get(String(user.email || '').toLowerCase());
+
+      if (!compte || compte.deleted_at) {
+        return res.status(403).json({ error: 'Compte introuvable ou supprimé' });
+      }
+
+      /* `iat` est en secondes, la date en millisecondes. On accorde une
+         seconde de marge : le jeton rendu par la route de changement porte le
+         même instant que l'écriture, et l'arrondi à la seconde le ferait
+         sinon rejeter aussitôt émis. */
+      if (compte.password_changed_at && user.iat) {
+        const changeLe = new Date(compte.password_changed_at).getTime();
+        if (user.iat * 1000 + 1000 < changeLe) {
+          return res.status(403).json({
+            error: 'Session expirée : le mot de passe a été modifié. Reconnectez-vous.',
+            motDePasseModifie: true,
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Contrôle du compte patient impossible:', e.message);
+      return res.status(500).json({ error: 'Erreur serveur' });
+    }
+
     req.user = user;
     next();
   });

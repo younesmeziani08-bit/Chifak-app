@@ -30,6 +30,11 @@ export const CHEMINS_SENSIBLES = [
   '/api/auth/verify-code',   // anti-force brute du code à 6 chiffres
   '/api/auth/resend-code',   // anti-spam d'e-mails
   '/api/doctor/change-password',
+  // Récupération de compte : autant de valeur pour un attaquant que la
+  // connexion elle-même, et une route qui envoie des e-mails.
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/patient/password',
 ];
 
 // Limiteur dédié à l'assistant IA (appels coûteux) : plafonne les messages par IP.

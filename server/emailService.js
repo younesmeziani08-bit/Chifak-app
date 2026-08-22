@@ -663,3 +663,32 @@ export async function sendAppointmentReminder(email, {
     return false;
   }
 }
+
+/**
+ * Envoi générique d'un courrier déjà composé (voir lib/courriers.js).
+ *
+ * Les fonctions ci-dessus recopient chacune leur gabarit et leur logique
+ * d'envoi. Celle-ci sépare enfin les deux : la composition vit dans
+ * lib/courriers.js, l'acheminement ici. Tout nouveau courrier passe par elle.
+ *
+ * Même contrat que les autres : elle ne lève jamais, et rend false quand le
+ * message n'est pas parti — l'appelant décide alors s'il poursuit ou non.
+ */
+export async function envoyerCourrier(email, { subject, html }) {
+  if (!isEmailConfigured()) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error(`❌ Messagerie non configurée : « ${subject} » n'est pas parti vers ${email}.`);
+      return false;
+    }
+    console.log(`\n📧 [MODE DÉMO] « ${subject} » → ${email}\n`);
+    return true;
+  }
+  try {
+    await transporter.sendMail({ from: FROM_ADDRESS, to: email, subject, html });
+    console.log(`✅ « ${subject} » envoyé à ${email}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Erreur envoi « ${subject} » à ${email}:`, error.message);
+    return false;
+  }
+}

@@ -32,6 +32,7 @@ import routesAssistant from './routes/assistant.js';
 import routesStaff from './routes/staff.js';
 import routesApplications from './routes/applications.js';
 import routesDeuxiemeFacteur from './routes/twoFactor.js';
+import routesMotDePasse from './routes/motDePasse.js';
 
 // SÉCURITÉ : on refuse de démarrer en production avec des secrets absents ou faibles.
 assertStrongSecrets();
@@ -157,6 +158,7 @@ app.use(routesAssistant);     // assistant santé (IA)
 app.use(routesStaff);         // comptes employés, QR d'avis, agendas manuels
 app.use(routesApplications);  // demandes d'inscription des praticiens
 app.use(routesDeuxiemeFacteur); // double authentification du personnel
+app.use(routesMotDePasse);      // oubli, réinitialisation et changement du mot de passe patient
 
 // ── 6. Filets ──
 app.use('/api', (req, res) => {

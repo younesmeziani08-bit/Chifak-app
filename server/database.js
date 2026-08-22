@@ -592,6 +592,55 @@ export async function initDatabase() {
   // dans la consultation d'un autre patient en incrémentant un nombre.
   await pool.query("ALTER TABLE appointments ADD COLUMN IF NOT EXISTS video_room TEXT");
 
+  /* ── À quoi sert ce code à usage unique ──
+     La table servait uniquement à vérifier une adresse à l'inscription. Elle
+     porte maintenant aussi les demandes de nouveau mot de passe. Sans cette
+     colonne, un code envoyé pour vérifier une adresse ouvrirait la
+     réinitialisation d'un mot de passe, et réciproquement : deux usages sans
+     rapport, confondus par le même secret à six chiffres. */
+  await pool.query("ALTER TABLE verification_codes ADD COLUMN IF NOT EXISTS purpose TEXT DEFAULT 'signup'");
+
+  /* ── Annulation par le titulaire d'une réservation sans compte ──
+     Une seule route pouvait annuler, et elle exigeait un jeton patient. Un
+     visiteur qui réservait sans compte — un parcours que l'application
+     propose délibérément — n'avait donc AUCUN moyen de se décommander : le
+     créneau restait bloqué et le praticien attendait quelqu'un qui ne
+     viendrait pas.
+
+     Ce jeton part dans l'e-mail de confirmation, sous forme de lien. Vingt-
+     quatre octets tirés au sort : il ne se devine pas, et il ne donne accès
+     qu'à CE rendez-vous — ni à un compte, ni à un dossier. */
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancel_token TEXT');
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancelled_by TEXT');
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS cancel_reason TEXT');
+
+  /* ── Fin de vie d'un rendez-vous ──
+     Les seuls états étaient « confirmé » et « annulé » : rien ne disait si la
+     consultation avait eu lieu. Le praticien ne pouvait pas noter qui s'était
+     présenté, les compteurs ne reflétaient rien de réel, et les avis se
+     déclenchaient sur « la date est passée » plutôt que sur « la consultation
+     a eu lieu ». */
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS attendance_marked_at TIMESTAMP');
+
+  /* ── Effacement d'un compte patient ──
+     Le compte est anonymisé, pas supprimé : les rendez-vous passés
+     appartiennent aussi au dossier du praticien, qui a ses propres
+     obligations de conservation. On retire ce qui identifie la personne et on
+     garde la trace de l'acte de soin. */
+  await pool.query('ALTER TABLE patients ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP');
+
+  /* Consentement au traitement des données de santé, recueilli à
+     l'inscription et horodaté : sans cette date, on ne peut pas démontrer
+     qu'il a été donné. */
+  await pool.query('ALTER TABLE patients ADD COLUMN IF NOT EXISTS consent_at TIMESTAMP');
+
+  /* ── Invalidation des jetons après un changement de mot de passe ──
+     Un jeton vit vingt-quatre heures et rien ne pouvait l'annuler. Quelqu'un
+     qui reprenait la main sur son compte laissait donc l'intrus dedans pour le
+     reste de la journée — ce qui vidait la manœuvre de tout son sens.
+     Le middleware compare l'instant d'émission du jeton à cette date. */
+  await pool.query('ALTER TABLE patients ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP');
+
   // Index : indispensables pour éviter les balayages complets de table sous charge
   const indexes = [
     "CREATE INDEX IF NOT EXISTS idx_doctors_specialty ON doctors (specialty)",
@@ -619,6 +668,11 @@ export async function initDatabase() {
     "CREATE INDEX IF NOT EXISTS idx_patients_email ON patients (email)",
     "CREATE INDEX IF NOT EXISTS idx_consultations_doctor ON consultations (doctor_id)",
     "CREATE INDEX IF NOT EXISTS idx_verification_email ON verification_codes (email)",
+    // Le code est cherché par adresse ET par usage : sans l'usage dans l'index,
+    // chaque réinitialisation balaye toutes les inscriptions de la même adresse.
+    "CREATE INDEX IF NOT EXISTS idx_verification_email_purpose ON verification_codes (email, purpose)",
+    // Annulation par lien : le jeton est le seul critère de recherche.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_cancel_token ON appointments (cancel_token) WHERE cancel_token IS NOT NULL",
     // username porte déjà une contrainte UNIQUE, donc son index existe.
     // L'écran d'administration lit les demandes en attente, les plus récentes
     // d'abord : l'index porte les deux, il n'y a donc ni balayage ni tri.
