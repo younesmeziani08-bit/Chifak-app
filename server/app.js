@@ -20,6 +20,7 @@ import { allowedOrigins, optionsCors } from './config/cors.js';
 import { fabriqueMagasin } from './config/redis.js';
 import { generalLimiter, authLimiter, assistantLimiter, CHEMINS_SENSIBLES } from './config/limiters.js';
 import { middlewareSession } from './config/session.js';
+import { rapportPreparation } from './config/diagnostic.js';
 
 import routesAuth from './routes/auth.js';
 import routesDoctors from './routes/doctors.js';
@@ -103,7 +104,17 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // ── 4. Surveillance ──
-app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+/* Surveillance. Le rapport de préparation y figure pour qu'on puisse relire
+   l'état du service sans fouiller les journaux de l'hébergeur — des états
+   uniquement, jamais une valeur de configuration. */
+app.get('/health', (req, res) => {
+  const preparation = rapportPreparation();
+  res.json({
+    status: preparation.etat === 'bloquant' ? 'degraded' : 'ok',
+    uptime: process.uptime(),
+    preparation,
+  });
+});
 
 // Route de vérification de déploiement : quelle version tourne réellement,
 // sans lire les logs. On expose des états, jamais de valeurs sensibles.

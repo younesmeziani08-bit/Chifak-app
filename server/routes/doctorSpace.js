@@ -62,8 +62,23 @@ router.put('/api/doctor/profile', authenticateDoctorToken, async (req, res) => {
 
     const { description, bio, slotDuration, offDays, blockedSlots, acceptsVideo, videoSlots } = req.body;
     const dur = Number(slotDuration);
-    const newDescription = typeof description === 'string' ? description : (current.description || null);
-    const newBio = typeof bio === 'string' ? bio : (current.bio || null);
+
+    /* Descriptif et parcours passent par cleanString, comme le reste du
+       serveur. Ils arrivaient bruts : aucune borne, aucun filtrage des
+       caractères de contrôle — alors que ces deux champs partent sur la fiche
+       PUBLIQUE du praticien, donc vers chaque visiteur de l'annuaire. Un
+       descriptif de plusieurs dizaines de milliers de caractères alourdissait
+       toutes les recherches qui remontent ce praticien.
+
+       Chaîne vide = le praticien efface volontairement son texte ; il faut
+       donc distinguer « champ absent » (on ne touche à rien) de « champ vidé »
+       (on écrit null), ce que le seul `||` ne sait pas faire. */
+    const texteOuInchange = (recu, actuel, max) => {
+      if (typeof recu !== 'string') return actuel || null;
+      return cleanString(recu, max); // null si la personne a tout effacé
+    };
+    const newDescription = texteOuInchange(description, current.description, 600);
+    const newBio = texteOuInchange(bio, current.bio, 4000);
     const newDuration = dur >= 5 && dur <= 120 ? dur : (current.slot_duration || 30);
 
     // Jours d'indisponibilité : uniquement des dates valides (max 400 entrées)
@@ -182,7 +197,12 @@ router.patch('/api/doctor/appointments/:id/notes', authenticateDoctorToken, asyn
     const appt = await db.prepare('SELECT doctor_id FROM appointments WHERE id = ?').get(id);
     if (!appt) return res.status(404).json({ error: 'Rendez-vous non trouvé' });
     if (appt.doctor_id !== req.user.id) return res.status(403).json({ error: 'Non autorisé' });
-    const notes = typeof req.body.notes === 'string' ? req.body.notes : null;
+    /* Bornées comme le reste. C'était le champ le plus sensible du service —
+       les remarques d'un médecin sur son patient — et le seul qui acceptait
+       une chaîne de n'importe quelle taille, caractères de contrôle compris.
+       Huit mille caractères : très au-delà d'une remarque de consultation,
+       et une borne tout de même. */
+    const notes = typeof req.body.notes === 'string' ? cleanString(req.body.notes, 8000) : null;
     await db.prepare('UPDATE appointments SET doctor_notes = ? WHERE id = ?').run(notes, id);
     res.json({ success: true });
   } catch (error) {

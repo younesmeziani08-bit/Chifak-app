@@ -18,6 +18,7 @@ import { initDatabase, pool } from './database.js';
 import { sendDailyAgendas } from './dailyAgenda.js';
 import { envoyerRappels } from './rappels.js';
 import app from './app.js';
+import { annoncerPreparation } from './config/diagnostic.js';
 
 const PORT = process.env.PORT || 3001;
 
@@ -64,7 +65,9 @@ initDatabase()
     const server = app.listen(PORT, () => {
       console.log(`\n🚀 Serveur chifak démarré sur http://localhost:${PORT}`);
       console.log(`📊 Base de données: PostgreSQL`);
-      console.log(`\n✅ Prêt à recevoir des requêtes!\n`);
+      console.log(`\n✅ Prêt à recevoir des requêtes!`);
+      // Ce qui manque, et ce que chaque absence coûte. Voir config/diagnostic.js.
+      annoncerPreparation();
     });
     // Laisse plus de temps aux connexions lentes (mobiles) avant de couper.
     server.keepAliveTimeout = 65000;
