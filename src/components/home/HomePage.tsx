@@ -138,7 +138,21 @@ export default function HomePage({ onSearch, onDoctorClick, onOpenLogin, onOpenS
   const { t, language } = useLanguage();
   const [specialty, setSpecialty] = useState('');
   const [location, setLocation] = useState('');
-  const [date, setDate] = useState('');
+  /* Le champ date part sur AUJOURD'HUI, pas sur le vide.
+     Sur iOS, un champ de date sans valeur ne montre rien du tout — pas même
+     un « jj/mm/aaaa ». Le patient voyait un rectangle vide sous « Quand ? »,
+     sans aucune indication qu'il pouvait le toucher ni de ce qu'on attendait
+     de lui. Le navigateur de bureau, lui, affiche un gabarit : le défaut était
+     donc invisible pendant tout le développement, et bien visible sur le seul
+     appareil que la plupart des gens utiliseront.
+
+     La recherche traitait déjà l'absence de date comme « aujourd'hui »
+     (`date || todayISO`) : afficher cette date ne change donc rien au
+     comportement, elle rend seulement visible ce qui était déjà vrai. */
+  const [date, setDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   /* La wilaya sert encore à mettre en évidence son nom dans la liste de
      couverture ; la daïra et la commune ne servaient qu'au pointeur de la
      carte, retirée — leurs états, le chargement de algeria-communes.json et
@@ -362,7 +376,10 @@ export default function HomePage({ onSearch, onDoctorClick, onOpenLogin, onOpenS
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-3">
-                    <div className="flex-1">
+                    {/* champ-date-conteneur : sans lui, la largeur intrinsèque
+                        du sélecteur de date natif d'iOS pousse cette colonne
+                        hors de la carte. Voir la règle dans index.css. */}
+                    <div className="flex-1 champ-date-conteneur">
                       <label className="block text-[11px] font-semibold uppercase tracking-wider mb-1.5 px-1" style={{ color: 'var(--ink-3)' }}>
                         {isArabic ? 'متى؟' : 'Quand ?'}
                       </label>

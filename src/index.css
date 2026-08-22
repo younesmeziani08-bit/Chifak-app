@@ -255,6 +255,55 @@
   }
   .field option { background: #fff; }
 
+  /* ── Champs de date sur iOS ──
+     `appearance: none` retire le rendu natif du contrôle. Sur un ordinateur
+     c'est sans conséquence : le navigateur affiche quand même « jj/mm/aaaa ».
+     Sur iPhone, le contenu du champ s'effondre — la boîte reste dessinée par
+     .field, mais elle est vide et la zone réellement touchable devient
+     minuscule. Constaté dans le simulateur : le patient voyait un rectangle
+     vide sous « Quand ? », et le toucher ne faisait rien.
+
+     Ces deux règles rendent au contenu une hauteur propre. Elles s'appliquent
+     à TOUS les champs de date des deux applications — il y en a neuf, et
+     aucun n'avait de raison de se comporter autrement. */
+  /* ── Champs de date : deux défauts d'iOS à contourner ensemble ──
+   *
+   * 1. `appearance: none`, hérité de .field, DÉSACTIVE le sélecteur natif.
+   *    Constaté dans le simulateur : le patient touchait « Quand ? », et rien
+   *    ne se produisait. Jamais. Sur navigateur de bureau tout fonctionnait,
+   *    ce qui rendait le défaut invisible pendant tout le développement et
+   *    bien visible sur le seul appareil que la plupart des gens utiliseront.
+   *
+   * 2. Lui rendre son apparence règle le sélecteur, mais le contrôle prend
+   *    alors une largeur intrinsèque qu'aucune règle de largeur ne fait
+   *    rétrécir : le champ sortait de la carte blanche par la droite.
+   *
+   * On rend donc l'apparence — le sélecteur s'ouvre — et c'est le CONTENEUR
+   * qui borne la largeur, en coupant ce qui dépasse. Le contrôle reste
+   * entièrement utilisable : ce que la coupe retire est la marge vide que
+   * WebKit réserve à droite, jamais la date elle-même.
+   */
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'] {
+    -webkit-appearance: auto;
+    appearance: auto;
+    min-height: 1.4em;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .champ-date-conteneur {
+    min-width: 0;
+    overflow: hidden;
+  }
+  input[type='date']::-webkit-date-and-time-value,
+  input[type='time']::-webkit-date-and-time-value,
+  input[type='datetime-local']::-webkit-date-and-time-value {
+    text-align: start;
+    min-height: 1.4em;
+  }
+
   /* Même apparence que .field mais en gardant la flèche native (ex : select wilaya) */
   .field-native {
     width: 100%;
