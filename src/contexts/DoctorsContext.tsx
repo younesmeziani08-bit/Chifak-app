@@ -12,7 +12,7 @@ interface DoctorsContextType {
   getDoctorsBySpecialtyAndLocation: (specialty: string, location: string) => Doctor[];
   refreshDoctors: () => Promise<void>;
   /** Recherche interrogée en base, sans passer par la liste chargée en mémoire. */
-  searchDoctors: (specialty: string, location: string, videoOnly?: boolean) => Promise<Doctor[]>;
+  searchDoctors: (specialty: string, location: string, videoOnly?: boolean, name?: string) => Promise<Doctor[]>;
 }
 
 const DoctorsContext = createContext<DoctorsContextType | undefined>(undefined);
@@ -112,8 +112,8 @@ export function DoctorsProvider({ children }: { children: ReactNode }) {
      médecins déjà chargés — au plus 500 — donc au-delà de ce seuil, une partie
      de l'annuaire devenait tout simplement introuvable, quelle que soit la
      requête du patient. Ici, c'est PostgreSQL qui filtre et pagine. */
-  const searchDoctors = async (specialty: string, location: string, videoOnly?: boolean): Promise<Doctor[]> => {
-    const data = await doctorsAPI.getAll(specialty || undefined, location || undefined, videoOnly);
+  const searchDoctors = async (specialty: string, location: string, videoOnly?: boolean, name?: string): Promise<Doctor[]> => {
+    const data = await doctorsAPI.getAll(specialty || undefined, location || undefined, videoOnly, name || undefined);
     return data.map(normalizeDoctor);
   };
 

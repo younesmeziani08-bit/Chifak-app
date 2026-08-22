@@ -188,15 +188,31 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
   const [searchError, setSearchError] = useState(false);
   const [retryTick, setRetryTick] = useState(0);
 
+  /* ── Recherche par NOM de praticien ──
+     On ne pouvait chercher que par spécialité et par ville. Quelqu'un qui a
+     déjà son médecin habituel ne pouvait pas le retrouver — c'est pourtant la
+     recherche la plus fréquente sur ce type de service.
+
+     Le filtrage se fait en base, pas sur les résultats déjà chargés : au-delà
+     de la page courante, un praticien serait resté introuvable. Le délai de
+     grâce évite une requête par frappe au clavier. */
+  const [nomRecherche, setNomRecherche] = useState('');
+  const [nomApplique, setNomApplique] = useState('');
+
+  useEffect(() => {
+    const minuteur = setTimeout(() => setNomApplique(nomRecherche.trim()), 350);
+    return () => clearTimeout(minuteur);
+  }, [nomRecherche]);
+
   useEffect(() => {
     let alive = true;
     setSearching(true);
-    searchDoctors(searchQuery.specialty, searchQuery.location, videoOnly)
+    searchDoctors(searchQuery.specialty, searchQuery.location, videoOnly, nomApplique)
       .then((rows) => { if (alive) { setAllDoctors(rows); setSearchError(false); } })
       .catch(() => { if (alive) { setAllDoctors([]); setSearchError(true); } })
       .finally(() => { if (alive) setSearching(false); });
     return () => { alive = false; };
-  }, [searchQuery.specialty, searchQuery.location, videoOnly, retryTick]);
+  }, [searchQuery.specialty, searchQuery.location, videoOnly, nomApplique, retryTick]);
 
   useEffect(() => {
     let alive = true;
@@ -360,6 +376,29 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
                 <option value="rating">{isArabic ? 'التقييم' : 'Note'}</option>
               </select>
             </label>
+          </div>
+        </div>
+
+        {/* Recherche par nom de praticien. Quelqu'un qui a déjà son médecin
+            habituel le cherche par son nom — c'était impossible : seules la
+            spécialité et la ville filtraient. Le filtrage se fait en base,
+            pour que le praticien reste trouvable au-delà de la page chargée. */}
+        <div className="mb-4">
+          <label htmlFor="recherche-nom" className="sr-only">
+            {isArabic ? 'ابحث باسم الطبيب' : 'Rechercher un praticien par son nom'}
+          </label>
+          <div className="relative">
+            <span className="absolute inset-y-0 ltr:left-4 rtl:right-4 flex items-center text-gray-400 pointer-events-none">
+              <Icon name="search" className="w-5 h-5" />
+            </span>
+            <input
+              id="recherche-nom"
+              type="search"
+              value={nomRecherche}
+              onChange={(e) => setNomRecherche(e.target.value)}
+              className="w-full ltr:pl-12 rtl:pr-12 ltr:pr-4 rtl:pl-4 py-3 bg-white border border-gray-200 rounded-2xl text-[15px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              placeholder={isArabic ? 'اسم الطبيب…' : 'Nom du praticien…'}
+            />
           </div>
         </div>
 

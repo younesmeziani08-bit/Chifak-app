@@ -1,5 +1,6 @@
 import db from './database.js';
 import { sendAppointmentReminder } from './emailService.js';
+import { envoyerSms, texteRappel, smsConfigure } from './lib/sms.js';
 
 /**
  * Rappels de rendez-vous, envoyés la veille au soir.
@@ -65,7 +66,7 @@ export async function envoyerRappels(opts = {}) {
       LIMIT 500
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, patient_name, patient_email, appointment_time,
+    RETURNING id, patient_name, patient_email, patient_phone, appointment_time,
               consultation_type, child_first_name, child_last_name, language, doctor_id
   `).all(...parametres);
 
@@ -108,8 +109,28 @@ export async function envoyerRappels(opts = {}) {
       language: rdv.language === 'ar' ? 'ar' : 'fr',
     }).catch(() => false);
 
+    /* ── Le SMS double l'e-mail, il ne le remplace pas ──
+       En Algérie, le SMS porte bien plus loin que l'e-mail, et le rappel de la
+       veille est précisément ce qui décide si quelqu'un se déplace.
+
+       Il est envoyé APRÈS l'e-mail et son échec ne compte pas : le canal est
+       optionnel, souvent facturé, et parfois absent. Faire dépendre le rappel
+       de son succès ferait rejouer indéfiniment des e-mails déjà partis. */
+    let smsParti = false;
+    if (smsConfigure() && rdv.patient_phone) {
+      smsParti = await envoyerSms(rdv.patient_phone, texteRappel({
+        patientName: enfant || rdv.patient_name,
+        doctorName: medecin.name,
+        date,
+        heure: rdv.appointment_time,
+        visio: rdv.consultation_type === 'video',
+        langue: rdv.language === 'ar' ? 'ar' : 'fr',
+      }));
+    }
+
     if (parti) {
       resume.envoyes++;
+      if (smsParti) resume.sms = (resume.sms || 0) + 1;
     } else {
       /* Échec d'envoi : on retire la marque pour que le prochain passage
          réessaie. Sans cela, une panne momentanée de messagerie ferait
@@ -122,6 +143,7 @@ export async function envoyerRappels(opts = {}) {
     }
   }
 
-  console.log(`🔔 Rappels du ${date} : ${resume.envoyes} envoyés, ${resume.ignores} ignorés, ${resume.echecs} en échec`);
+  const mentionSms = resume.sms ? `, dont ${resume.sms} doublés par SMS` : '';
+  console.log(`🔔 Rappels du ${date} : ${resume.envoyes} envoyés${mentionSms}, ${resume.ignores} ignorés, ${resume.echecs} en échec`);
   return resume;
 }

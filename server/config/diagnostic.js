@@ -95,6 +95,13 @@ function pointsDeControle() {
       absence: 'le bouton « continuer avec Facebook » renvoie vers un message d\'indisponibilité.',
     },
     {
+      nom: 'Rappels par SMS (SMS_URL)',
+      ok: defini('SMS_URL'),
+      critique: false,
+      absence: 'les rappels de la veille ne partent que par e-mail. En Algérie, le SMS '
+        + 'porte bien plus loin — c\'est ce rappel qui décide si le patient se déplace.',
+    },
+    {
       nom: 'Assistant santé (AI_API_KEY)',
       ok: defini('AI_API_KEY'),
       critique: false,

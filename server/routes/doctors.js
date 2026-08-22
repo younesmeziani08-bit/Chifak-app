@@ -93,6 +93,20 @@ router.get('/api/doctors', async (req, res) => {
       params.push(`%${valeur(specialty)}%`);
     }
 
+    /* ── Recherche par NOM de praticien ──
+       On ne pouvait chercher que par spécialité et par ville. Or quelqu'un qui
+       a déjà son médecin habituel le cherche par son nom — c'est probablement
+       la recherche la plus fréquente sur ce type de service, et elle ne
+       donnait rien.
+
+       Même normalisation que les deux autres critères : « Benali » trouve
+       « Bénali », et réciproquement. */
+    const nom = cleanString(req.query.name, 120);
+    if (nom) {
+      query += ` AND ${colonne('name')} ${operateur} ? ESCAPE '\\'`;
+      params.push(`%${valeur(nom)}%`);
+    }
+
     if (location) {
       query += ` AND ${colonne('city')} ${operateur} ? ESCAPE '\\'`;
       params.push(`%${valeur(location)}%`);

@@ -7,7 +7,11 @@ export interface PatientProfile {
   email: string;
   name: string;
   phone: string;
-  balance?: number;
+  /* `balance` a disparu de cette interface. Le serveur la renvoyait, l'écran
+     l'affichait, et rien ne l'alimentait : la route de rechargement avait été
+     retirée parce qu'elle créditait sans paiement. Un solde qui ne peut jamais
+     bouger promet une fonctionnalité qui n'existe pas. À rétablir le jour où un
+     vrai paiement existera. */
 }
 
 const patientHeaders = () => {

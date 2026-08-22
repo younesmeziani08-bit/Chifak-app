@@ -751,6 +751,10 @@ export async function initDatabase() {
     await pool.query(
       'CREATE INDEX IF NOT EXISTS idx_doctors_specialty_sansaccents ON doctors USING gin (sans_accents(specialty) gin_trgm_ops)',
     );
+    // Recherche par nom de praticien : même normalisation, même indexation.
+    await pool.query(
+      'CREATE INDEX IF NOT EXISTS idx_doctors_name_sansaccents ON doctors USING gin (sans_accents(name) gin_trgm_ops)',
+    );
     capacites.sansAccents = true;
     console.log('✅ Recherche insensible aux accents active');
   } catch (e) {

@@ -410,7 +410,7 @@ router.post('/api/auth/verify-code', async (req, res) => {
     // Colonnes nommées : « SELECT * » ramenait le hachage du mot de passe et
     // les identifiants sociaux dans une variable qui sert à bâtir la réponse.
     const patient = await db.prepare(
-      'SELECT id, email, name, balance FROM patients WHERE email = ?'
+      'SELECT id, email, name FROM patients WHERE email = ?'
     ).get(email);
 
     if (!patient) {
@@ -431,7 +431,6 @@ router.post('/api/auth/verify-code', async (req, res) => {
         id: patient.id,
         email: patient.email,
         name: patient.name,
-        balance: patient.balance || 0,
       }
     });
   } catch (error) {
@@ -471,7 +470,7 @@ router.post('/api/auth/login-patient', async (req, res) => {
     }
 
     const patient = await db.prepare(
-      'SELECT id, email, name, password, is_verified, balance FROM patients WHERE email = ?'
+      'SELECT id, email, name, password, is_verified FROM patients WHERE email = ?'
     ).get(email);
 
     if (!patient || !patient.password) {
@@ -511,7 +510,6 @@ router.post('/api/auth/login-patient', async (req, res) => {
         id: patient.id,
         email: patient.email,
         name: patient.name,
-        balance: patient.balance || 0,
       }
     });
   } catch (error) {
@@ -558,11 +556,11 @@ router.post('/api/auth/resend-code', async (req, res) => {
 // GET /api/patient/profile - Profil patient connecté
 router.get('/api/patient/profile', authenticatePatientToken, async (req, res) => {
   try {
-    const patient = await db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
+    const patient = await db.prepare('SELECT id, email, name, phone FROM patients WHERE email = ?').get(req.user.email);
     if (!patient) {
       return res.status(404).json({ error: 'Patient non trouvé' });
     }
-    res.json({ ...patient, phone: patient.phone || '', balance: patient.balance || 0 });
+    res.json({ ...patient, phone: patient.phone || '' });
   } catch (error) {
     console.error('Erreur récupération profil patient:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -586,8 +584,8 @@ router.put('/api/patient/profile', authenticatePatientToken, async (req, res) =>
     await db.prepare('UPDATE patients SET name = ?, phone = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')
       .run(newName, newPhone, req.user.email);
 
-    const patient = await db.prepare('SELECT id, email, name, phone, balance FROM patients WHERE email = ?').get(req.user.email);
-    res.json({ ...patient, phone: patient.phone || '', balance: patient.balance || 0 });
+    const patient = await db.prepare('SELECT id, email, name, phone FROM patients WHERE email = ?').get(req.user.email);
+    res.json({ ...patient, phone: patient.phone || '' });
   } catch (error) {
     console.error('Erreur mise à jour profil patient:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -603,8 +601,13 @@ router.put('/api/patient/profile', authenticatePatientToken, async (req, res) =>
 
    Le jour où le rechargement existera, il ne ressemblera pas à ceci : le
    solde ne devra augmenter qu'après confirmation reçue DU prestataire de
-   paiement, jamais sur la parole du client. La colonne `balance` reste en
-   base, elle n'a rien fait de mal.
+   paiement, jamais sur la parole du client.
+
+   La colonne `balance` a cessé de sortir dans les réponses. Elle était lue,
+   renvoyée au navigateur et affichée, alors que RIEN ne l'alimentait : le
+   service promettait par là un solde qui ne pouvait jamais bouger. Elle reste
+   en base — la retirer ferait perdre les valeurs héritées sans rien gagner —
+   mais elle ne quitte plus le serveur tant qu'un paiement n'existe pas.
 
    Repérée par scripts/contrats.mjs — « déclarée, jamais appelée ». */
 
