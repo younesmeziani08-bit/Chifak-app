@@ -13,6 +13,7 @@ import ProfessionalModal from './components/shared/ProfessionalModal';
 import FeedbackPage from './components/doctor/FeedbackPage';
 import AnnulationParLien from './components/booking/AnnulationParLien';
 import PagesLegales from './components/legal/PagesLegales';
+import { memoriser, reprendre, oublier } from './utils/reservationEnAttente';
 import ReservationDevantLaPorte from './components/booking/ReservationDevantLaPorte';
 import { appointmentsAPI, patientAPI } from './services/api';
 import PageTransition from './components/shared/PageTransition';
@@ -95,17 +96,38 @@ export default function App() {
     specialty: string; location: string; date: string; videoOnly?: boolean;
   }>({ specialty: '', location: '', date: '' });
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
-  /* Créneau déjà cliqué dans la liste de résultats, à reporter tel quel sur
-     la page de réservation. Un patient connecté ne doit choisir sa date et
-     son heure qu'une seule fois ; un invité, en revanche, passe par la
-     connexion avant de revenir ici, et ce détour lui fait de toute façon
-     perdre le contexte de la recherche — autant le laisser resélectionner. */
+  /* Créneau déjà cliqué dans la liste de résultats, reporté tel quel sur la
+     page de réservation.
+
+     Il était perdu dès qu'on demandait au visiteur de se connecter : seul le
+     praticien était retenu, et la personne devait rechercher son créneau une
+     seconde fois — celui qu'elle venait de choisir trente secondes plus tôt.
+     Le choix survit maintenant à la connexion, y compris à celle par Google
+     qui recharge entièrement la page. Voir utils/reservationEnAttente.ts. */
   const [prefilledSlot, setPrefilledSlot] = useState<{ date: string; time: string; consultationType: 'cabinet' | 'video' } | null>(null);
   const [booking, setBooking] = useState<Booking | null>(null);
   const [authModal, setAuthModal] = useState<'login' | 'signup' | null>(null);
   const [isProModalOpen, setIsProModalOpen] = useState(false);
-  const [pendingDoctor, setPendingDoctor] = useState<Doctor | null>(null);
   const [patientUser, setPatientUser] = useState<{ id: number; name: string; email: string } | null>(null);
+
+  /* ── Reprise après une connexion qui a rechargé la page ──
+     Google et Facebook quittent l'application : le navigateur revient sur une
+     page entièrement redémarrée, où aucun état React n'a survécu. Sans cette
+     reprise, le visiteur qui avait cliqué « 09:00 » se retrouvait sur
+     l'accueil, sans praticien ni créneau, et sans comprendre pourquoi.
+
+     `oauthDone` retarde la reprise jusqu'à ce que le jeton soit posé : lancée
+     plus tôt, elle ne verrait pas encore de session et jetterait le choix. */
+  useEffect(() => {
+    if (!oauthDone) return;
+    if (!localStorage.getItem('chifak_patient_token')) return;
+
+    const attente = reprendre();
+    if (attente) {
+      ouvrirReservation(attente.doctor, attente.date, attente.time, attente.consultationType);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oauthDone]);
 
   useEffect(() => {
     /* ── La session affichée doit être une session réelle ──
@@ -239,20 +261,31 @@ export default function App() {
     setCurrentPage('search');
   };
 
-  const handleDoctorSelect = (doctor: Doctor, date?: string, time?: string, consultationType?: 'cabinet' | 'video') => {
-    const patientToken = localStorage.getItem('chifak_patient_token');
-    if (!patientToken) {
-      setPendingDoctor(doctor);
-      setAuthModal('login');
-      return;
-    }
-
+  /** Ouvre la réservation sur le praticien et le créneau choisis. */
+  const ouvrirReservation = (
+    doctor: Doctor, date?: string, time?: string, consultationType?: 'cabinet' | 'video',
+  ) => {
     setSelectedDoctor(doctor);
     setPrefilledSlot(date && time ? { date, time, consultationType: consultationType || 'cabinet' } : null);
     setCurrentPage('booking');
   };
 
+  const handleDoctorSelect = (doctor: Doctor, date?: string, time?: string, consultationType?: 'cabinet' | 'video') => {
+    const patientToken = localStorage.getItem('chifak_patient_token');
+    if (!patientToken) {
+      /* Le créneau part en attente AVEC le praticien. Il était laissé de côté
+         ici, et la personne devait le rechercher après s'être connectée. */
+      memoriser({ doctor, date, time, consultationType });
+      setAuthModal('login');
+      return;
+    }
+
+    ouvrirReservation(doctor, date, time, consultationType);
+  };
+
   const handlePatientLogout = () => {
+    // Un choix mis de côté n'a plus de titulaire : on l'oublie.
+    oublier();
     localStorage.removeItem('chifak_patient_token');
     localStorage.removeItem('chifak_patient_user');
     setPatientUser(null);
@@ -277,10 +310,13 @@ export default function App() {
       setPatientUser(JSON.parse(rawUser));
     }
     setAuthModal(null);
-    if (pendingDoctor) {
-      setSelectedDoctor(pendingDoctor);
-      setCurrentPage('booking');
-      setPendingDoctor(null);
+
+    /* On reprend le praticien ET le créneau : c'est tout l'intérêt: la
+       personne retrouve la page de réservation à l'heure qu'elle avait déjà
+       choisie, sans avoir à la rechercher. */
+    const attente = reprendre();
+    if (attente) {
+      ouvrirReservation(attente.doctor, attente.date, attente.time, attente.consultationType);
     }
   };
 
@@ -352,15 +388,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Fermer la fenêtre sans aller au bout, c'est renoncer : on oublie le
+          créneau mis de côté. Sans cela, il resurgirait à la prochaine
+          connexion — la personne se retrouverait devant un formulaire de
+          réservation qu'elle n'a pas redemandé, pour une heure choisie une
+          heure plus tôt. Passer de la connexion à l'inscription, en revanche,
+          n'est pas un renoncement : le choix reste. */}
       <LoginModal
         isOpen={authModal === 'login'}
-        onClose={() => setAuthModal(null)}
+        onClose={() => { oublier(); setAuthModal(null); }}
         onOpenSignup={() => setAuthModal('signup')}
         onLoginSuccess={handlePatientLoginSuccess}
       />
       <SignupModal
         isOpen={authModal === 'signup'}
-        onClose={() => setAuthModal(null)}
+        onClose={() => { oublier(); setAuthModal(null); }}
         onOpenLogin={() => setAuthModal('login')}
         onSuccess={() => {
           handlePatientLoginSuccess();
