@@ -267,7 +267,7 @@ export async function initDatabase() {
       appointment_date TEXT NOT NULL,
       appointment_time TEXT NOT NULL,
       reason TEXT,
-      status TEXT DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed', 'no_show')),
+      status TEXT DEFAULT 'confirmed' CHECK (status IN ('confirmed', 'cancelled', 'completed', 'no_show', 'hold')),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE CASCADE
     )
@@ -622,6 +622,53 @@ export async function initDatabase() {
      a eu lieu ». */
   await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS attendance_marked_at TIMESTAMP');
 
+  /* ── Liste d'attente ──
+
+     Quand quelqu'un annulait, le créneau retournait silencieusement dans le
+     tas. Personne n'était prévenu. C'est pourtant le créneau le plus précieux
+     du service : il se libère à trois jours, chez un praticien complet pour
+     trois semaines, et il repart sans que celui qui l'attendait le sache.
+
+     Aucun compte n'est exigé pour s'inscrire : quelqu'un qui vient de lire
+     « complet » ne va pas créer un compte pour espérer. Le jeton envoyé par
+     courrier tient lieu d'authentification, comme pour l'annulation.
+  */
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS liste_attente (
+      id SERIAL PRIMARY KEY,
+      doctor_id INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+      patient_name TEXT NOT NULL,
+      patient_email TEXT NOT NULL,
+      patient_phone TEXT NOT NULL,
+      language TEXT DEFAULT 'fr',
+      /* 'waiting'  : en attente d'un désistement
+         'notified' : un créneau lui est réservé, il doit confirmer
+         'converti' : il a confirmé, le rendez-vous existe
+         'parti'    : il s'est retiré, ou a laissé passer son tour */
+      statut TEXT NOT NULL DEFAULT 'waiting'
+        CHECK (statut IN ('waiting', 'notified', 'converti', 'parti')),
+      /* Jeton du lien envoyé par courrier : se retirer, ou confirmer. */
+      jeton TEXT NOT NULL,
+      /* Le rendez-vous mis en attente pour cette personne, le cas échéant. */
+      appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+      notifie_le TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  /* ── Créneau retenu le temps d'une réponse ──
+
+     Prévenir sans retenir le créneau serait cruel : la personne reçoit un
+     courrier, arrive vingt minutes plus tard, et il est déjà repris par
+     quelqu'un qui passait par là. On crée donc un rendez-vous à l'état
+     « hold », qui occupe le créneau sans être confirmé.
+
+     Le contrôle d'occupation partout ailleurs s'écrit « status <> cancelled » :
+     un « hold » compte donc comme pris, sans qu'aucune requête ait besoin
+     d'être modifiée. L'index unique du créneau le protège de la même façon. */
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS hold_expire_le TIMESTAMP');
+  await pool.query('ALTER TABLE appointments ADD COLUMN IF NOT EXISTS hold_jeton TEXT');
+
   /* La contrainte n'admettait pas « no_show ». Sur une base déjà créée, la
      déclaration de table ci-dessus n'est jamais rejouée — CREATE TABLE IF NOT
      EXISTS ne modifie rien d'existant — et un praticien qui notait une absence
@@ -634,7 +681,7 @@ export async function initDatabase() {
   await pool.query('ALTER TABLE appointments DROP CONSTRAINT IF EXISTS appointments_status_check');
   await pool.query(`
     ALTER TABLE appointments ADD CONSTRAINT appointments_status_check
-    CHECK (status IN ('confirmed', 'cancelled', 'completed', 'no_show'))
+    CHECK (status IN ('confirmed', 'cancelled', 'completed', 'no_show', 'hold'))
   `);
 
   /* ── Effacement d'un compte patient ──
@@ -688,6 +735,13 @@ export async function initDatabase() {
     "CREATE INDEX IF NOT EXISTS idx_verification_email_purpose ON verification_codes (email, purpose)",
     // Annulation par lien : le jeton est le seul critère de recherche.
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_appointments_cancel_token ON appointments (cancel_token) WHERE cancel_token IS NOT NULL",
+    // Liste d'attente : on cherche par praticien (le prochain à prévenir) et par jeton (le lien du courrier).
+    "CREATE INDEX IF NOT EXISTS idx_attente_medecin ON liste_attente (doctor_id, statut, created_at)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_attente_jeton ON liste_attente (jeton)",
+    // Une même adresse ne s'inscrit qu'une fois par praticien tant qu'elle attend.
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_attente_unique ON liste_attente (doctor_id, patient_email) WHERE statut IN ('waiting', 'notified')",
+    // Expiration des créneaux retenus : balayée toutes les dix minutes.
+    "CREATE INDEX IF NOT EXISTS idx_appointments_hold ON appointments (hold_expire_le) WHERE status = 'hold'",
     // username porte déjà une contrainte UNIQUE, donc son index existe.
     // L'écran d'administration lit les demandes en attente, les plus récentes
     // d'abord : l'index porte les deux, il n'y a donc ni balayage ni tri.

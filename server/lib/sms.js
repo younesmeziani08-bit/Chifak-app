@@ -170,3 +170,21 @@ export function texteRappel({ patientName, doctorName, date, heure, visio, langu
     ? `${prenom}, rappel : téléconsultation avec ${doctorName} demain ${date} à ${heure}. chifak`
     : `${prenom}, rappel : rendez-vous avec ${doctorName} demain ${date} à ${heure}. chifak`;
 }
+
+/**
+ * Une place s'est libérée — en SMS.
+ *
+ * Deux heures pour répondre, c'est court. Sur un canal que le public consulte
+ * peu, la place expirerait avant d'avoir été lue : le SMS double donc le
+ * courrier chaque fois qu'il est configuré.
+ *
+ * Le délai figure en toutes lettres. C'est la seule information qui, mal
+ * comprise, fait perdre la place.
+ */
+export function texteCreneauLibere({ patientName, doctorName, date, heure, heures = 2, langue = 'fr' }) {
+  const prenom = String(patientName || '').split(' ')[0];
+  if (langue === 'ar') {
+    return `${prenom}، تحرّر موعد عند ${doctorName}: ${date} على ${heure}. محجوز لك ${heures} ساعتين. أكّده من البريد الإلكتروني. chifak`;
+  }
+  return `${prenom}, une place s'est liberee chez ${doctorName} : ${date} a ${heure}. Reservee ${heures}h pour vous. Confirmez depuis votre e-mail. chifak`;
+}

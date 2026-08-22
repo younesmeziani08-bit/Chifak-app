@@ -15,6 +15,8 @@ import AnnulationParLien from './components/booking/AnnulationParLien';
 import PagesLegales from './components/legal/PagesLegales';
 import { memoriser, reprendre, oublier } from './utils/reservationEnAttente';
 import ReservationDevantLaPorte from './components/booking/ReservationDevantLaPorte';
+import PlaceRetenue from './components/booking/PlaceRetenue';
+import MonInscriptionAttente from './components/booking/MonInscriptionAttente';
 import { appointmentsAPI, patientAPI } from './services/api';
 import PageTransition from './components/shared/PageTransition';
 
@@ -66,6 +68,22 @@ function jetonRendezVousDepuisUrl(): string | null {
 function idMedecinDepuisUrl(): number | null {
   const m = window.location.pathname.match(/^\/dr\/(\d{1,9})\/?$/);
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * /place/<jeton> — « une place s'est libérée, la voulez-vous ? »
+ * /attente/<jeton> — mon inscription sur une liste d'attente.
+ *
+ * Les deux ouvrent depuis un courrier, sans compte. Un créneau qui se libère
+ * repartait auparavant dans le tas sans que personne ne le sache ; il est
+ * maintenant proposé au premier de la file, et retenu deux heures le temps
+ * qu'il réponde.
+ */
+function jetonDepuisUrl(prefixe: string): string | null {
+  const m = window.location.pathname.match(
+    new RegExp(`^/${prefixe}/([A-Za-z0-9_-]{8,64})/?$`),
+  );
+  return m ? m[1] : null;
 }
 
 /**
@@ -235,6 +253,22 @@ export default function App() {
         doctorId={idMedecin}
         onRetourAccueil={() => { window.location.href = '/'; }}
       />
+    );
+  }
+
+  /* Liste d'attente : la place proposée, et l'inscription elle-même. Avant
+     tout le reste, sans en-tête ni session — le lien vient d'un courrier. */
+  const jetonPlace = jetonDepuisUrl('place');
+  if (jetonPlace) {
+    return (
+      <PlaceRetenue jeton={jetonPlace} onRetourAccueil={() => { window.location.href = '/'; }} />
+    );
+  }
+
+  const jetonAttente = jetonDepuisUrl('attente');
+  if (jetonAttente) {
+    return (
+      <MonInscriptionAttente jeton={jetonAttente} onRetourAccueil={() => { window.location.href = '/'; }} />
     );
   }
 

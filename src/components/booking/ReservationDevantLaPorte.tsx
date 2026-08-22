@@ -4,6 +4,7 @@ import { doctorsAPI, appointmentsAPI } from '../../services/api';
 import { slotsForDay } from '../../utils/slots';
 import type { Doctor } from '../../types/metier';
 import DoctorAvatar from '../shared/DoctorAvatar';
+import RejoindreListeAttente from './RejoindreListeAttente';
 
 /**
  * /dr/&lt;id&gt; — la page qu'on atteint en scannant le QR code affiché sur la
@@ -337,14 +338,20 @@ export default function ReservationDevantLaPorte({ doctorId, onRetourAccueil }: 
       </div>
 
       {creneauxAVenir.length === 0 ? (
-        <div className="rounded-2xl p-6 text-center" style={{ background: 'var(--bg-2)' }}>
-          <p className="text-gray-600 font-medium mb-1">
-            {isArabic ? 'لا يوجد موعد متاح' : 'Aucun créneau ce jour-là'}
-          </p>
-          <p className="text-sm text-gray-500">
-            {isArabic ? 'جرّب يومًا آخر أعلاه.' : 'Essayez un autre jour ci-dessus.'}
-          </p>
-        </div>
+        <>
+          <div className="rounded-2xl p-6 text-center mb-4" style={{ background: 'var(--bg-2)' }}>
+            <p className="text-gray-600 font-medium mb-1">
+              {isArabic ? 'لا يوجد موعد متاح' : 'Aucun créneau ce jour-là'}
+            </p>
+            <p className="text-sm text-gray-500">
+              {isArabic ? 'جرّب يومًا آخر أعلاه.' : 'Essayez un autre jour ci-dessus.'}
+            </p>
+          </div>
+          {/* C'est ici que quelqu'un quitte l'application pour ne plus jamais
+              revenir — devant une porte, après s'être déplacé. Un créneau se
+              libérera pourtant : quelqu'un annule toujours. */}
+          <RejoindreListeAttente doctorId={medecin.id} nomMedecin={medecin.name} />
+        </>
       ) : (
         <>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">

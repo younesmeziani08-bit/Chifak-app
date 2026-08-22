@@ -25,3 +25,4 @@ export * from './feedback';
 export * from './motDePasse';
 export * from './annulations';
 export * from './donneesPersonnelles';
+export * from './listeAttente';

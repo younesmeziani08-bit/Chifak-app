@@ -37,6 +37,7 @@ import {
 import { envoyerCourrier } from '../emailService.js';
 import { courrierRendezVousAnnule } from '../lib/courriers.js';
 import { ficheRendezVousPatient } from '../lib/publicData.js';
+import { prevenirSuivant } from '../lib/listeAttente.js';
 
 const router = express.Router();
 
@@ -44,7 +45,7 @@ const router = express.Router();
 async function lireRendezVous(id) {
   return db.prepare(`
     SELECT a.id, a.doctor_id, a.patient_name, a.patient_email, a.status,
-           a.appointment_date, a.appointment_time, a.language,
+           a.appointment_date, a.appointment_time, a.language, a.consultation_type,
            d.name AS doctor_name
     FROM appointments a JOIN doctors d ON a.doctor_id = d.id
     WHERE a.id = ?
@@ -86,6 +87,20 @@ async function annuler({ rendezVous, parQui, motif }) {
       langue: rendezVous.language === 'ar' ? 'ar' : 'fr',
     }));
   }
+
+  /* ── Le créneau qui se libère est le plus précieux du service ──
+     Il repartait silencieusement dans le tas. On prévient maintenant le
+     premier de la liste d'attente, et on lui retient la place le temps qu'il
+     réponde. Voir lib/listeAttente.js.
+
+     Placé APRÈS le courrier d'annulation, et sans await bloquant sur son
+     échec : l'annulation est acquise, la liste d'attente est un bonus. */
+  await prevenirSuivant({
+    doctorId: rendezVous.doctor_id,
+    date: rendezVous.appointment_date,
+    heure: rendezVous.appointment_time,
+    consultationType: rendezVous.consultation_type || 'cabinet',
+  });
 
   return true;
 }

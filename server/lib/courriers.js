@@ -187,3 +187,74 @@ export function courrierCompteEfface({ langue = 'fr' }) {
     }),
   };
 }
+
+/**
+ * Un créneau s'est libéré, et il vous est réservé.
+ *
+ * Le courrier dit trois choses, dans cet ordre : quel créneau, jusqu'à quand
+ * il est gardé, et quoi faire. Le délai est en gras et répété : c'est la seule
+ * information qui, mal comprise, fait perdre la place.
+ *
+ * Il ne promet pas le rendez-vous — il propose une place à confirmer. Annoncer
+ * « votre rendez-vous est pris » puis le retirer deux heures plus tard serait
+ * pire que de n'avoir rien envoyé.
+ */
+export function courrierCreneauLibere({
+  patientName, doctorName, date, heure, lien, heuresDeReponse = 2, langue = 'fr',
+}) {
+  const ar = langue === 'ar';
+
+  const details = `
+    <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#EAF3EC;border:1px solid #A7D2B4;border-radius:8px;margin:4px 0 18px;">
+      <tr><td style="padding:16px 18px;font-size:16px;color:#14192C;line-height:1.8;">
+        <strong>${escapeHtml(doctorName)}</strong><br>
+        ${escapeHtml(date)} · <strong>${escapeHtml(heure)}</strong>
+      </td></tr>
+    </table>`;
+
+  return {
+    subject: ar
+      ? `شفاك — موعد متاح عند ${doctorName}`
+      : `chifak — une place s'est libérée chez ${doctorName}`,
+    html: gabarit({
+      langue,
+      titre: ar ? 'موعد متاح' : 'Une place s’est libérée',
+      corps: (ar
+        ? p(`مرحبًا ${escapeHtml(patientName)}، أنت مسجّل في قائمة الانتظار، وقد تحرّر هذا الموعد:`)
+        : p(`Bonjour ${escapeHtml(patientName)}, vous êtes inscrit sur la liste d’attente et ce créneau vient de se libérer :`))
+        + details
+        + (ar
+          ? p(`الموعد <strong>محجوز لك لمدة ${heuresDeReponse} ساعتين</strong>. أكّده الآن، وإلا عاد متاحًا لغيرك.`)
+          : p(`Il vous est <strong>réservé pendant ${heuresDeReponse} heures</strong>. Confirmez-le maintenant, sinon il repart à quelqu’un d’autre.`)),
+      bouton: { url: lien, libelle: ar ? 'تأكيد الموعد' : 'Confirmer ce rendez-vous' },
+      pied: ar
+        ? 'لا يناسبك؟ لا تفعل شيئًا: سيُقترح على التالي، وتبقى أنت في القائمة للمرة القادمة.'
+        : 'Ce créneau ne vous convient pas ? Ne faites rien : il sera proposé au suivant, '
+          + 'et vous resterez sur la liste pour la prochaine fois.',
+    }),
+  };
+}
+
+/** Confirmation d'inscription sur la liste d'attente, avec le lien pour en sortir. */
+export function courrierInscritEnAttente({ patientName, doctorName, lienSortie, langue = 'fr' }) {
+  const ar = langue === 'ar';
+  return {
+    subject: ar
+      ? `شفاك — أنت في قائمة الانتظار عند ${doctorName}`
+      : `chifak — vous êtes sur la liste d'attente de ${doctorName}`,
+    html: gabarit({
+      langue,
+      titre: ar ? 'أنت في قائمة الانتظار' : 'Vous êtes sur la liste d’attente',
+      corps: ar
+        ? p(`مرحبًا ${escapeHtml(patientName)}، سنُعلمك فور تحرّر موعد عند <strong>${escapeHtml(doctorName)}</strong>.`)
+          + p('يُحجز لك الموعد ساعتين لتأكيده. لا داعي للعودة إلى التطبيق بانتظام.')
+        : p(`Bonjour ${escapeHtml(patientName)}, nous vous préviendrons dès qu’un créneau se libérera chez <strong>${escapeHtml(doctorName)}</strong>.`)
+          + p('La place vous sera réservée deux heures, le temps de la confirmer. '
+            + 'Inutile de revenir consulter l’application régulièrement.'),
+      bouton: { url: lienSortie, libelle: ar ? 'الخروج من القائمة' : 'Me retirer de la liste' },
+      pied: ar
+        ? 'يمكنك الخروج من القائمة في أي وقت عبر هذا الرابط.'
+        : 'Vous pouvez vous retirer à tout moment depuis ce lien.',
+    }),
+  };
+}

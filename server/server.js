@@ -17,6 +17,7 @@ import cron from 'node-cron';
 import { initDatabase, pool } from './database.js';
 import { sendDailyAgendas } from './dailyAgenda.js';
 import { envoyerRappels } from './rappels.js';
+import { libererLesPlacesExpirees } from './lib/listeAttente.js';
 import app from './app.js';
 import { annoncerPreparation } from './config/diagnostic.js';
 
@@ -102,6 +103,22 @@ initDatabase()
       }
     }, { timezone: AGENDA_TZ });
     console.log(`🔔 Rappels patients planifiés à 18:00 (${AGENDA_TZ})`);
+
+    /* ── Places retenues expirées ──
+       Quelqu'un a été prévenu qu'un créneau se libérait, on le lui a retenu
+       deux heures, et il n'a pas répondu. Sans cette tâche, le créneau
+       resterait bloqué sur lui indéfiniment : ni pour lui, ni pour personne.
+       Toutes les dix minutes — le délai de réponse se compte en heures, une
+       précision à la minute n'apporterait rien et interrogerait la base
+       soixante fois plus souvent. */
+    cron.schedule('*/10 * * * *', async () => {
+      try {
+        await libererLesPlacesExpirees();
+      } catch (err) {
+        console.error('Erreur libération des places retenues:', err);
+      }
+    }, { timezone: AGENDA_TZ });
+    console.log('⏳ Places retenues vérifiées toutes les 10 minutes');
 
     /* ── Purge des codes de vérification ──
        Rien ne les effaçait. La table grossissait à chaque inscription et à
