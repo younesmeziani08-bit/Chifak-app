@@ -34,6 +34,7 @@ import routesApplications from './routes/applications.js';
 import routesDeuxiemeFacteur from './routes/twoFactor.js';
 import routesMotDePasse from './routes/motDePasse.js';
 import routesAnnulations from './routes/annulations.js';
+import routesDonnees from './routes/donneesPersonnelles.js';
 
 // SÉCURITÉ : on refuse de démarrer en production avec des secrets absents ou faibles.
 assertStrongSecrets();
@@ -161,6 +162,7 @@ app.use(routesApplications);  // demandes d'inscription des praticiens
 app.use(routesDeuxiemeFacteur); // double authentification du personnel
 app.use(routesMotDePasse);      // oubli, réinitialisation et changement du mot de passe patient
 app.use(routesAnnulations);     // annulation par le patient, l'invité, le praticien ou le cabinet
+app.use(routesDonnees);         // export et effacement des données du patient
 
 // ── 6. Filets ──
 app.use('/api', (req, res) => {

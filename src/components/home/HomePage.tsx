@@ -1188,7 +1188,23 @@ export default function HomePage({ onSearch, onDoctorClick, onOpenLogin, onOpenS
             className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs"
             style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
           >
-            <p>© 2026 chifak · {isArabic ? 'الجزائر' : 'Algérie'}</p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <p>© 2026 chifak · {isArabic ? 'الجزائر' : 'Algérie'}</p>
+              {/* Ces pages n'existaient pas. Un service qui collecte des motifs
+                  de consultation et l'identité de mineurs doit dire ce qu'il en
+                  fait, et où réclamer. */}
+              <nav className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-label={isArabic ? 'روابط قانونية' : 'Liens légaux'}>
+                <a href="/conditions" className="hover:text-white/80 underline underline-offset-2">
+                  {isArabic ? 'شروط الاستخدام' : 'Conditions'}
+                </a>
+                <a href="/confidentialite" className="hover:text-white/80 underline underline-offset-2">
+                  {isArabic ? 'الخصوصية' : 'Confidentialité'}
+                </a>
+                <a href="/mentions-legales" className="hover:text-white/80 underline underline-offset-2">
+                  {isArabic ? 'معلومات قانونية' : 'Mentions légales'}
+                </a>
+              </nav>
+            </div>
             <p className="max-w-md sm:text-end">
               {isArabic
                 ? 'شفاك ليس خدمة استعجالية ولا يقدّم تشخيصًا طبيًا.'

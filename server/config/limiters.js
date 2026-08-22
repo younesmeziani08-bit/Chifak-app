@@ -35,6 +35,8 @@ export const CHEMINS_SENSIBLES = [
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
   '/api/patient/password',
+  // Effacement définitif : autant de valeur pour un attaquant que la connexion.
+  '/api/patient/mon-compte',
 ];
 
 // Limiteur dédié à l'assistant IA (appels coûteux) : plafonne les messages par IP.

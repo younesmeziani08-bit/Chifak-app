@@ -17,6 +17,11 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
+  /* Consentement au traitement des données de santé. Il n'était demandé nulle
+     part, alors que le service collecte des motifs de consultation et
+     l'identité de mineurs. Le serveur horodate l'acceptation : un
+     consentement qu'on ne peut pas démontrer n'en est pas un. */
+  const [consent, setConsent] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [renvoi, setRenvoi] = useState('');
 
@@ -34,6 +39,12 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
       setError(isArabic ? 'كلمات المرور غير متطابقة' : 'Les mots de passe ne correspondent pas');
+      return;
+    }
+    if (!consent) {
+      setError(isArabic
+        ? 'يجب قبول الشروط وسياسة الخصوصية.'
+        : 'Vous devez accepter les conditions et la politique de confidentialité.');
       return;
     }
     setLoading(true);
@@ -210,15 +221,41 @@ export default function SignupModal({ isOpen, onClose, onOpenLogin, onSuccess }:
                   </div>
                 </div>
 
+                <label className="flex items-start gap-3 px-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={consent}
+                    onChange={(e) => setConsent(e.target.checked)}
+                    className="mt-0.5 w-5 h-5 shrink-0 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-xs text-gray-500 leading-relaxed">
+                    {isArabic ? (
+                      <>
+                        أوافق على{' '}
+                        <a href="/conditions" target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline">شروط الاستخدام</a>
+                        {' '}وعلى معالجة بياناتي الصحية كما هو موضّح في{' '}
+                        <a href="/confidentialite" target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline">سياسة الخصوصية</a>.
+                      </>
+                    ) : (
+                      <>
+                        J’accepte les{' '}
+                        <a href="/conditions" target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline">conditions d’utilisation</a>
+                        {' '}et le traitement de mes données de santé décrit dans la{' '}
+                        <a href="/confidentialite" target="_blank" rel="noreferrer" className="text-blue-600 font-bold hover:underline">politique de confidentialité</a>.
+                      </>
+                    )}
+                  </span>
+                </label>
+
                 {error && (
-                  <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-xs font-bold text-red-600 animate-fadeInUp">
+                  <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-xs font-bold text-red-600 animate-fadeInUp" role="alert">
                     ⚠️ {error}
                   </div>
                 )}
 
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !consent}
                   className="btn-pro w-full py-5 bg-blue-600 text-white font-black uppercase tracking-[0.2em] text-sm rounded-2xl shadow-2xl shadow-blue-600/30 active:scale-[0.98] disabled:opacity-50"
                 >
                   {loading ? (isArabic ? 'جاري المعالجة...' : 'Création...') : (isArabic ? 'إنشاء الحساب' : 'S\'inscrire gratuitement')}

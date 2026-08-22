@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import Header from '../shared/Header';
 import VideoCall from '../booking/VideoCall';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { appointmentsAPI, patientAPI, reviewsAPI, motDePasseAPI } from '../../services/api';
+import { appointmentsAPI, patientAPI, reviewsAPI, motDePasseAPI, donneesAPI, telechargerExport } from '../../services/api';
 
 const NAVY = '#00264c';
 
@@ -98,6 +98,43 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
   const [mdpEnCours, setMdpEnCours] = useState(false);
   const [mdpOk, setMdpOk] = useState(false);
   const [mdpErreur, setMdpErreur] = useState('');
+
+  /* Obtenir ses données, effacer son compte. Ni l'un ni l'autre n'existait. */
+  const [exportEnCours, setExportEnCours] = useState(false);
+  const [suppressionOuverte, setSuppressionOuverte] = useState(false);
+  const [mdpSuppression, setMdpSuppression] = useState('');
+  const [confirmationTexte, setConfirmationTexte] = useState('');
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+  const [suppressionErreur, setSuppressionErreur] = useState('');
+
+  const exporterMesDonnees = async () => {
+    setExportEnCours(true);
+    try {
+      telechargerExport(await donneesAPI.exporter());
+    } catch (err: any) {
+      window.alert(err.message || 'Export impossible');
+    } finally {
+      setExportEnCours(false);
+    }
+  };
+
+  const supprimerMonCompte = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSuppressionEnCours(true);
+    setSuppressionErreur('');
+    try {
+      await donneesAPI.supprimerCompte(mdpSuppression, confirmationTexte, isArabic ? 'ar' : 'fr');
+      /* Le compte n'existe plus : on referme la session avant tout le reste,
+         sinon l'écran continue d'appeler des routes avec un jeton mort. */
+      localStorage.removeItem('chifak_patient_token');
+      localStorage.removeItem('chifak_patient_user');
+      onLogout();
+    } catch (err: any) {
+      setSuppressionErreur(err.message || 'Suppression impossible');
+    } finally {
+      setSuppressionEnCours(false);
+    }
+  };
 
   const changerMotDePasse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -560,6 +597,112 @@ export default function PatientAccount({ patientUser, onBackToHome, onOpenProfes
                 : (isArabic ? 'تغيير كلمة المرور' : 'Changer le mot de passe')}
             </button>
           </form>
+        )}
+
+        {tab === 'settings' && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 max-w-lg mt-6">
+            <h3 className="font-semibold mb-1.5" style={{ color: NAVY }}>
+              {isArabic ? 'بياناتي' : 'Mes données'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-5 leading-relaxed">
+              {isArabic
+                ? 'يمكنك الحصول على كل ما نحتفظ به عنك، أو حذف حسابك.'
+                : 'Vous pouvez obtenir tout ce que nous conservons sur vous, ou supprimer votre compte.'}
+            </p>
+
+            <button
+              type="button"
+              onClick={exporterMesDonnees}
+              disabled={exportEnCours}
+              className="px-5 py-3 border border-gray-300 rounded-xl font-semibold text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition"
+            >
+              {exportEnCours
+                ? (isArabic ? 'جارٍ التحضير…' : 'Préparation…')
+                : (isArabic ? 'تنزيل بياناتي' : 'Télécharger mes données')}
+            </button>
+
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <h4 className="font-semibold text-red-700 mb-1.5">
+                {isArabic ? 'حذف الحساب' : 'Supprimer mon compte'}
+              </h4>
+              {/* Dire ce qui part ET ce qui reste. Promettre une suppression
+                  totale alors que les rendez-vous subsistent — ils appartiennent
+                  aussi au dossier du praticien — serait une promesse fausse. */}
+              <p className="text-sm text-gray-500 leading-relaxed mb-4">
+                {isArabic
+                  ? 'يُحذف اسمك وبريدك وهاتفك وكلمة مرورك نهائيًا، وتُلغى مواعيدك القادمة. تبقى المواعيد السابقة في سجل الطبيب دون ما يسمح بالتعرف عليك.'
+                  : 'Vos nom, adresse, téléphone et mot de passe sont effacés définitivement, et vos rendez-vous à venir sont annulés. Les rendez-vous passés restent dans le dossier du praticien, sans rien qui permette de vous identifier.'}
+              </p>
+
+              {!suppressionOuverte ? (
+                <button
+                  type="button"
+                  onClick={() => setSuppressionOuverte(true)}
+                  className="px-5 py-3 border border-red-200 text-red-600 rounded-xl font-semibold text-sm hover:bg-red-50 transition"
+                >
+                  {isArabic ? 'حذف حسابي' : 'Supprimer mon compte'}
+                </button>
+              ) : (
+                <form onSubmit={supprimerMonCompte} className="p-4 rounded-xl bg-red-50 border border-red-100 space-y-3">
+                  <div>
+                    <label htmlFor="sup-mdp" className="block text-xs font-bold text-red-800 mb-1.5">
+                      {isArabic ? 'كلمة المرور للتأكيد' : 'Votre mot de passe, pour confirmer'}
+                    </label>
+                    <input
+                      id="sup-mdp"
+                      type="password"
+                      autoComplete="current-password"
+                      value={mdpSuppression}
+                      onChange={(e) => setMdpSuppression(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-red-200 rounded-lg text-sm"
+                      placeholder="••••••••"
+                    />
+                    <p className="text-[11px] text-red-700/70 mt-1.5">
+                      {isArabic
+                        ? 'إن كان حسابك عبر Google أو Facebook، اترك الحقل فارغًا واكتب SUPPRIMER أدناه.'
+                        : 'Compte créé via Google ou Facebook ? Laissez vide et tapez SUPPRIMER ci-dessous.'}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label htmlFor="sup-conf" className="block text-xs font-bold text-red-800 mb-1.5">
+                      {isArabic ? 'اكتب SUPPRIMER' : 'Tapez SUPPRIMER'}
+                    </label>
+                    <input
+                      id="sup-conf"
+                      value={confirmationTexte}
+                      onChange={(e) => setConfirmationTexte(e.target.value)}
+                      className="w-full px-3 py-2.5 border border-red-200 rounded-lg text-sm"
+                      placeholder="SUPPRIMER"
+                    />
+                  </div>
+
+                  {suppressionErreur && (
+                    <p className="text-sm text-red-700 font-medium" role="alert">{suppressionErreur}</p>
+                  )}
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      type="submit"
+                      disabled={suppressionEnCours}
+                      className="px-5 py-2.5 bg-red-600 text-white rounded-lg font-semibold text-sm hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {suppressionEnCours
+                        ? (isArabic ? 'جارٍ الحذف…' : 'Suppression…')
+                        : (isArabic ? 'حذف نهائيًا' : 'Supprimer définitivement')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setSuppressionOuverte(false); setMdpSuppression(''); setConfirmationTexte(''); setSuppressionErreur(''); }}
+                      className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-semibold text-sm"
+                    >
+                      {isArabic ? 'تراجع' : 'Renoncer'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

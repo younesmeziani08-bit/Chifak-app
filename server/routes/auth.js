@@ -338,14 +338,20 @@ router.post('/api/auth/register', async (req, res) => {
        elle interdit d'écraser un compte vérifié. Sans elle, cette route
        permettrait de réécrire le mot de passe de n'importe quel patient en
        connaissant sa seule adresse. */
+    /* Consentement au traitement des données de santé, horodaté.
+       Sans cette date, on ne peut pas démontrer qu'il a été recueilli — et un
+       consentement qu'on ne peut pas démontrer n'en est pas un. L'écran
+       d'inscription porte la case et les liens vers les conditions et la
+       politique de confidentialité. */
     const hashedPassword = await bcrypt.hash(password, 10);
     await db.prepare(`
-      INSERT INTO patients (email, name, phone, password, is_verified)
-      VALUES (?, ?, ?, ?, 0)
+      INSERT INTO patients (email, name, phone, password, is_verified, consent_at)
+      VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
       ON CONFLICT (email) DO UPDATE
         SET name = EXCLUDED.name,
             phone = EXCLUDED.phone,
             password = EXCLUDED.password,
+            consent_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
         WHERE patients.is_verified = 0
     `).run(email, name, phone, hashedPassword);

@@ -12,6 +12,7 @@ import DoctorSpace from './components/doctor/DoctorSpace';
 import ProfessionalModal from './components/shared/ProfessionalModal';
 import FeedbackPage from './components/doctor/FeedbackPage';
 import AnnulationParLien from './components/booking/AnnulationParLien';
+import PagesLegales from './components/legal/PagesLegales';
 import { appointmentsAPI, patientAPI } from './services/api';
 import PageTransition from './components/shared/PageTransition';
 
@@ -43,6 +44,27 @@ function feedbackTokenFromPath(): string | null {
 function jetonRendezVousDepuisUrl(): string | null {
   const m = window.location.pathname.match(/^\/rdv\/([A-Za-z0-9_-]{8,64})\/?$/);
   return m ? m[1] : null;
+}
+
+/**
+ * Pages légales : conditions, confidentialité, mentions.
+ *
+ * Elles n'existaient pas. Le service collecte des motifs de consultation, des
+ * téléphones et l'identité de mineurs sans dire nulle part ce qu'il en fait,
+ * combien de temps, ni quels droits ont les personnes concernées.
+ *
+ * Adresses en clair plutôt qu'un état d'application : ces pages doivent
+ * pouvoir être liées depuis un e-mail, un contrat, ou une capture d'écran.
+ */
+const PAGES_LEGALES = {
+  '/conditions': 'conditions',
+  '/confidentialite': 'confidentialite',
+  '/mentions-legales': 'mentions',
+} as const;
+
+function pageLegaleDepuisUrl(): 'conditions' | 'confidentialite' | 'mentions' | null {
+  const chemin = window.location.pathname.replace(/\/$/, '');
+  return PAGES_LEGALES[chemin as keyof typeof PAGES_LEGALES] ?? null;
 }
 
 export default function App() {
@@ -158,6 +180,12 @@ export default function App() {
   const feedbackToken = feedbackTokenFromPath();
   if (feedbackToken) {
     return <FeedbackPage token={feedbackToken} />;
+  }
+
+  /* Pages légales : publiques, sans session, avant tout le reste. */
+  const pageLegale = pageLegaleDepuisUrl();
+  if (pageLegale) {
+    return <PagesLegales page={pageLegale} onRetour={() => { window.location.href = '/'; }} />;
   }
 
   /* Annulation par lien : même principe, aucune session requise. Le jeton du
