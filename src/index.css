@@ -650,3 +650,89 @@
     .btn-primary, .btn-secondary, .btn-pro, .specialty-card { transition: none; }
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   LA CARTE DE RENDEZ-VOUS
+   ══════════════════════════════════════════════════════════════════════
+
+   Quatre écrans remplacent le même objet : /place/<jeton> quand une place
+   se libère, /rdv/<jeton> pour se décommander, /dr/<id> devant la porte du
+   cabinet, /attente/<jeton> pour sa place dans la file. Dans les quatre
+   cas la personne tient UN rendez-vous — celui que la secrétaire notait
+   jusqu'ici sur un carton qu'on garde dans le portefeuille.
+
+   Ces écrans étaient quatre fois le même rectangle blanc centré. Ils sont
+   maintenant ce carton : une souche en haut qui porte le praticien, une
+   perforation, et le corps en dessous.
+
+   L'heure est composée dans la display face à une taille qu'aucun autre
+   élément de l'application n'atteint. C'est la seule information qu'on
+   vient chercher ; le reste se lit une fois qu'on l'a trouvée.
+   ────────────────────────────────────────────────────────────────────── */
+
+.carte-rdv {
+  background: var(--bg);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-md);
+  /* La découpe des encoches : leur moitié extérieure est rognée ici, ce
+     qui laisse une morsure semi-circulaire dans chaque flanc. */
+  overflow: hidden;
+}
+
+/* La souche — praticien et spécialité, sur l'azur de la marque. */
+.carte-rdv-souche {
+  background: var(--accent-bg);
+  padding: 1.125rem 1.5rem;
+}
+
+/* La perforation. Un filet pointillé, deux encoches dans les flancs.
+   L'élément n'a pas de hauteur : le filet EST sa bordure haute, et les
+   encoches se centrent dessus. */
+.carte-rdv-perfo {
+  position: relative;
+  height: 0;
+  /* Assez contrasté pour se lire par-dessus la bascule azur → blanc, qui
+     sépare déjà les deux zones à elle seule. */
+  border-top: 1px dashed var(--tint-30);
+}
+
+.carte-rdv-perfo::before,
+.carte-rdv-perfo::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  /* La couleur du fond de page : l'encoche est un trou, pas une pastille. */
+  background: var(--bg-2);
+  transform: translateY(-50%);
+}
+
+.carte-rdv-perfo::before { inset-inline-start: -7.5px; }
+.carte-rdv-perfo::after  { inset-inline-end:   -7.5px; }
+
+.carte-rdv-corps {
+  padding: 1.5rem;
+}
+
+/* L'heure. Source Serif 4, outremer, chiffres à chasse fixe pour que le
+   décompte ne fasse pas danser la ligne à chaque seconde. */
+.carte-rdv-heure {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2.5rem, 11vw, 3.5rem);
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Le jour, juste au-dessus de l'heure : petite capitale, encre pâle.
+   La hiérarchie se joue sur l'échelle, pas sur la graisse — les graisses
+   sont ramenées à 400/600 au niveau du thème. */
+.carte-rdv-jour {
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}

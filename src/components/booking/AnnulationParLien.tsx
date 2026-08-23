@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { rendezVousParJetonAPI, type RendezVousParJeton } from '../../services/annulations';
+import { Alerte, Bouton, CarteRdv, Chargement, Entete, PageCarte } from '../shared/Carte';
 
 /**
  * /rdv/&lt;jeton&gt; — voir et annuler un rendez-vous SANS COMPTE.
@@ -26,9 +27,6 @@ interface Props {
   jeton: string;
   onRetourAccueil: () => void;
 }
-
-const CADRE = 'min-h-screen flex items-center justify-center p-4';
-const CARTE = 'w-full max-w-lg bg-white rounded-3xl shadow-xl p-8 sm:p-10';
 
 export default function AnnulationParLien({ jeton, onRetourAccueil }: Props) {
   const { language } = useLanguage();
@@ -64,139 +62,91 @@ export default function AnnulationParLien({ jeton, onRetourAccueil }: Props) {
     }
   };
 
-  const dateLisible = (iso: string) => {
-    const d = new Date(`${iso}T12:00:00`);
-    return new Intl.DateTimeFormat(isArabic ? 'ar' : 'fr-FR', {
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    }).format(d);
-  };
-
   if (chargement) {
-    return (
-      <div className={CADRE} style={{ background: 'var(--bg-2)' }}>
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-3" />
-          <p className="text-sm text-gray-500">{isArabic ? 'جارٍ التحميل…' : 'Chargement…'}</p>
-        </div>
-      </div>
-    );
+    return <PageCarte isArabic={isArabic}><Chargement isArabic={isArabic} /></PageCarte>;
   }
 
   if (!rdv) {
     return (
-      <div className={CADRE} style={{ background: 'var(--bg-2)' }}>
-        <div className={`${CARTE} text-center`}>
-          <div className="text-4xl mb-4" aria-hidden="true">🔗</div>
-          <h1 className="text-xl font-black text-gray-900 mb-2">
-            {isArabic ? 'رابط غير صالح' : 'Lien invalide ou expiré'}
-          </h1>
-          <p className="text-sm text-gray-500 leading-relaxed mb-6">
-            {isArabic
-              ? 'قد يكون الموعد أُلغي بالفعل، أو أن الرابط غير مكتمل. تحقّق من البريد الإلكتروني الذي استلمته.'
-              : 'Le rendez-vous a peut-être déjà été annulé, ou le lien est incomplet. Vérifiez l’e-mail que vous avez reçu.'}
-          </p>
-          <button onClick={onRetourAccueil} className="px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold text-sm">
-            {isArabic ? 'العودة للرئيسية' : 'Retour à l’accueil'}
-          </button>
-        </div>
-      </div>
+      <PageCarte isArabic={isArabic}>
+        <Entete icone="lienRompu" ton="sourdine" titre={isArabic ? 'رابط غير صالح' : 'Lien invalide ou expiré'} />
+        <p className="text-[15px] leading-relaxed mb-6" style={{ color: 'var(--ink-2)' }}>
+          {isArabic
+            ? 'قد يكون الموعد أُلغي بالفعل، أو أن الرابط غير مكتمل. تحقّق من البريد الإلكتروني الذي استلمته.'
+            : 'Le rendez-vous a peut-être déjà été annulé, ou le lien est incomplet. Vérifiez l’e-mail que vous avez reçu.'}
+        </p>
+        <Bouton onClick={onRetourAccueil}>{isArabic ? 'العودة للرئيسية' : 'Retour à l’accueil'}</Bouton>
+      </PageCarte>
     );
   }
 
   return (
-    <div className={CADRE} style={{ background: 'var(--bg-2)' }}>
-      <div className={CARTE}>
-        <div className="text-center mb-8">
-          <div className="text-4xl mb-3" aria-hidden="true">{annule ? '✓' : '📅'}</div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-            {annule
-              ? (isArabic ? 'أُلغي الموعد' : 'Rendez-vous annulé')
-              : (isArabic ? 'موعدك' : 'Votre rendez-vous')}
-          </h1>
-        </div>
+    <PageCarte isArabic={isArabic}>
+      <Entete
+        icone={annule ? 'coche' : 'calendrier'}
+        ton={annule ? 'sourdine' : 'accent'}
+        titre={annule
+          ? (isArabic ? 'أُلغي الموعد' : 'Rendez-vous annulé')
+          : (isArabic ? 'موعدك' : 'Votre rendez-vous')}
+      />
 
-        <dl className="rounded-2xl p-5 mb-6 space-y-3" style={{ background: 'var(--bg-2)' }}>
-          <div className="flex justify-between gap-4">
-            <dt className="text-xs font-bold uppercase tracking-wider text-gray-400">{isArabic ? 'الطبيب' : 'Praticien'}</dt>
-            <dd className="text-sm font-bold text-gray-900 text-right">{rdv.doctor_name}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-xs font-bold uppercase tracking-wider text-gray-400">{isArabic ? 'التخصص' : 'Spécialité'}</dt>
-            <dd className="text-sm text-gray-700 text-right">{rdv.specialty}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-xs font-bold uppercase tracking-wider text-gray-400">{isArabic ? 'التاريخ' : 'Date'}</dt>
-            <dd className="text-sm text-gray-700 text-right">{dateLisible(rdv.appointment_date)}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-xs font-bold uppercase tracking-wider text-gray-400">{isArabic ? 'الساعة' : 'Heure'}</dt>
-            <dd className="text-sm font-bold text-gray-900 text-right tabular-nums">{rdv.appointment_time}</dd>
-          </div>
-          {rdv.consultation_type !== 'video' && (
-            <div className="flex justify-between gap-4">
-              <dt className="text-xs font-bold uppercase tracking-wider text-gray-400">{isArabic ? 'العنوان' : 'Adresse'}</dt>
-              <dd className="text-sm text-gray-700 text-right">{rdv.address}, {rdv.city}</dd>
-            </div>
-          )}
-        </dl>
-
-        {erreur && (
-          <div className="mb-5 p-4 bg-red-50 border border-red-100 rounded-2xl text-xs font-bold text-red-600" role="alert">
-            ⚠️ {erreur}
-          </div>
-        )}
-
-        {annule ? (
-          <>
-            <p className="text-sm text-gray-500 leading-relaxed mb-6 text-center">
-              {isArabic
-                ? 'تم تحرير الموعد. يمكنك حجز موعد آخر متى شئت.'
-                : 'Le créneau a été libéré. Vous pouvez reprendre rendez-vous quand vous le souhaitez.'}
-            </p>
-            <button onClick={onRetourAccueil} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs">
-              {isArabic ? 'حجز موعد آخر' : 'Prendre un autre rendez-vous'}
-            </button>
-          </>
-        ) : confirmation ? (
-          <>
-            <p className="text-sm text-gray-700 leading-relaxed mb-5 text-center font-medium">
-              {isArabic
-                ? 'هل تريد فعلاً إلغاء هذا الموعد؟ لا يمكن التراجع عن ذلك.'
-                : 'Confirmez-vous l’annulation ? Le créneau sera aussitôt rendu disponible, et cette action est définitive.'}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={annuler}
-                disabled={annulation}
-                className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black uppercase tracking-widest text-xs disabled:opacity-50"
-              >
-                {annulation
-                  ? (isArabic ? 'جارٍ الإلغاء…' : 'Annulation…')
-                  : (isArabic ? 'نعم، ألغِ الموعد' : 'Oui, annuler')}
-              </button>
-              <button
-                onClick={() => setConfirmation(false)}
-                disabled={annulation}
-                className="flex-1 py-4 bg-gray-100 text-gray-700 rounded-2xl font-black uppercase tracking-widest text-xs"
-              >
-                {isArabic ? 'تراجع' : 'Non, garder'}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() => setConfirmation(true)}
-              className="w-full py-4 border-2 border-red-200 text-red-600 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-red-50 transition-colors"
-            >
-              {isArabic ? 'إلغاء هذا الموعد' : 'Annuler ce rendez-vous'}
-            </button>
-            <button onClick={onRetourAccueil} className="w-full mt-3 py-3 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700">
-              {isArabic ? 'العودة للرئيسية' : 'Retour à l’accueil'}
-            </button>
-          </>
-        )}
+      <div className="mb-6">
+        <CarteRdv
+          praticien={rdv.doctor_name}
+          specialite={rdv.specialty}
+          date={rdv.appointment_date}
+          heure={rdv.appointment_time}
+          adresse={rdv.consultation_type !== 'video' ? `${rdv.address}, ${rdv.city}` : null}
+          annulee={annule}
+          isArabic={isArabic}
+        />
       </div>
-    </div>
+
+      {erreur && <Alerte>{erreur}</Alerte>}
+
+      {annule ? (
+        <>
+          <p className="text-[15px] leading-relaxed mb-6" style={{ color: 'var(--ink-2)' }}>
+            {isArabic
+              ? 'تم تحرير الموعد. يمكنك حجز موعد آخر متى شئت.'
+              : 'Le créneau a été libéré. Vous pouvez reprendre rendez-vous quand vous le souhaitez.'}
+          </p>
+          <Bouton onClick={onRetourAccueil}>
+            {isArabic ? 'حجز موعد آخر' : 'Prendre un autre rendez-vous'}
+          </Bouton>
+        </>
+      ) : confirmation ? (
+        <>
+          {/* On nomme la conséquence, pas la gravité : « définitif » informe,
+              « attention » ne fait qu'alarmer. */}
+          <p className="text-[15px] leading-relaxed mb-5" style={{ color: 'var(--ink-2)' }}>
+            {isArabic
+              ? 'هل تريد فعلاً إلغاء هذا الموعد؟ لا يمكن التراجع عن ذلك.'
+              : 'Le créneau sera aussitôt rendu disponible, et cette action est définitive.'}
+          </p>
+          <div className="space-y-2.5">
+            <Bouton variante="danger" onClick={annuler} disabled={annulation}>
+              {annulation
+                ? (isArabic ? 'جارٍ الإلغاء…' : 'Annulation…')
+                : (isArabic ? 'نعم، ألغِ الموعد' : 'Oui, annuler ce rendez-vous')}
+            </Bouton>
+            <Bouton variante="contour" onClick={() => setConfirmation(false)} disabled={annulation}>
+              {isArabic ? 'تراجع' : 'Non, je le garde'}
+            </Bouton>
+          </div>
+        </>
+      ) : (
+        <>
+          <Bouton variante="contour" onClick={() => setConfirmation(true)}>
+            {isArabic ? 'إلغاء هذا الموعد' : 'Annuler ce rendez-vous'}
+          </Bouton>
+          <div className="mt-2.5">
+            <Bouton variante="discret" onClick={onRetourAccueil}>
+              {isArabic ? 'العودة للرئيسية' : 'Retour à l’accueil'}
+            </Bouton>
+          </div>
+        </>
+      )}
+    </PageCarte>
   );
 }

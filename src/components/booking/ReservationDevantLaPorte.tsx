@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { Bouton, CarteRdv, Entete, PageCarte } from '../shared/Carte';
 import { doctorsAPI, appointmentsAPI } from '../../services/api';
 import { slotsForDay } from '../../utils/slots';
 import type { Doctor } from '../../types/metier';
@@ -183,12 +184,9 @@ export default function ReservationDevantLaPorte({ doctorId, onRetourAccueil }: 
   if (!medecin) {
     return (
       <Cadre>
-        <div className="text-center py-8">
-          <div className="text-4xl mb-4" aria-hidden="true">🔍</div>
-          <h1 className="text-xl font-black text-gray-900 mb-2">
-            {isArabic ? 'الطبيب غير موجود' : 'Praticien introuvable'}
-          </h1>
-          <p className="text-sm text-gray-500 leading-relaxed mb-6">
+        <div className="py-4">
+          <Entete icone="lienRompu" ton="sourdine" titre={isArabic ? 'الطبيب غير موجود' : 'Praticien introuvable'} />
+          <p className="text-[15px] leading-relaxed mb-6" style={{ color: 'var(--ink-2)' }}>
             {isArabic
               ? 'قد يكون رمز QR قديمًا. اسأل في العيادة.'
               : 'Ce QR code est peut-être ancien. Demandez au cabinet.'}
@@ -207,28 +205,28 @@ export default function ReservationDevantLaPorte({ doctorId, onRetourAccueil }: 
 
   if (etape === 'confirme') {
     return (
-      <Cadre>
-        <div className="text-center py-4">
-          <div className="w-16 h-16 rounded-full bg-green-50 text-green-600 flex items-center justify-center mx-auto mb-5 text-3xl" aria-hidden="true">✓</div>
-          <h1 className="text-2xl font-black text-gray-900 mb-2">
-            {isArabic ? 'تم حجز موعدك' : 'Rendez-vous confirmé'}
-          </h1>
-          <p className="text-[15px] text-gray-600 leading-relaxed mb-6">
-            {isArabic ? 'مع ' : 'Avec '}<strong>{medecin.name}</strong><br />
-            {jourChoisi?.long} {isArabic ? 'على' : 'à'} <strong>{creneau}</strong>
-          </p>
-          <div className="rounded-2xl p-4 text-start mb-6" style={{ background: 'var(--bg-2)' }}>
-            <p className="text-sm text-gray-600 leading-relaxed">
-              {isArabic
-                ? 'أُرسل بريد تأكيد إلى عنوانك، ويحتوي على رابط لإلغاء الموعد إن لزم الأمر.'
-                : 'Un e-mail de confirmation vient de partir à votre adresse. Il contient un lien pour annuler si vous ne pouvez plus venir.'}
-            </p>
-          </div>
-          <BoutonPrincipal onClick={onRetourAccueil}>
-            {isArabic ? 'اكتشف chifak' : 'Découvrir chifak'}
-          </BoutonPrincipal>
+      <PageCarte isArabic={isArabic}>
+        <Entete icone="coche" ton="succes" titre={isArabic ? 'تم حجز موعدك' : 'Rendez-vous confirmé'} />
+
+        <div className="mb-6">
+          <CarteRdv
+            praticien={medecin.name}
+            specialite={medecin.specialty}
+            date={jour}
+            heure={creneau ?? ''}
+            adresse={`${medecin.address}, ${medecin.city}`}
+            isArabic={isArabic}
+          />
         </div>
-      </Cadre>
+
+        <p className="text-[15px] leading-relaxed mb-6" style={{ color: 'var(--ink-2)' }}>
+          {isArabic
+            ? 'أُرسل بريد تأكيد إلى عنوانك، ويحتوي على رابط لإلغاء الموعد إن لزم الأمر.'
+            : 'Un e-mail de confirmation vient de partir à votre adresse. Il contient un lien pour annuler si vous ne pouvez plus venir.'}
+        </p>
+
+        <Bouton onClick={onRetourAccueil}>{isArabic ? 'اكتشف chifak' : 'Découvrir chifak'}</Bouton>
+      </PageCarte>
     );
   }
 
@@ -280,7 +278,14 @@ export default function ReservationDevantLaPorte({ doctorId, onRetourAccueil }: 
           />
 
           {erreur && (
-            <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-sm font-medium text-red-600" role="alert">
+            <div
+              className="p-4 text-[14px] leading-relaxed"
+              role="alert"
+              style={{
+                borderRadius: 'var(--r-md)', color: 'var(--danger)',
+                background: 'rgba(180,35,24,.05)', boxShadow: 'inset 0 0 0 1px rgba(180,35,24,.18)',
+              }}
+            >
               {erreur}
             </div>
           )}
@@ -388,7 +393,10 @@ function Cadre({ children, large = false }: { children: React.ReactNode; large?:
       style={{ background: 'var(--bg-2)' }}
       dir={language === 'ar' ? 'rtl' : 'ltr'}
     >
-      <div className={`w-full ${large ? 'max-w-xl' : 'max-w-md'} bg-white rounded-3xl shadow-xl p-6 sm:p-8`}>
+      <div
+        className={`w-full ${large ? 'max-w-xl' : 'max-w-md'} p-6 sm:p-8`}
+        style={{ background: 'var(--bg)', borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-sm)' }}
+      >
         {children}
       </div>
     </div>
@@ -400,7 +408,8 @@ function BoutonPrincipal({ onClick, children }: { onClick: () => void; children:
     <button
       type="button"
       onClick={onClick}
-      className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl transition-colors"
+      className="w-full py-3.5 text-[15px] transition-colors"
+      style={{ background: 'var(--accent)', color: '#FFFFFF', borderRadius: 'var(--r-md)', fontWeight: 600 }}
     >
       {children}
     </button>
@@ -424,7 +433,8 @@ function Champ({
         autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-4 py-3.5 border border-gray-300 rounded-2xl text-[15px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+        className="w-full px-4 py-3 text-[15px] outline-none transition focus:ring-2"
+        style={{ background: 'var(--bg)', color: 'var(--ink)', borderRadius: 'var(--r-md)', boxShadow: 'inset 0 0 0 1px var(--tint-20)' }}
       />
       {aide && <p className="text-xs text-gray-400 mt-1.5 px-1">{aide}</p>}
     </div>

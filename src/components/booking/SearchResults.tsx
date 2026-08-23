@@ -410,7 +410,10 @@ export default function SearchResults({ searchQuery, onDoctorSelect, onBackToHom
           </div>
         ) : searchError ? (
           <div className="bg-white rounded-2xl border border-gray-200 p-12 sm:p-16 text-center">
-            <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-5">
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-5"
+              style={{ background: 'rgba(180,35,24,.06)', color: 'var(--danger)' }}
+            >
               <Icon name="alert" className="w-7 h-7" />
             </div>
             <h3 className="text-lg font-semibold mb-2" style={{ color: NAVY }}>

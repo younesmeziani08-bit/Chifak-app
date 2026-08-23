@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { listeAttenteAPI, type InscriptionAttente } from '../../services/listeAttente';
+import { Alerte, Bouton, Chargement, Entete, PageCarte } from '../shared/Carte';
 
 /**
  * /attente/&lt;jeton&gt; — mon inscription sur une liste d'attente.
@@ -78,90 +79,68 @@ export default function MonInscriptionAttente({ jeton, onRetourAccueil }: Props)
     }
   };
 
-  const cadre = (contenu: React.ReactNode) => (
-    <div
-      className="min-h-screen flex items-start sm:items-center justify-center p-4 py-8"
-      style={{ background: 'var(--bg-2)' }}
-      dir={isArabic ? 'rtl' : 'ltr'}
-    >
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl p-6 sm:p-8">{contenu}</div>
-    </div>
-  );
-
   if (chargement) {
-    return cadre(
-      <div className="text-center py-10">
-        <div className="inline-block animate-spin rounded-full h-9 w-9 border-b-2 border-blue-600 mb-3" />
-        <p className="text-sm text-gray-500">{isArabic ? 'جارٍ التحميل…' : 'Chargement…'}</p>
-      </div>,
-    );
+    return <PageCarte isArabic={isArabic}><Chargement isArabic={isArabic} /></PageCarte>;
   }
 
   if (!inscription) {
-    return cadre(
-      <div className="text-center py-6">
-        <div className="text-4xl mb-4" aria-hidden="true">🔗</div>
-        <h1 className="text-xl font-black text-gray-900 mb-2">
-          {isArabic ? 'رابط غير صالح' : 'Lien invalide ou expiré'}
-        </h1>
-        <button
-          type="button"
-          onClick={onRetourAccueil}
-          className="w-full mt-5 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold"
-        >
-          {isArabic ? 'الذهاب إلى chifak' : 'Aller sur chifak'}
-        </button>
-      </div>,
+    return (
+      <PageCarte isArabic={isArabic}>
+        <Entete icone="lienRompu" ton="sourdine" titre={isArabic ? 'رابط غير صالح' : 'Lien invalide ou expiré'} />
+        <p className="text-[15px] leading-relaxed mb-6" style={{ color: 'var(--ink-2)' }}>
+          {isArabic
+            ? 'تحقّق من الرابط في البريد الذي استلمته.'
+            : 'Vérifiez le lien dans l’e-mail que vous avez reçu — il est peut-être incomplet.'}
+        </p>
+        <Bouton onClick={onRetourAccueil}>{isArabic ? 'الذهاب إلى chifak' : 'Aller sur chifak'}</Bouton>
+      </PageCarte>
     );
   }
 
   const encoreEnListe = !retire && (inscription.statut === 'waiting' || inscription.statut === 'notified');
   const message = retire ? ETATS.parti : ETATS[inscription.statut];
 
-  return cadre(
-    <>
-      <div className="text-center mb-6">
-        <div className="text-4xl mb-3" aria-hidden="true">{encoreEnListe ? '🔔' : '✓'}</div>
-        <h1 className="text-xl font-black text-gray-900 tracking-tight">
-          {isArabic ? 'قائمة الانتظار' : 'Liste d’attente'}
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {inscription.doctor_name} · {inscription.specialty}
+  return (
+    <PageCarte isArabic={isArabic}>
+      <Entete
+        icone={encoreEnListe ? 'cloche' : 'coche'}
+        ton={encoreEnListe ? 'accent' : 'sourdine'}
+        titre={isArabic ? 'قائمة الانتظار' : 'Liste d’attente'}
+      />
+
+      {/* Le praticien concerné : c'est la seule chose qui distingue cette
+          inscription d'une autre, et elle doit se lire avant le statut. */}
+      <div
+        className="p-4 mb-4"
+        style={{ background: 'var(--accent-bg)', borderRadius: 'var(--r-lg)' }}
+      >
+        <p className="text-[15px] leading-snug" style={{ color: 'var(--ink)', fontWeight: 600 }}>
+          {inscription.doctor_name}
+        </p>
+        <p className="text-[13px] leading-snug mt-0.5" style={{ color: 'var(--ink-2)' }}>
+          {inscription.specialty}
         </p>
       </div>
 
-      <div className="rounded-2xl p-4 mb-6" style={{ background: 'var(--bg-2)' }}>
-        <p className="text-sm text-gray-700 leading-relaxed text-center">
-          {isArabic ? message.ar : message.fr}
-        </p>
-      </div>
+      <p className="text-[15px] leading-relaxed mb-6" style={{ color: 'var(--ink-2)' }}>
+        {isArabic ? message.ar : message.fr}
+      </p>
 
-      {erreur && (
-        <div className="mb-4 p-4 bg-red-50 border border-red-100 rounded-2xl text-sm font-medium text-red-600" role="alert">
-          {erreur}
-        </div>
-      )}
+      {erreur && <Alerte>{erreur}</Alerte>}
 
-      {encoreEnListe ? (
-        <button
-          type="button"
-          onClick={seRetirer}
-          disabled={envoi}
-          className="w-full py-3.5 border-2 border-red-200 text-red-600 rounded-2xl font-bold text-sm hover:bg-red-50 disabled:opacity-50 transition-colors"
-        >
+      {encoreEnListe && (
+        <Bouton variante="danger" onClick={seRetirer} disabled={envoi}>
           {envoi
             ? (isArabic ? 'جارٍ…' : 'Retrait…')
             : (isArabic ? 'الخروج من القائمة' : 'Me retirer de la liste')}
-        </button>
-      ) : null}
+        </Bouton>
+      )}
 
-      <button
-        type="button"
-        onClick={onRetourAccueil}
-        className="w-full mt-3 py-3 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-gray-700"
-      >
-        {isArabic ? 'العودة للرئيسية' : 'Retour à l’accueil'}
-      </button>
-    </>,
+      <div className="mt-2.5">
+        <Bouton variante="discret" onClick={onRetourAccueil}>
+          {isArabic ? 'العودة للرئيسية' : 'Retour à l’accueil'}
+        </Bouton>
+      </div>
+    </PageCarte>
   );
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { listeAttenteAPI } from '../../services/listeAttente';
+import { Icone } from '../shared/Carte';
 
 /**
  * « Prévenez-moi si une place se libère. »
@@ -64,15 +65,23 @@ export default function RejoindreListeAttente({ doctorId, nomMedecin, compact = 
 
   if (inscrit) {
     return (
-      <div className="rounded-2xl p-4 border border-green-200 bg-green-50">
-        <p className="text-sm font-bold text-green-800 mb-1">
-          {isArabic ? '✓ أنت في قائمة الانتظار' : '✓ Vous êtes sur la liste d’attente'}
-        </p>
-        <p className="text-sm text-green-800/80 leading-relaxed">
-          {isArabic
-            ? 'سنُعلمك فور تحرّر موعد. يُحجز لك ساعتين لتأكيده.'
-            : 'Nous vous préviendrons dès qu’une place se libère. Elle vous sera réservée deux heures, le temps de la confirmer.'}
-        </p>
+      <div
+        className="flex items-start gap-3 p-4"
+        style={{ borderRadius: 'var(--r-lg)', background: 'var(--accent-bg)' }}
+      >
+        <span style={{ color: 'var(--success)' }} className="mt-0.5 flex-shrink-0">
+          <Icone nom="coche" className="w-[18px] h-[18px]" />
+        </span>
+        <div>
+          <p className="text-[14px]" style={{ color: 'var(--ink)', fontWeight: 600 }}>
+            {isArabic ? 'أنت في قائمة الانتظار' : 'Vous êtes sur la liste d’attente'}
+          </p>
+          <p className="text-[13px] leading-relaxed mt-1" style={{ color: 'var(--ink-2)' }}>
+            {isArabic
+              ? 'سنُعلمك فور تحرّر موعد. يُحجز لك ساعتين لتأكيده.'
+              : 'Nous vous préviendrons dès qu’une place se libère. Elle vous sera réservée deux heures, le temps de la confirmer.'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -82,20 +91,31 @@ export default function RejoindreListeAttente({ doctorId, nomMedecin, compact = 
       <button
         type="button"
         onClick={() => setOuvert(true)}
-        className={`${compact ? 'text-sm py-2.5 px-4' : 'w-full py-3.5'} rounded-xl border-2 border-blue-200 text-blue-700 font-semibold hover:bg-blue-50 transition-colors`}
+        className={`${compact ? 'text-[14px] py-2.5 px-4' : 'w-full py-3.5'} inline-flex items-center justify-center gap-2 transition-colors`}
+        style={{
+          borderRadius: 'var(--r-md)', fontWeight: 600, color: 'var(--accent)',
+          background: 'var(--accent-bg)',
+        }}
       >
-        {isArabic ? '🔔 أعلِمني عند توفّر موعد' : '🔔 Prévenez-moi si une place se libère'}
+        <Icone nom="cloche" className="w-[18px] h-[18px]" />
+        {isArabic ? 'أعلِمني عند توفّر موعد' : 'Prévenez-moi si une place se libère'}
       </button>
     );
   }
 
   return (
-    <form onSubmit={sInscrire} className="rounded-2xl p-4 border border-blue-200 bg-blue-50/50 space-y-3">
+    <form
+      onSubmit={sInscrire}
+      className="p-4 space-y-3"
+      style={{ borderRadius: 'var(--r-lg)', background: 'var(--bg-2)', boxShadow: 'inset 0 0 0 1px var(--tint-10)' }}
+    >
       <div>
-        <p className="text-sm font-bold text-gray-900">
+        <p className="text-[14px]" style={{ color: 'var(--ink)', fontWeight: 600 }}>
           {isArabic ? `قائمة انتظار ${nomMedecin}` : `Liste d’attente de ${nomMedecin}`}
         </p>
-        <p className="text-xs text-gray-600 leading-relaxed mt-1">
+        {/* La promesse exacte, avant les champs : c'est elle qui décide si
+            l'on laisse son numéro, pas le bouton. */}
+        <p className="text-[13px] leading-relaxed mt-1" style={{ color: 'var(--ink-2)' }}>
           {isArabic
             ? 'عند إلغاء أحد المرضى، نُعلمك أوّلًا ونحجز لك الموعد ساعتين. لا حاجة لحساب.'
             : 'Quand un patient annule, vous êtes prévenu en premier et la place vous est réservée deux heures. Aucun compte nécessaire.'}
@@ -119,14 +139,15 @@ export default function RejoindreListeAttente({ doctorId, nomMedecin, compact = 
       />
 
       {erreur && (
-        <p className="text-sm font-medium text-red-600" role="alert">{erreur}</p>
+        <p className="text-[13px]" role="alert" style={{ color: 'var(--danger)' }}>{erreur}</p>
       )}
 
       <div className="flex flex-wrap gap-2 pt-1">
         <button
           type="submit"
           disabled={!complet || envoi}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-xl text-sm font-bold transition-colors"
+          className="px-5 py-2.5 text-[14px] transition-colors disabled:opacity-55"
+          style={{ borderRadius: 'var(--r-md)', fontWeight: 600, background: 'var(--accent)', color: '#FFFFFF' }}
         >
           {envoi
             ? (isArabic ? 'جارٍ…' : 'Inscription…')
@@ -135,7 +156,11 @@ export default function RejoindreListeAttente({ doctorId, nomMedecin, compact = 
         <button
           type="button"
           onClick={() => setOuvert(false)}
-          className="px-5 py-2.5 bg-white border border-gray-200 text-gray-600 rounded-xl text-sm font-semibold"
+          className="px-5 py-2.5 text-[14px]"
+          style={{
+            borderRadius: 'var(--r-md)', fontWeight: 600, background: 'var(--bg)',
+            color: 'var(--ink-2)', boxShadow: 'inset 0 0 0 1px var(--tint-20)',
+          }}
         >
           {isArabic ? 'تراجع' : 'Annuler'}
         </button>
@@ -152,7 +177,9 @@ function Champ({
 }) {
   return (
     <div>
-      <label htmlFor={id} className="block text-xs font-semibold text-gray-700 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-[12px] mb-1" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>
+        {label}
+      </label>
       <input
         id={id}
         type={type}
@@ -161,7 +188,12 @@ function Champ({
         autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full px-3.5 py-2.5 bg-white border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+        className="w-full px-3.5 py-2.5 text-[14px] outline-none transition
+          focus:ring-2 focus:ring-offset-0"
+        style={{
+          borderRadius: 'var(--r-md)', background: 'var(--bg)',
+          color: 'var(--ink)', boxShadow: 'inset 0 0 0 1px var(--tint-20)',
+        }}
       />
     </div>
   );
