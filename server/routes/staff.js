@@ -189,7 +189,12 @@ router.post('/api/admin/employees/:id/regenerate-login', authenticateToken, requ
     // celui-ci vient d'être attribué ailleurs.
     const username = await insererAvecUnicite(async () => {
       const candidat = tirerIdentifiant();
-      await db.prepare('UPDATE users SET username = ? WHERE id = ?').run(candidat, id);
+        /* On régénère un numéro précisément quand on soupçonne le compte
+           d'être compromis. Sans cette date, la session ouverte avec
+           l'ancien numéro survivait au geste censé la couper. */
+        await db.prepare(
+          'UPDATE users SET username = ?, password_changed_at = CURRENT_TIMESTAMP WHERE id = ?',
+        ).run(candidat, id);
       return candidat;
     });
     res.json({ username });

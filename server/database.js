@@ -703,6 +703,21 @@ export async function initDatabase() {
      Le middleware compare l'instant d'émission du jeton à cette date. */
   await pool.query('ALTER TABLE patients ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP');
 
+  /* La même invalidation pour le personnel et les praticiens.
+     Elle n'existait que pour les patients, et l'asymétrie coûtait cher :
+
+     · `DELETE /api/admin/employees/:id` retirait la ligne, mais le middleware
+       du personnel ne consultait jamais la base. Un employé congédié gardait
+       donc l'API d'administration ouverte vingt-quatre heures — les rendez-vous
+       de tous les praticiens, les coordonnées des patients, la création et la
+       modification des fiches ;
+     · un praticien qui changeait son mot de passe après une intrusion n'en
+       délogeait personne, pour la même raison.
+
+     Le contrôle d'existence règle le premier cas, cette date le second. */
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP');
+  await pool.query('ALTER TABLE doctors ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMP');
+
   // Index : indispensables pour éviter les balayages complets de table sous charge
   const indexes = [
     "CREATE INDEX IF NOT EXISTS idx_doctors_specialty ON doctors (specialty)",

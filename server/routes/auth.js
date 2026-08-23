@@ -216,7 +216,11 @@ router.post('/api/doctor/change-password', authenticateDoctorToken, async (req, 
     }
 
     const hashed = await bcrypt.hash(newPassword, 10);
-    await db.prepare('UPDATE doctors SET password = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+    /* `password_changed_at` scelle les jetons émis avant ce changement.
+       Sans elle, changer son mot de passe parce qu'on le sait compromis ne
+       délogeait personne : le jeton volé gardait l'agenda et les dossiers
+       jusqu'au lendemain. */
+    await db.prepare('UPDATE doctors SET password = ?, must_change_password = 0, password_changed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(hashed, req.user.id);
 
     // Nouveau jeton sans le drapeau « changement requis » : l'ancien reste bloqué.
@@ -373,6 +377,18 @@ router.post('/api/auth/verify-code', async (req, res) => {
       return res.status(400).json({ error: 'Email ou code invalide' });
     }
 
+    /* ── Freinage par compte ──
+       C'était la seule vérification de code du projet qui ne l'appliquait pas.
+       La connexion, la double authentification et la réinitialisation du mot de
+       passe passent toutes par ce compteur ; l'inscription s'en remettait au
+       seul plafond par adresse IP.
+
+       Un code à six chiffres vaut 900 000 possibilités et vit dix minutes. Le
+       plafond par IP freine une machine, pas un parc : la seule borne qui
+       compte est celle qui suit la CIBLE, quel que soit l'endroit d'où l'on
+       frappe. */
+    if (await refuseSiFreine(res, 'inscription', email)) return;
+
     /* ── Consommation atomique du code ──
        La lecture, le contrôle d'expiration et le marquage « utilisé » étaient
        trois opérations distinctes. Entre la première et la troisième, le même
@@ -398,10 +414,13 @@ router.post('/api/auth/verify-code', async (req, res) => {
     `).get(email, code);
 
     if (!consomme) {
+      await noterEchec('inscription', email);
       // Message unique pour « inconnu », « déjà utilisé » et « périmé » : les
       // distinguer indiquerait à qui tâtonne s'il approche d'un code réel.
       return res.status(400).json({ error: 'Code invalide ou expiré.' });
     }
+
+    await oublierEchecs('inscription', email);
 
     // Activer le compte
     await db.prepare('UPDATE patients SET is_verified = 1 WHERE email = ?')
