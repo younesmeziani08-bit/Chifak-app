@@ -70,7 +70,29 @@ async function acheminer({ to, subject, html }) {
     return envoyerEnEssai({ from: FROM_ADDRESS, to, subject, html });
   }
   if (messagerieHttpConfiguree()) {
-    return envoyerParHttp(to, { subject, html });
+    /* ── Pourquoi on LÈVE ici plutôt que de rendre false ──
+
+       `envoyerParHttp` rend false quand le fournisseur refuse. Les six
+       fonctions d'envoi appelaient `await acheminer(...)` sans regarder ce
+       retour, puis imprimaient « ✅ envoyé » et rendaient true. Un refus de
+       l'API — clé invalide, adresse IP non autorisée, quota dépassé,
+       expéditeur non validé — était donc rapporté comme un succès.
+
+       En production, cela veut dire : une inscription qui répond 200 alors
+       que le code de vérification n'est jamais parti, et un patient qui ne
+       peut plus rien faire de son compte.
+
+       Le bug ne touchait que cette voie-là. `transporter.sendMail` lève en
+       cas d'échec, et la voie SMTP se comportait donc correctement — ce qui
+       explique qu'il ait survécu jusqu'au premier envoi par API.
+
+       On lève pour que les six appelants, qui enveloppent tous leur appel
+       dans un try/catch rendant false, se corrigent d'un seul geste. */
+    const parti = await envoyerParHttp(to, { subject, html });
+    if (!parti) {
+      throw new Error('Le fournisseur d\'e-mails a refusé le message.');
+    }
+    return true;
   }
   await transporter.sendMail({ from: FROM_ADDRESS, to, subject, html });
   return true;

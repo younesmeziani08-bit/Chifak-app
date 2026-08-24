@@ -88,7 +88,17 @@ const epreuves = [
 ];
 
 console.log(`\nEnvoi de ${epreuves.length} courriers vers ${destinataire}`);
-console.log(`Transport : ${process.env.EMAIL_HOST || 'Gmail'}\n`);
+/* Le transport annoncé ne regardait que EMAIL_HOST : il disait donc « Gmail »
+   alors que les messages partaient par l'API de Brevo. Quand le rapport se
+   trompe sur la voie employée, il oriente le dépannage dans la mauvaise
+   direction — on cherche du côté de Gmail un refus qui vient d'ailleurs. */
+const transport = (() => {
+  const p = String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  if (p === 'essai' || p === 'ethereal') return 'boîte jetable (mode ESSAI)';
+  if (p && p !== 'smtp') return `API ${p}`;
+  return process.env.EMAIL_HOST || 'Gmail';
+})();
+console.log(`Transport : ${transport}\n`);
 
 let partis = 0;
 let echoues = 0;
@@ -108,8 +118,11 @@ for (const [nom, envoyer] of epreuves) {
 console.log(`\n${partis} accepté(s), ${echoues} en échec.\n`);
 
 if (echoues) {
-  console.log('Un échec vient presque toujours de l\'une de ces trois causes :');
+  console.log('Un échec vient presque toujours de l\'une de ces causes :');
+  console.log('  · adresse IP non autorisée — Brevo n\'accepte les appels d\'API que');
+  console.log('    depuis des adresses déclarées : https://app.brevo.com/security/authorised_ips');
   console.log('  · identifiants refusés — pour Gmail, il faut un mot de passe d\'application ;');
+  console.log('  · clé du mauvais type — Brevo distingue xkeysib- (API) et xsmtpsib- (SMTP) ;');
   console.log('  · expéditeur non validé chez le fournisseur (Brevo, Resend…) ;');
   console.log('  · port sortant bloqué par l\'hébergement.\n');
   process.exit(1);
