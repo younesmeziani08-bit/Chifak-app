@@ -3,11 +3,17 @@ import dotenv from 'dotenv';
 import { randomInt } from 'crypto';
 import { escapeHtml } from './security.js';
 import { envoyerParHttp, messagerieHttpConfiguree } from './lib/messagerieHttp.js';
+import { envoyerEnEssai, modeEssaiActif } from './lib/messagerieEssai.js';
 import { adresseFront } from './config/adresses.js';
 
 dotenv.config();
 
 export function isEmailConfigured() {
+  /* Le mode d'essai est une voie ouverte à part entière : sans ce retour, les
+     gardes `if (!isEmailConfigured())` semées dans chaque fonction d'envoi
+     court-circuiteraient, et le mode ne servirait à rien. */
+  if (modeEssaiActif()) return true;
+
   /* Deux voies possibles, et il suffit qu'une seule soit ouverte.
      La voie API est vérifiée d'abord : quand elle est configurée, les
      identifiants SMTP n'ont plus à l'être, et exiger les deux ferait passer
@@ -57,6 +63,12 @@ const transporter = process.env.EMAIL_HOST
  * demande qu'il parte.
  */
 async function acheminer({ to, subject, html }) {
+  /* Avant tout le reste : quand on demande le mode d'essai, on ne veut
+     surtout pas qu'un identifiant SMTP resté dans le fichier d'environnement
+     envoie le message pour de vrai. */
+  if (modeEssaiActif()) {
+    return envoyerEnEssai({ from: FROM_ADDRESS, to, subject, html });
+  }
   if (messagerieHttpConfiguree()) {
     return envoyerParHttp(to, { subject, html });
   }

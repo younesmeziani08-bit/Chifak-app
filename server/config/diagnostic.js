@@ -41,12 +41,22 @@ function pointsDeControle() {
   const enProduction = process.env.NODE_ENV === 'production';
   /* Trois voies possibles pour les courriers, et il suffit qu'une seule soit
      ouverte : l'API d'un fournisseur, un SMTP générique, ou Gmail. */
+  /* Le mode d'essai est une voie ouverte : sans lui, le rapport annoncerait
+     « aucune inscription possible » alors que le parcours est jouable. */
+  /* Le SMS a lui aussi son mode d'essai : imprimé dans la console plutôt que
+     remis. Aucune passerelle SMS ne s'essaie gratuitement. */
+  const smsEnConsole =
+    String(process.env.SMS_PROVIDER || '').trim().toLowerCase() === 'console';
+
+  const parEssai = ['essai', 'ethereal']
+    .includes(String(process.env.EMAIL_PROVIDER || '').trim().toLowerCase());
+
   const parApi = defini('EMAIL_PROVIDER')
     && process.env.EMAIL_PROVIDER.trim().toLowerCase() !== 'smtp'
     && defini('EMAIL_API_KEY');
   const parSmtp = defini('EMAIL_HOST') && defini('EMAIL_USER') && defini('EMAIL_PASSWORD');
   const parGmail = defini('EMAIL_USER') && defini('EMAIL_PASSWORD');
-  const messagerie = parApi || parSmtp || parGmail;
+  const messagerie = parEssai || parApi || parSmtp || parGmail;
 
   return [
     {
@@ -62,7 +72,9 @@ function pointsDeControle() {
       absence: 'les jetons de session ne peuvent pas être signés de façon sûre.',
     },
     {
-      nom: parApi
+      nom: parEssai
+        ? 'Envoi des e-mails (mode ESSAI — rien n\'est remis)'
+        : parApi
         ? `Envoi des e-mails (API ${process.env.EMAIL_PROVIDER.trim()})`
         : parSmtp ? 'Envoi des e-mails (SMTP)'
         : parGmail ? 'Envoi des e-mails (Gmail)'
@@ -80,7 +92,7 @@ function pointsDeControle() {
          et coupe sans prévenir ce qu'il juge automatique. On le signale sans
          le bloquer : c'est un dépannage acceptable, pas un régime de croisière. */
       nom: 'Fournisseur d\'e-mails adapté au volume',
-      ok: !parGmail || parApi || parSmtp,
+      ok: !parGmail || parEssai || parApi || parSmtp,
       critique: false,
       absence: 'les courriers partent par Gmail, qui plafonne à quelques centaines '
         + 'd\'envois par jour et coupe les envois automatiques sans prévenir. '
@@ -121,8 +133,10 @@ function pointsDeControle() {
       absence: 'le bouton « continuer avec Facebook » renvoie vers un message d\'indisponibilité.',
     },
     {
-      nom: 'Rappels par SMS (SMS_URL)',
-      ok: defini('SMS_URL'),
+      nom: smsEnConsole
+        ? 'Rappels par SMS (mode CONSOLE — rien n\'est remis)'
+        : 'Rappels par SMS (SMS_URL)',
+      ok: smsEnConsole || defini('SMS_URL'),
       critique: false,
       absence: 'les rappels de la veille ne partent que par e-mail. En Algérie, le SMS '
         + 'porte bien plus loin — c\'est ce rappel qui décide si le patient se déplace.',

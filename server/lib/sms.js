@@ -41,9 +41,26 @@
  */
 import '../env.js';
 
+/**
+ * Mode d'essai : le SMS est imprimé dans la console au lieu d'être remis.
+ *
+ *     SMS_PROVIDER=console
+ *
+ * Aucune passerelle SMS ne s'essaie gratuitement : toutes réclament une
+ * inscription, une pièce d'identité, et souvent un numéro pré-vérifié — ce qui
+ * interdit précisément d'éprouver l'envoi vers le numéro d'un patient.
+ *
+ * Ce mode répond à la question qu'on se pose vraiment en développement : le
+ * bon texte part-il, au bon numéro, au bon moment ? La remise, elle, ne se
+ * vérifie qu'avec une vraie passerelle.
+ */
+export function smsEnConsole() {
+  return String(process.env.SMS_PROVIDER || '').trim().toLowerCase() === 'console';
+}
+
 /** Le canal est-il configuré ? Lu aussi par le diagnostic de démarrage. */
 export function smsConfigure() {
-  return Boolean(process.env.SMS_URL && process.env.SMS_URL.trim());
+  return smsEnConsole() || Boolean(process.env.SMS_URL && process.env.SMS_URL.trim());
 }
 
 /**
@@ -109,6 +126,18 @@ export async function envoyerSms(numero, texte) {
      laisser le fournisseur décider où la phrase s'arrête. */
   const text = String(texte).replace(/\s+/g, ' ').trim().slice(0, 320);
   const from = process.env.SMS_SENDER || 'chifak';
+
+  /* Après la normalisation du numéro et la troncature : on imprime exactement
+     ce qui serait parti, segments compris. */
+  if (smsEnConsole()) {
+    const segments = Math.ceil(text.length / 160) || 1;
+    console.log(`\n📱  SMS (mode console — rien n'est remis)`);
+    console.log(`    de           : ${from}`);
+    console.log(`    à            : ${to}`);
+    console.log(`    ${text.length} caractères, ${segments} segment${segments > 1 ? 's' : ''}`);
+    console.log(`    ${text}\n`);
+    return true;
+  }
 
   const gabarit = process.env.SMS_BODY
     || '{"to":"{{to}}","from":"{{from}}","message":"{{text}}"}';
