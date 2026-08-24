@@ -509,6 +509,32 @@ export async function initDatabase() {
     } catch (e) {
       console.warn('Index d\'unicité des e-mails patients ignoré:', e.message);
     }
+
+  }
+
+  /* ── L'unicité sur `email` LUI-MÊME, et pas seulement sur LOWER(email) ──
+
+     La route d'inscription réécrit un compte non vérifié avec
+     `ON CONFLICT (email) DO UPDATE`. Cette clause exige une contrainte
+     d'unicité portant exactement sur `email` ; l'index sur `LOWER(email)`
+     posé juste au-dessus ne la satisfait PAS — PostgreSQL répond alors
+     « there is no unique or exclusion constraint matching the ON CONFLICT
+     specification », et l'inscription échoue en 500.
+
+     La colonne est bien déclarée `email TEXT UNIQUE NOT NULL` dans le
+     CREATE TABLE. Mais `CREATE TABLE IF NOT EXISTS` ne se rejoue jamais :
+     une base créée par une version antérieure de ce fichier n'a pas la
+     contrainte, et rien ne la lui ajoutera. C'est le même piège que la
+     contrainte CHECK du statut « no_show ».
+
+     On la pose donc explicitement. En cas de doublons exacts, la création
+     échoue : on le signale plutôt que de fusionner deux dossiers médicaux
+     d'office. */
+  try {
+    await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_email_exact ON patients (email)');
+  } catch (e) {
+    console.error('🚨 Unicité stricte de patients.email impossible :', e.message);
+    console.error('🚨 Tant qu\'elle manque, l\'inscription échoue en 500 sur ON CONFLICT.');
   }
 
   /* Même règle pour les praticiens. La colonne n'avait AUCUNE contrainte
