@@ -24,11 +24,11 @@ import { envoyerCourrier } from '../emailService.js';
 import { courrierInscritEnAttente } from '../lib/courriers.js';
 import { HEURES_DE_REPONSE, prevenirSuivant } from '../lib/listeAttente.js';
 import { bookingLimiter } from '../config/limiters.js';
+import { adresseFront } from '../config/adresses.js';
 
 const router = express.Router();
 
-const adresseFront = () =>
-  (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+
 
 /**
  * POST /api/doctors/:id/liste-attente — s'inscrire.

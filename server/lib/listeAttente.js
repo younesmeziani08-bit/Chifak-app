@@ -31,6 +31,7 @@ import db from '../database.js';
 import { envoyerCourrier } from '../emailService.js';
 import { courrierCreneauLibere } from './courriers.js';
 import { envoyerSms, texteCreneauLibere, smsConfigure } from './sms.js';
+import { adresseFront } from '../config/adresses.js';
 
 /** Combien de temps le créneau reste retenu pour la personne prévenue. */
 export const HEURES_DE_REPONSE = 2;
@@ -45,8 +46,7 @@ export const HEURES_DE_REPONSE = 2;
  */
 const HORIZON_JOURS = 30;
 
-const adresseFront = () =>
-  (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+
 
 /**
  * Un créneau vient de se libérer chez ce praticien : prévenir le premier de

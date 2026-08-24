@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { randomInt } from 'crypto';
 import { escapeHtml } from './security.js';
 import { envoyerParHttp, messagerieHttpConfiguree } from './lib/messagerieHttp.js';
+import { adresseFront } from './config/adresses.js';
 
 dotenv.config();
 
@@ -642,7 +643,7 @@ export async function sendAppointmentReminder(email, {
       ? 'لا تنسَ بطاقتك الصحية وملفك الطبي.'
       : 'N’oubliez pas votre carte et votre dossier médical.');
 
-  const front = process.env.FRONTEND_URL || 'https://chifak.dz';
+  const front = adresseFront();
 
   const html = `<!DOCTYPE html>
 <html dir="${ar ? 'rtl' : 'ltr'}" lang="${ar ? 'ar' : 'fr'}">

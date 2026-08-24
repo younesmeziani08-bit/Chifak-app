@@ -144,14 +144,18 @@ function pointsDeControle() {
       nom: 'Adresse publique de l\'API (PUBLIC_API_URL)',
       ok: !enProduction || defini('PUBLIC_API_URL'),
       critique: false,
-      absence: 'les adresses des photos de praticiens sont bâties sur l\'en-tête Host de '
-        + 'la requête, que le client contrôle. Renseignez-la en production.',
+      absence: 'les adresses des photos de praticiens retombent sur le domaine de '
+        + 'production écrit en dur. Tout fonctionne ; renseignez-la si l\'API change '
+        + 'd\'hébergeur. L\'en-tête Host n\'est plus suivi en production : le client '
+        + 'l\'écrit, et ces adresses sont mises en cache un an.',
     },
     {
       nom: 'Adresse du site (FRONTEND_URL)',
       ok: defini('FRONTEND_URL'),
       critique: false,
-      absence: 'les retours de connexion sociale pointent vers http://localhost:5173.',
+      absence: 'les liens des courriers et le retour de connexion sociale retombent '
+        + 'sur le domaine de production écrit en dur. Tout fonctionne ; renseignez-la '
+        + 'si le site change de domaine.',
     },
   ];
 }

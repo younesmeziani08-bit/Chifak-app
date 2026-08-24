@@ -12,6 +12,7 @@ import { sendAppointmentConfirmation } from '../emailService.js';
 import { authenticateToken, authenticatePatientToken } from '../middleware/auth.js';
 import { bookingLimiter } from '../config/limiters.js';
 import { horairesBloquesPublics, ficheRendezVousPatient } from '../lib/publicData.js';
+import { adresseFront } from '../config/adresses.js';
 
 const router = express.Router();
 
@@ -278,7 +279,7 @@ router.post('/api/appointments', bookingLimiter, async (req, res) => {
            pour un patient connecté : c'est le chemin le plus court, et il
            évite d'avoir à retrouver ses identifiants pour libérer un créneau
            qu'on sait déjà ne pas pouvoir honorer. */
-        cancelUrl: `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}/rdv/${jetonAnnulation}`,
+        cancelUrl: `${adresseFront()}/rdv/${jetonAnnulation}`,
       }, language || 'fr');
     } catch (emailError) {
       console.error('Erreur envoi email confirmation:', emailError);

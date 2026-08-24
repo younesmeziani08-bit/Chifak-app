@@ -1,5 +1,6 @@
 /** Photos des praticiens : adresses stables, jamais de base64 dans les listes. */
 import crypto from 'node:crypto';
+import { adresseApi } from '../config/adresses.js';
 
 
 /**
@@ -16,8 +17,7 @@ import crypto from 'node:crypto';
  */
 export function urlPhoto(req, doctor) {
   if (doctor.photo_hash) {
-    const base = (process.env.PUBLIC_API_URL || '').replace(/\/$/, '')
-      || `${req.protocol}://${req.get('host')}`;
+    const base = adresseApi(req);
     return `${base}/api/doctors/${doctor.id}/photo?v=${doctor.photo_hash.slice(0, 12)}`;
   }
   // Photo externe (adresse web) ou emoji hérité : la valeur est courte, on la

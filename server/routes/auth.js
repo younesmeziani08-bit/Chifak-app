@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import db from '../database.js';
+import { adresseFront } from '../config/adresses.js';
 import {
   cleanString, isValidEmail, normalizeEmail, isValidDate, isValidTime,
   isValidPhone, isValidId, toBoundedInt, passwordStrengthError,
@@ -632,7 +633,7 @@ router.put('/api/patient/profile', authenticatePatientToken, async (req, res) =>
 
 // ==================== ROUTES OAUTH ====================
 
-const frontendUrl = () => process.env.FRONTEND_URL || 'http://localhost:5173';
+const frontendUrl = () => adresseFront();
 
 const isGoogleOAuthReady = () =>
   process.env.GOOGLE_CLIENT_ID &&
@@ -698,7 +699,7 @@ const buildOAuthRedirect = (token, isApp) => {
     const scheme = process.env.MOBILE_REDIRECT_URL || 'chifak://auth/callback';
     return `${scheme}#${fragment}`;
   }
-  const frontend = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const frontend = adresseFront();
   return `${frontend}/auth/callback#${fragment}`;
 };
 
@@ -715,7 +716,7 @@ const buildOAuthRedirect = (token, isApp) => {
  * confidentiel, seulement la marche à suivre.
  */
 const traiterRetourOAuth = (fournisseur) => (req, res, next) => {
-  const front = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const front = adresseFront();
 
   /* Le contrôle du `state` vient AVANT tout le reste : avant de parler au
      fournisseur, avant de toucher la base, avant de signer quoi que ce soit.
